@@ -1,0 +1,165 @@
+import { RateLimiter } from "@/lib/rateLimiter";
+import { EXPRESSIONS, type Normie, type NormieExpression, type NormieMetadata, type NormieTraits } from "@/types/normie";
+
+const BASE_URL = "https://api.normies.art";
+const MAX_ID = 9999;
+const limiter = new RateLimiter(56, 60_000);
+
+const traitCache = new Map<number, NormieTraits>();
+const metadataCache = new Map<number, NormieMetadata>();
+const normieCache = new Map<number, Normie>();
+const inflight = new Map<string, Promise<unknown>>();
+
+type RawTraitsResponse =
+  | NormieTraits
+  | {
+      attributes?: Array<{ trait_type?: string; value?: string | number | boolean }>;
+      raw?: string;
+    };
+
+function randomId() {
+  return Math.floor(Math.random() * (MAX_ID + 1));
+}
+
+async function fetchWithRetry<T>(url: string, attempts = 3): Promise<T> {
+  let lastError: unknown;
+
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      const response = await limiter.enqueue(() => fetch(url));
+      if (!response.ok) throw new Error(`Normies API ${response.status}: ${url}`);
+      return (await response.json()) as T;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 350 * (index + 1)));
+    }
+  }
+
+  throw lastError;
+}
+
+function dedupe<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const existing = inflight.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const promise = run().finally(() => inflight.delete(key));
+  inflight.set(key, promise);
+  return promise;
+}
+
+function fallbackTraits(id: number): NormieTraits {
+  const types = ["Human", "Cat", "Alien", "Agent"] as const;
+  return {
+    Type: types[id % types.length],
+    Gender: ["Male", "Female", "Non-Binary"][id % 3],
+    Age: ["Young", "Middle-Aged", "Old"][id % 3],
+    "Hair Style": "Fallback Fade",
+    "Facial Feature": "Pixel Smile",
+    Eyes: "Bright",
+    Expression: EXPRESSIONS[id % EXPRESSIONS.length],
+    Accessory: "Neon Pass"
+  };
+}
+
+function normalizeTraits(response: RawTraitsResponse, id: number): NormieTraits {
+  if ("attributes" in response && Array.isArray(response.attributes)) {
+    return response.attributes.reduce<NormieTraits>((traits, attribute) => {
+      if (attribute.trait_type && attribute.value !== undefined) {
+        traits[attribute.trait_type] = attribute.value;
+      }
+      return traits;
+    }, {});
+  }
+
+  return Object.keys(response).length ? (response as NormieTraits) : fallbackTraits(id);
+}
+
+function randomExpression(): NormieExpression {
+  return EXPRESSIONS[Math.floor(Math.random() * EXPRESSIONS.length)];
+}
+
+export const NormieAPIService = {
+  imageUrl(id: number) {
+    return `${BASE_URL}/normie/${id}/image.png`;
+  },
+
+  svgUrl(id: number) {
+    return `${BASE_URL}/normie/${id}/image.svg`;
+  },
+
+  async fetchNormieTraits(id: number): Promise<NormieTraits> {
+    if (traitCache.has(id)) return traitCache.get(id)!;
+
+    return dedupe(`traits:${id}`, async () => {
+      try {
+        const response = await fetchWithRetry<RawTraitsResponse>(`${BASE_URL}/normie/${id}/traits`);
+        const traits = normalizeTraits(response, id);
+        traitCache.set(id, traits);
+        return traits;
+      } catch {
+        const traits = fallbackTraits(id);
+        traitCache.set(id, traits);
+        return traits;
+      }
+    });
+  },
+
+  fetchNormieImage(id: number) {
+    return this.imageUrl(id);
+  },
+
+  async fetchNormieMetadata(id: number): Promise<NormieMetadata> {
+    if (metadataCache.has(id)) return metadataCache.get(id)!;
+
+    return dedupe(`metadata:${id}`, async () => {
+      try {
+        const metadata = await fetchWithRetry<NormieMetadata>(`${BASE_URL}/normie/${id}/metadata`);
+        metadataCache.set(id, metadata);
+        return metadata;
+      } catch {
+        const metadata = { name: `Normie #${id}`, attributes: [] };
+        metadataCache.set(id, metadata);
+        return metadata;
+      }
+    });
+  },
+
+  async getNormie(id: number): Promise<Normie> {
+    if (normieCache.has(id)) return normieCache.get(id)!;
+
+    return dedupe(`normie:${id}`, async () => {
+      const [traits, metadata] = await Promise.all([this.fetchNormieTraits(id), this.fetchNormieMetadata(id)]);
+      const normie = {
+        id,
+        traits,
+        metadata,
+        image: this.imageUrl(id),
+        svg: this.svgUrl(id)
+      };
+      normieCache.set(id, normie);
+      return normie;
+    });
+  },
+
+  async getRandomNormie(): Promise<Normie> {
+    return this.getNormie(randomId());
+  },
+
+  async getRandomNormies(count: number): Promise<Normie[]> {
+    const ids = new Set<number>();
+    while (ids.size < count) ids.add(randomId());
+    return Promise.all([...ids].map((id) => this.getNormie(id)));
+  },
+
+  async getRouletteNormies(count: number): Promise<Array<Normie & { rouletteExpression: NormieExpression }>> {
+    const normies = await this.getRandomNormies(count);
+    return normies.map((normie) => ({
+      ...normie,
+      rouletteExpression: randomExpression()
+    }));
+  },
+
+  async preloadNormies(count = 12) {
+    return this.getRandomNormies(count);
+  }
+};

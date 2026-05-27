@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+dist
+build
+.env
+.env.local
+*.log
+coverage
+*.tsbuildinfo
+.vercel
+.turbo
+.eslintcache
+next-env.d.ts.bak
