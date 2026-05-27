@@ -15,7 +15,7 @@ export function NormieImage({ src, alt, className }: Props) {
 
   if (failed) {
     return (
-      <div className={`grid place-items-center bg-black/50 text-[10px] uppercase tracking-widest text-cyanGlow ${className ?? ""}`}>
+      <div className={`grid place-items-center bg-black/50 text-[10px] uppercase tracking-widest text-paper ${className ?? ""}`}>
         Normie
       </div>
     );

@@ -10,17 +10,17 @@ export function BetControls({ bet, setBet }: { bet: number; setBet: (bet: number
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
-        className="grid h-9 w-9 place-items-center rounded border border-white/15 bg-white/5"
+        className="grid h-9 w-9 place-items-center border border-paper/40 bg-white/5"
         onClick={() => setBet(clampBet(bet - 50, balance))}
         aria-label="Lower bet"
       >
         <Minus size={16} />
       </button>
-      <div className="min-w-32 rounded border border-amberChip/40 bg-black/35 px-3 py-2 text-center text-sm text-amberChip">
+      <div className="pixel-card min-w-32 px-3 py-2 text-center text-sm text-paper">
         {formatChips(bet)} chips
       </div>
       <button
-        className="grid h-9 w-9 place-items-center rounded border border-white/15 bg-white/5"
+        className="grid h-9 w-9 place-items-center border border-paper/40 bg-white/5"
         onClick={() => setBet(clampBet(bet + 50, balance))}
         aria-label="Raise bet"
       >
@@ -30,7 +30,7 @@ export function BetControls({ bet, setBet }: { bet: number; setBet: (bet: number
         <button
           key={value}
           onClick={() => setBet(clampBet(value, balance))}
-          className="rounded border border-white/15 bg-white/5 px-3 py-2 text-xs text-white/80 transition hover:border-cyanGlow"
+          className="border border-paper/40 bg-white/5 px-3 py-2 text-xs text-paper/80 transition hover:border-paper"
         >
           {value}
         </button>

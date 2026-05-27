@@ -25,14 +25,14 @@ function Toast({ notification, dismiss }: { notification: ArcadeNotification; di
     return () => window.clearTimeout(timeout);
   }, [dismiss, notification.id]);
 
-  const color = notification.kind === "win" ? "border-acid text-acid" : notification.kind === "loss" ? "border-magentaGlow text-magentaGlow" : "border-cyanGlow text-cyanGlow";
+  const color = notification.kind === "win" ? "border-paper text-paper" : notification.kind === "loss" ? "border-magentaGlow text-magentaGlow" : "border-paper text-paper";
 
   return (
     <motion.div
       initial={{ x: -30, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: -30, opacity: 0 }}
-      className={`hud-panel pointer-events-auto rounded-lg border p-3 ${color}`}
+      className={`hud-panel pointer-events-auto border p-3 ${color}`}
     >
       <div className="text-sm uppercase tracking-widest">{notification.title}</div>
       {notification.body ? <div className="mt-1 text-xs text-white/60">{notification.body}</div> : null}

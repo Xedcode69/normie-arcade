@@ -18,7 +18,7 @@ export function NormieDealer({ dealer, position }: { dealer: Dealer; position: [
   return (
     <Float speed={1.7} floatIntensity={0.15} rotationIntensity={0.04}>
       <group ref={group} position={position}>
-        <NormieVoxel normie={dealer.normie} label={dealer.role} scale={0.5} accent="#25f4ee" />
+        <NormieVoxel normie={dealer.normie} label={dealer.role} scale={0.5} accent="#f4f1e8" />
       </group>
     </Float>
   );

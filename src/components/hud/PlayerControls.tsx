@@ -23,7 +23,7 @@ export function PlayerControls() {
       <MoveButton label="Move forward" move={moves.up} setTouchMove={setTouchMove} />
       <div />
       <MoveButton label="Move left" move={moves.left} setTouchMove={setTouchMove} />
-      <div className="grid h-10 w-10 place-items-center rounded border border-cyanGlow/30 bg-black/50 text-[8px] uppercase tracking-widest text-cyanGlow">
+      <div className="grid h-10 w-10 place-items-center border border-paper/40 bg-black/70 text-[8px] uppercase tracking-widest text-paper">
         WASD
       </div>
       <MoveButton label="Move right" move={moves.right} setTouchMove={setTouchMove} />
@@ -52,7 +52,7 @@ function MoveButton({
       }}
       onPointerUp={() => setTouchMove({ x: 0, z: 0 })}
       onPointerCancel={() => setTouchMove({ x: 0, z: 0 })}
-      className="grid h-10 w-10 place-items-center rounded border border-cyanGlow/40 bg-black/70 text-cyanGlow shadow-neon"
+      className="grid h-10 w-10 place-items-center border border-paper/60 bg-black/80 text-paper shadow-neon"
     >
       {move.icon}
     </button>

@@ -74,10 +74,10 @@ export function RPSGame() {
     <div className="pr-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl uppercase tracking-[0.2em] text-magentaGlow">Normie Type RPS</h2>
-          <p className="mt-1 max-w-2xl text-sm text-white/60">{message}</p>
+          <h2 className="font-display text-xl uppercase tracking-[0.2em] text-paper">Normie Type RPS</h2>
+          <p className="terminal-hash mt-1 max-w-2xl text-sm text-pixel/70">{message}</p>
         </div>
-        <div className="rounded border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/70">
+        <div className="pixel-card px-4 py-2 text-sm text-paper/70">
           {score.player} - {score.npc}
         </div>
       </div>
@@ -87,7 +87,7 @@ export function RPSGame() {
             key={type}
             onClick={() => playRound(type)}
             disabled={locked}
-            className="inline-flex items-center gap-2 rounded border border-magentaGlow/50 bg-magentaGlow/10 px-4 py-2 text-sm uppercase tracking-widest text-magentaGlow disabled:opacity-50"
+            className="inline-flex items-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-sm uppercase tracking-widest text-paper disabled:opacity-50"
           >
             <Swords size={15} /> {type}
           </button>
@@ -99,7 +99,7 @@ export function RPSGame() {
           min={10}
           step={10}
           onChange={(event) => setBet(Number(event.target.value))}
-          className="w-28 rounded border border-white/15 bg-black/40 px-3 py-2 text-sm text-amberChip"
+          className="w-28 border border-paper/40 bg-black/60 px-3 py-2 text-sm text-paper"
         />
       </div>
       <div className="mt-4 grid grid-cols-2 gap-4">
@@ -112,7 +112,7 @@ export function RPSGame() {
 
 function Fighter({ label, normie }: { label: string; normie: Normie | null }) {
   return (
-    <motion.div layout className="rounded border border-white/15 bg-black/35 p-3 text-center">
+    <motion.div layout className="pixel-card p-3 text-center">
       <div className="text-xs uppercase tracking-widest text-white/50">{label}</div>
       {normie ? (
         <NormieImage src={normie.image} alt={`${label} Normie`} className="mx-auto mt-2 h-28 w-28 object-cover" />

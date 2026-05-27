@@ -33,7 +33,7 @@ export function AudioBoot() {
   return (
     <button
       onClick={toggleEnabled}
-      className="absolute bottom-5 left-5 z-30 inline-flex items-center gap-2 rounded-lg border border-cyanGlow/50 bg-black/70 px-4 py-3 text-sm uppercase tracking-widest text-cyanGlow shadow-neon"
+      className="absolute bottom-5 left-5 z-30 inline-flex items-center gap-2 border-2 border-paper/70 bg-black/80 px-4 py-3 text-sm uppercase tracking-widest text-paper shadow-neon"
     >
       <Volume2 size={16} /> Enable Atmosphere
     </button>

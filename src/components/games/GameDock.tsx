@@ -14,23 +14,29 @@ export function GameDock() {
   return (
     <AnimatePresence>
       {activeGame !== "lobby" ? (
-        <motion.section
-          initial={{ y: 80, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 80, opacity: 0 }}
-          className="pointer-events-auto absolute inset-x-3 bottom-3 z-50 mx-auto max-h-[58vh] max-w-5xl overflow-auto rounded-lg hud-panel p-4 thin-scroll md:bottom-5 md:max-h-[48vh]"
-        >
-          <button
-            aria-label="Return to lobby"
-            onClick={() => setActiveGame("lobby")}
-            className="sticky left-full top-0 z-10 grid h-9 w-9 place-items-center rounded border border-white/15 bg-black/75 text-white/70 transition hover:text-white"
+        <div className="pointer-events-none fixed inset-x-0 bottom-3 z-[100] px-3 md:bottom-5">
+          <motion.section
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            className="hud-panel pointer-events-auto mx-auto flex max-h-[min(54vh,34rem)] w-full max-w-5xl flex-col overflow-hidden p-4 md:max-h-[min(48vh,32rem)]"
           >
-            <X size={17} />
-          </button>
-          {activeGame === "roulette" ? <RouletteGame /> : null}
-          {activeGame === "rps" ? <RPSGame /> : null}
-          {activeGame === "updown" ? <UpDownGame /> : null}
-        </motion.section>
+            <div className="mb-2 flex justify-end">
+              <button
+                aria-label="Return to lobby"
+                onClick={() => setActiveGame("lobby")}
+                className="grid h-9 w-9 place-items-center border border-paper/50 bg-black/85 text-paper/70 transition hover:text-paper"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <div className="min-h-0 overflow-auto thin-scroll">
+              {activeGame === "roulette" ? <RouletteGame /> : null}
+              {activeGame === "rps" ? <RPSGame /> : null}
+              {activeGame === "updown" ? <UpDownGame /> : null}
+            </div>
+          </motion.section>
+        </div>
       ) : null}
     </AnimatePresence>
   );

@@ -79,54 +79,54 @@ export function PlayerAvatar() {
       <group ref={body} scale={0.78}>
         <mesh castShadow position={[0, 0.35, 0]}>
           <boxGeometry args={[0.7, 0.92, 0.36]} />
-          <meshStandardMaterial color="#15182b" emissive="#25f4ee" emissiveIntensity={0.18} metalness={0.25} roughness={0.34} />
+          <meshStandardMaterial color="#111111" emissive="#f4f1e8" emissiveIntensity={0.08} metalness={0.2} roughness={0.36} />
         </mesh>
         <mesh castShadow position={[0, 0.92, 0]}>
           <boxGeometry args={[0.86, 0.18, 0.42]} />
-          <meshStandardMaterial color="#25293d" emissive="#f846d8" emissiveIntensity={0.08} metalness={0.2} roughness={0.38} />
+          <meshStandardMaterial color="#080808" emissive="#27f6e7" emissiveIntensity={0.08} metalness={0.2} roughness={0.38} />
         </mesh>
 
         <group ref={leftArm} position={[-0.52, 0.62, 0]}>
           <mesh castShadow position={[0, -0.28, 0]}>
             <boxGeometry args={[0.22, 0.72, 0.24]} />
-            <meshStandardMaterial color="#111827" emissive="#25f4ee" emissiveIntensity={0.12} roughness={0.4} />
+            <meshStandardMaterial color="#101010" emissive="#f4f1e8" emissiveIntensity={0.06} roughness={0.4} />
           </mesh>
           <mesh castShadow position={[0, -0.7, 0]}>
             <boxGeometry args={[0.24, 0.18, 0.26]} />
-            <meshStandardMaterial color="#f6f3ea" roughness={0.42} />
+            <meshStandardMaterial color="#f4f1e8" roughness={0.42} />
           </mesh>
         </group>
 
         <group ref={rightArm} position={[0.52, 0.62, 0]}>
           <mesh castShadow position={[0, -0.28, 0]}>
             <boxGeometry args={[0.22, 0.72, 0.24]} />
-            <meshStandardMaterial color="#111827" emissive="#f846d8" emissiveIntensity={0.12} roughness={0.4} />
+            <meshStandardMaterial color="#101010" emissive="#f4f1e8" emissiveIntensity={0.06} roughness={0.4} />
           </mesh>
           <mesh castShadow position={[0, -0.7, 0]}>
             <boxGeometry args={[0.24, 0.18, 0.26]} />
-            <meshStandardMaterial color="#f6f3ea" roughness={0.42} />
+            <meshStandardMaterial color="#f4f1e8" roughness={0.42} />
           </mesh>
         </group>
 
         <group ref={leftLeg} position={[-0.21, -0.13, 0]}>
           <mesh castShadow position={[0, -0.34, 0]}>
             <boxGeometry args={[0.25, 0.72, 0.26]} />
-            <meshStandardMaterial color="#22253a" roughness={0.44} />
+            <meshStandardMaterial color="#181818" roughness={0.44} />
           </mesh>
           <mesh castShadow position={[0, -0.75, 0.08]}>
             <boxGeometry args={[0.3, 0.16, 0.42]} />
-            <meshStandardMaterial color="#070910" emissive="#25f4ee" emissiveIntensity={0.08} roughness={0.36} />
+            <meshStandardMaterial color="#050505" emissive="#27f6e7" emissiveIntensity={0.08} roughness={0.36} />
           </mesh>
         </group>
 
         <group ref={rightLeg} position={[0.21, -0.13, 0]}>
           <mesh castShadow position={[0, -0.34, 0]}>
             <boxGeometry args={[0.25, 0.72, 0.26]} />
-            <meshStandardMaterial color="#22253a" roughness={0.44} />
+            <meshStandardMaterial color="#181818" roughness={0.44} />
           </mesh>
           <mesh castShadow position={[0, -0.75, 0.08]}>
             <boxGeometry args={[0.3, 0.16, 0.42]} />
-            <meshStandardMaterial color="#070910" emissive="#f846d8" emissiveIntensity={0.08} roughness={0.36} />
+            <meshStandardMaterial color="#050505" emissive="#ff43cf" emissiveIntensity={0.08} roughness={0.36} />
           </mesh>
         </group>
 
@@ -134,24 +134,24 @@ export function PlayerAvatar() {
           <NormieHead image={normie?.image} />
           <mesh position={[0, 0.49, 0]}>
             <boxGeometry args={[0.9, 0.18, 0.26]} />
-            <meshStandardMaterial color="#111827" emissive="#25f4ee" emissiveIntensity={0.12} roughness={0.35} />
+            <meshStandardMaterial color="#080808" emissive="#f4f1e8" emissiveIntensity={0.08} roughness={0.35} />
           </mesh>
           <mesh position={[-0.5, 0.03, 0]}>
             <boxGeometry args={[0.1, 0.72, 0.24]} />
-            <meshStandardMaterial color="#111827" roughness={0.35} />
+            <meshStandardMaterial color="#080808" roughness={0.35} />
           </mesh>
           <mesh position={[0.5, 0.03, 0]}>
             <boxGeometry args={[0.1, 0.72, 0.24]} />
-            <meshStandardMaterial color="#111827" roughness={0.35} />
+            <meshStandardMaterial color="#080808" roughness={0.35} />
           </mesh>
         </group>
       </group>
       <mesh position={[0, -0.58, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.46, 0.58, 48]} />
-        <meshBasicMaterial color="#25f4ee" transparent opacity={0.55} />
+        <meshBasicMaterial color="#f4f1e8" transparent opacity={0.55} />
       </mesh>
       <Html transform center position={[0, 1.52, 0]} distanceFactor={5.2}>
-        <div className="h-0 w-0 border-x-[7px] border-t-[12px] border-x-transparent border-t-cyanGlow drop-shadow-[0_0_10px_rgba(37,244,238,0.9)]" />
+        <div className="h-0 w-0 border-x-[7px] border-t-[12px] border-x-transparent border-t-paper drop-shadow-[0_0_10px_rgba(244,241,232,0.9)]" />
       </Html>
     </group>
   );
@@ -167,7 +167,7 @@ function NormieHead({ image }: { image?: string }) {
     <>
       <mesh castShadow>
         <boxGeometry args={[0.82, 0.82, 0.2]} />
-        <meshStandardMaterial color="#f6f3ea" roughness={0.3} />
+        <meshStandardMaterial color="#f4f1e8" roughness={0.3} />
       </mesh>
       <mesh position={[0, 0, 0.108]}>
         <planeGeometry args={[0.72, 0.72]} />
