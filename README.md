@@ -100,7 +100,7 @@ It includes:
 - graceful fallback traits/metadata
 - optimized parallel fetching where safe
 
-## Games
+## Gamess
 
 ### Normie Expression Roulette
 
