@@ -69,13 +69,13 @@ export function RouletteGame() {
     <div className="pr-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl uppercase tracking-[0.2em] text-cyanGlow">Normie Expression Roulette</h2>
-          <p className="mt-1 max-w-2xl text-sm text-white/60">{result}</p>
+          <h2 className="font-display text-xl uppercase tracking-[0.2em] text-paper">Normie Expression Roulette</h2>
+          <p className="terminal-hash mt-1 max-w-2xl text-sm text-pixel/70">{result}</p>
         </div>
         <button
           onClick={spin}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded border border-cyanGlow/60 bg-cyanGlow/10 px-4 py-2 text-sm uppercase tracking-widest text-cyanGlow shadow-neon disabled:opacity-50"
+          className="inline-flex items-center gap-2 border border-paper/70 bg-paper/10 px-4 py-2 text-sm uppercase tracking-widest text-paper shadow-neon disabled:opacity-50"
         >
           <Sparkles size={16} /> Spin
         </button>
@@ -85,8 +85,8 @@ export function RouletteGame() {
           <button
             key={key}
             onClick={() => setMode(key)}
-            className={`rounded border px-4 py-2 text-xs uppercase tracking-widest ${
-              mode === key ? "border-cyanGlow bg-cyanGlow/15 text-cyanGlow" : "border-white/15 bg-white/5 text-white/65"
+            className={`border px-4 py-2 text-xs uppercase tracking-widest ${
+              mode === key ? "border-paper bg-paper/15 text-paper" : "border-white/15 bg-white/5 text-white/65"
             }`}
           >
             {difficulty[key].label} {difficulty[key].payout}x
@@ -101,7 +101,7 @@ export function RouletteGame() {
             initial={{ rotateY: 90, opacity: 0 }}
             animate={{ rotateY: 0, opacity: 1 }}
             transition={{ delay: index * 0.08 }}
-            className="rounded border border-white/15 bg-black/35 p-2 text-center"
+            className="pixel-card p-2 text-center"
           >
             {normie ? (
               <NormieImage src={normie.image} alt={`Normie ${normie.id}`} className="mx-auto aspect-square w-full max-w-28 object-cover" />
@@ -109,7 +109,7 @@ export function RouletteGame() {
               <div className="mx-auto aspect-square w-full max-w-28 animate-pulse bg-white/10" />
             )}
             <div className="mt-2 text-xs text-white/60">#{normie ? normie.id : "----"}</div>
-            <div className="text-sm text-cyanGlow">{normie ? normie.rouletteExpression : "Spinning"}</div>
+            <div className="text-sm text-paper">{normie ? normie.rouletteExpression : "Spinning"}</div>
             {normie ? <div className="mt-1 text-[10px] text-white/40">Trait: {normie.traits.Expression ?? "Unknown"}</div> : null}
           </motion.div>
         ))}

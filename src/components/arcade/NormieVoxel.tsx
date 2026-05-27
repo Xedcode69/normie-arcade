@@ -20,7 +20,7 @@ type Props = {
 export function NormieVoxel({
   normie,
   label,
-  accent = "#25f4ee",
+  accent = "#f4f1e8",
   scale = 1,
   seated = false,
   pose = "idle",
@@ -53,11 +53,11 @@ export function NormieVoxel({
       <group>
         <mesh castShadow position={[0, seated ? 0.46 : 0.35, 0]}>
           <boxGeometry args={[0.7, seated ? 0.72 : 0.92, 0.36]} />
-          <meshStandardMaterial color="#15182b" emissive={accent} emissiveIntensity={0.16} metalness={0.24} roughness={0.34} />
+          <meshStandardMaterial color="#111111" emissive={accent} emissiveIntensity={0.08} metalness={0.18} roughness={0.36} />
         </mesh>
         <mesh castShadow position={[0, seated ? 0.92 : 1.18, 0]}>
           <boxGeometry args={[0.82, 0.82, 0.2]} />
-          <meshStandardMaterial color="#f6f3ea" roughness={0.3} />
+          <meshStandardMaterial color="#f4f1e8" roughness={0.3} />
         </mesh>
         <group ref={head} position={[0, seated ? 0.92 : 1.18, 0]}>
           <mesh position={[0, 0, 0.108]}>
@@ -66,28 +66,28 @@ export function NormieVoxel({
           </mesh>
           <mesh position={[0, 0.49, 0]}>
             <boxGeometry args={[0.9, 0.18, 0.26]} />
-            <meshStandardMaterial color="#111827" emissive={accent} emissiveIntensity={0.12} roughness={0.35} />
+            <meshStandardMaterial color="#080808" emissive={accent} emissiveIntensity={0.08} roughness={0.35} />
           </mesh>
           <mesh position={[-0.5, 0.03, 0]}>
             <boxGeometry args={[0.1, 0.72, 0.24]} />
-            <meshStandardMaterial color="#111827" roughness={0.35} />
+            <meshStandardMaterial color="#080808" roughness={0.35} />
           </mesh>
           <mesh position={[0.5, 0.03, 0]}>
             <boxGeometry args={[0.1, 0.72, 0.24]} />
-            <meshStandardMaterial color="#111827" roughness={0.35} />
+            <meshStandardMaterial color="#080808" roughness={0.35} />
           </mesh>
         </group>
 
         <group ref={leftArm} position={[-0.52, seated ? 0.64 : 0.62, 0]}>
           <mesh castShadow position={[0, -0.28, seated ? 0.14 : 0]}>
             <boxGeometry args={[0.22, 0.72, 0.24]} />
-            <meshStandardMaterial color="#111827" emissive={accent} emissiveIntensity={0.1} roughness={0.4} />
+            <meshStandardMaterial color="#101010" emissive={accent} emissiveIntensity={0.06} roughness={0.4} />
           </mesh>
         </group>
         <group ref={rightArm} position={[0.52, seated ? 0.64 : 0.62, 0]}>
           <mesh castShadow position={[0, -0.28, seated ? 0.14 : 0]}>
             <boxGeometry args={[0.22, 0.72, 0.24]} />
-            <meshStandardMaterial color="#111827" emissive={accent} emissiveIntensity={0.1} roughness={0.4} />
+            <meshStandardMaterial color="#101010" emissive={accent} emissiveIntensity={0.06} roughness={0.4} />
           </mesh>
         </group>
 
@@ -95,33 +95,35 @@ export function NormieVoxel({
           <>
             <mesh castShadow position={[-0.22, 0.02, 0.22]} rotation={[1.1, 0, 0]}>
               <boxGeometry args={[0.24, 0.58, 0.22]} />
-              <meshStandardMaterial color="#22253a" roughness={0.44} />
+              <meshStandardMaterial color="#181818" roughness={0.44} />
             </mesh>
             <mesh castShadow position={[0.22, 0.02, 0.22]} rotation={[1.1, 0, 0]}>
               <boxGeometry args={[0.24, 0.58, 0.22]} />
-              <meshStandardMaterial color="#22253a" roughness={0.44} />
+              <meshStandardMaterial color="#181818" roughness={0.44} />
             </mesh>
           </>
         ) : (
           <>
             <mesh castShadow position={[-0.21, -0.47, 0]}>
               <boxGeometry args={[0.25, 0.72, 0.26]} />
-              <meshStandardMaterial color="#22253a" roughness={0.44} />
+              <meshStandardMaterial color="#181818" roughness={0.44} />
             </mesh>
             <mesh castShadow position={[0.21, -0.47, 0]}>
               <boxGeometry args={[0.25, 0.72, 0.26]} />
-              <meshStandardMaterial color="#22253a" roughness={0.44} />
+              <meshStandardMaterial color="#181818" roughness={0.44} />
             </mesh>
           </>
         )}
       </group>
       {showLabel ? (
         <Html transform center position={[0, seated ? 1.58 : 1.86, 0]} distanceFactor={5.3}>
-          <div className="rounded border border-white/15 bg-black/70 px-2 py-1 text-center shadow-neon">
-            <div className="text-[8px] uppercase tracking-widest" style={{ color: accent }}>
-              {label ?? "Normie"}
+          <div className="flex flex-col items-center gap-1">
+            <div className="h-0 w-0 border-x-[6px] border-t-[10px] border-x-transparent drop-shadow-[0_0_8px_rgba(244,241,232,0.75)]" style={{ borderTopColor: accent }} />
+            <div className="border border-paper/70 bg-black/75 px-2 py-1 text-center shadow-neon">
+              <div className="text-[8px] uppercase tracking-widest" style={{ color: accent }}>
+                {label ?? "Normie"}
+              </div>
             </div>
-            <div className="text-[7px] text-white/45">#{normie?.id ?? "----"}</div>
           </div>
         </Html>
       ) : null}

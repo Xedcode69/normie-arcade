@@ -125,3 +125,4 @@ The terminal starts at 5000. Users predict whether the next random Normie ID wil
 - All NPC portraits, machine screens, cashier art, and leaderboard avatars are fetched from `https://api.normies.art`.
 - The scene uses custom procedural geometry rather than copying the reference image.
 - The first version is multiplayer-ready-feeling through animated NPCs, leaderboards, and ambient state. Real-time multiplayer can be layered in later with PartyKit, Liveblocks, or Socket.IO.
+- The visual direction is Normies-native: monochrome bitmap surfaces, hard-edged pixel panels, scanline UI, on-chain terminal labels, and selective cyan/magenta/acid lighting accents.

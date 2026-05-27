@@ -12,12 +12,12 @@ import { PlayerControls } from "@/components/hud/PlayerControls";
 
 const ArcadeLobby = dynamic(() => import("@/components/arcade/ArcadeLobby").then((mod) => mod.ArcadeLobby), {
   ssr: false,
-  loading: () => <div className="grid h-screen place-items-center bg-void text-cyanGlow">Booting neon floor...</div>
+  loading: () => <div className="grid h-screen place-items-center bg-void text-paper terminal-hash">Booting bitmap floor...</div>
 });
 
 export default function Home() {
   return (
-    <main className="relative h-screen overflow-hidden bg-void text-white">
+    <main className="bitmap-bg relative h-screen overflow-hidden bg-void text-paper">
       <Suspense fallback={<div className="grid h-screen place-items-center">Loading arcade...</div>}>
         <ArcadeLobby />
       </Suspense>

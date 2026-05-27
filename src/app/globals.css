@@ -14,32 +14,72 @@ html,
 body {
   height: 100%;
   margin: 0;
-  background: #090712;
+  background: #050505;
 }
 
 body {
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   overflow: hidden;
+  color: #f4f1e8;
 }
 
 button,
 input,
 select {
   font: inherit;
+  border-radius: 0 !important;
+}
+
+img {
+  image-rendering: pixelated;
 }
 
 .hud-panel {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: linear-gradient(145deg, rgba(13, 14, 30, 0.9), rgba(28, 13, 34, 0.74));
-  backdrop-filter: blur(18px);
-  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.32);
+  position: relative;
+  border: 2px solid rgba(244, 241, 232, 0.82);
+  background:
+    linear-gradient(rgba(244, 241, 232, 0.045) 50%, rgba(0, 0, 0, 0) 50%) 0 0 / 100% 4px,
+    linear-gradient(145deg, rgba(8, 8, 8, 0.94), rgba(20, 20, 20, 0.88));
+  backdrop-filter: blur(10px);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9), 0 0 18px rgba(39, 246, 231, 0.14);
+  border-radius: 0 !important;
+}
+
+.hud-panel::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(244, 241, 232, 0.18);
 }
 
 .neon-text {
-  text-shadow: 0 0 12px rgba(37, 244, 238, 0.65), 0 0 28px rgba(248, 70, 216, 0.45);
+  text-shadow: 2px 0 0 rgba(255, 67, 207, 0.45), -2px 0 0 rgba(39, 246, 231, 0.45), 0 0 18px rgba(244, 241, 232, 0.25);
 }
 
 .thin-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(37, 244, 238, 0.6) transparent;
+  scrollbar-color: rgba(244, 241, 232, 0.72) transparent;
+}
+
+.pixel-card {
+  border: 2px solid rgba(244, 241, 232, 0.82);
+  background:
+    repeating-linear-gradient(90deg, rgba(244, 241, 232, 0.055) 0 1px, transparent 1px 8px),
+    repeating-linear-gradient(0deg, rgba(244, 241, 232, 0.04) 0 1px, transparent 1px 8px),
+    #080808;
+  box-shadow: 4px 4px 0 #000;
+  border-radius: 0 !important;
+}
+
+.terminal-hash::before {
+  content: "0xNORMIE // ";
+  color: #d7d2c6;
+}
+
+.bitmap-bg {
+  background-image:
+    linear-gradient(rgba(244, 241, 232, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(244, 241, 232, 0.06) 1px, transparent 1px);
+  background-size: 10px 10px;
 }

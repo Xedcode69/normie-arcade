@@ -4,9 +4,9 @@ import { CircleDot, Joystick, TrendingUp } from "lucide-react";
 import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
 
 const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; icon: React.ReactNode; color: string }> = [
-  { id: "roulette", label: "Roulette", icon: <CircleDot size={16} />, color: "text-cyanGlow border-cyanGlow/50" },
-  { id: "rps", label: "RPS Arena", icon: <Joystick size={16} />, color: "text-magentaGlow border-magentaGlow/50" },
-  { id: "updown", label: "Up or Down", icon: <TrendingUp size={16} />, color: "text-acid border-acid/50" }
+  { id: "roulette", label: "Roulette", icon: <CircleDot size={16} />, color: "text-paper border-paper/70" },
+  { id: "rps", label: "RPS Arena", icon: <Joystick size={16} />, color: "text-paper border-paper/70" },
+  { id: "updown", label: "Up or Down", icon: <TrendingUp size={16} />, color: "text-paper border-paper/70" }
 ];
 
 export function LobbyControls() {
@@ -21,7 +21,7 @@ export function LobbyControls() {
         <button
           key={station.id}
           onClick={() => setActiveGame(station.id)}
-          className={`hud-panel inline-flex items-center gap-2 rounded-lg border px-4 py-3 text-sm uppercase tracking-widest transition hover:scale-[1.03] ${station.color}`}
+          className={`hud-panel inline-flex items-center gap-2 border px-4 py-3 text-sm uppercase tracking-widest transition hover:scale-[1.03] ${station.color}`}
         >
           {station.icon}
           {station.label}

@@ -31,7 +31,7 @@ export function GameTable({ id, label, position, accent, dealer }: Props) {
       <group ref={group} position={position} onClick={() => setActiveGame(id)}>
         <mesh castShadow receiveShadow>
           <cylinderGeometry args={[1.55, 1.85, 0.42, 72]} />
-          <meshStandardMaterial color="#151423" emissive={accent} emissiveIntensity={active ? 0.42 : 0.2} metalness={0.6} roughness={0.22} />
+          <meshStandardMaterial color="#0a0a0a" emissive={accent} emissiveIntensity={active ? 0.24 : 0.1} metalness={0.45} roughness={0.28} />
         </mesh>
         <mesh position={[0, 0.24, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[1.15, 1.52, 96]} />
@@ -42,7 +42,7 @@ export function GameTable({ id, label, position, accent, dealer }: Props) {
             className="hud-panel min-w-44 border px-4 py-3 text-center uppercase tracking-[0.18em] transition hover:scale-105"
             style={{ borderColor: accent, color: accent }}
           >
-            <span className="block text-[10px] text-white/70">{dealer?.persona ?? "Normie Dealer"}</span>
+            <span className="terminal-hash block text-[10px] text-paper/70">{dealer?.persona ?? "Normie Dealer"}</span>
             <span className="mt-1 block text-xs">{label}</span>
           </button>
         </Html>

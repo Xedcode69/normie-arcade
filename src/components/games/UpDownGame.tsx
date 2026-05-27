@@ -59,37 +59,37 @@ export function UpDownGame() {
     <div className="pr-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl uppercase tracking-[0.2em] text-acid">Up or Down</h2>
-          <p className="mt-1 max-w-2xl text-sm text-white/60">{message}</p>
+          <h2 className="font-display text-xl uppercase tracking-[0.2em] text-paper">Up or Down</h2>
+          <p className="terminal-hash mt-1 max-w-2xl text-sm text-pixel/70">{message}</p>
         </div>
-        <div className="rounded border border-acid/50 bg-acid/10 px-4 py-2 text-sm text-acid">Round {round}/10</div>
+        <div className="pixel-card px-4 py-2 text-sm text-paper">Round {round}/10</div>
       </div>
       <div className="mt-5 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
         <button
           disabled={!active}
           onClick={() => predict("lower")}
-          className="inline-flex items-center justify-center gap-2 rounded border border-white/15 bg-white/5 px-4 py-4 text-lg text-white disabled:opacity-45"
+          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-white/5 px-4 py-4 text-lg text-paper disabled:opacity-45"
         >
           <ArrowDown /> Lower
         </button>
         <div className="text-center">
-          <div className="font-display text-5xl text-acid neon-text">{base}</div>
+          <div className="font-display text-5xl text-paper neon-text">{base}</div>
           <div className="mt-2 text-xs uppercase tracking-[0.3em] text-white/45">Current Base</div>
         </div>
         <button
           disabled={!active}
           onClick={() => predict("higher")}
-          className="inline-flex items-center justify-center gap-2 rounded border border-white/15 bg-white/5 px-4 py-4 text-lg text-white disabled:opacity-45"
+          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-white/5 px-4 py-4 text-lg text-paper disabled:opacity-45"
         >
           Higher <ArrowUp />
         </button>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-4">
-        <button onClick={reset} className="inline-flex items-center gap-2 rounded border border-white/15 bg-black/35 px-4 py-2 text-sm text-white/80">
+        <button onClick={reset} className="inline-flex items-center gap-2 border border-paper/40 bg-black/60 px-4 py-2 text-sm text-paper/80">
           <RotateCcw size={16} /> Reset Terminal
         </button>
         {lastNormie ? (
-          <div className="flex items-center gap-3 rounded border border-white/15 bg-black/35 p-2">
+          <div className="pixel-card flex items-center gap-3 p-2">
             <NormieImage src={lastNormie.image} alt={`Normie ${lastNormie.id}`} className="h-16 w-16" />
             <div>
               <div className="text-sm text-white">Normie #{lastNormie.id}</div>

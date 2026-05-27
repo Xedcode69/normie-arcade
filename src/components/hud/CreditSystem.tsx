@@ -17,7 +17,7 @@ export function CreditSystem() {
       <button
         aria-label="Reset chips"
         onClick={reset}
-        className="grid h-11 w-11 place-items-center rounded-lg hud-panel text-white/70 transition hover:text-white"
+        className="grid h-11 w-11 place-items-center hud-panel text-paper/70 transition hover:text-paper"
       >
         <RotateCcw size={17} />
       </button>
@@ -27,11 +27,11 @@ export function CreditSystem() {
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="hud-panel flex min-w-28 items-center gap-2 rounded-lg px-3 py-2">
-      <span className="text-amberChip">{icon}</span>
+    <div className="hud-panel flex min-w-28 items-center gap-2 px-3 py-2">
+      <span className="text-paper">{icon}</span>
       <span>
-        <span className="block text-[9px] uppercase tracking-widest text-white/40">{label}</span>
-        <span className="block text-sm capitalize text-white">{value}</span>
+        <span className="terminal-hash block text-[9px] uppercase tracking-widest text-pixel/55">{label}</span>
+        <span className="block text-sm capitalize text-paper">{value}</span>
       </span>
     </div>
   );
