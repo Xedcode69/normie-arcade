@@ -4,6 +4,7 @@ import { Gamepad2, Volume2, VolumeX } from "lucide-react";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useAudioStore } from "@/stores/audioStore";
 import { CreditSystem } from "./CreditSystem";
+import { RotateScreenButton } from "./RotateScreenButton";
 
 export function HUD() {
   const activeGame = useArcadeStore((state) => state.activeGame);
@@ -20,6 +21,7 @@ export function HUD() {
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <CreditSystem />
           <Metric icon={<Gamepad2 size={16} />} label="Game" value={activeGame} />
+          <RotateScreenButton />
           <button
             aria-label="Toggle audio"
             onClick={toggleMuted}

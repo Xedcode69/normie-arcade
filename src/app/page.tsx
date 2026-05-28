@@ -9,6 +9,7 @@ import { Leaderboard } from "@/components/hud/Leaderboard";
 import { AudioBoot } from "@/components/audio/AudioBoot";
 import { LobbyControls } from "@/components/hud/LobbyControls";
 import { PlayerControls } from "@/components/hud/PlayerControls";
+import { LobbyHotkeys } from "@/components/hud/LobbyHotkeys";
 
 const ArcadeLobby = dynamic(() => import("@/components/arcade/ArcadeLobby").then((mod) => mod.ArcadeLobby), {
   ssr: false,
@@ -28,6 +29,7 @@ export default function Home() {
       <GameDock />
       <NotificationSystem />
       <AudioBoot />
+      <LobbyHotkeys />
     </main>
   );
 }
