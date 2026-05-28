@@ -234,8 +234,19 @@ function SpeechPulse({ accent }: { accent: string }) {
 }
 
 function Cashier({ normie }: { normie?: Normie }) {
+  const notify = useArcadeStore((state) => state.notify);
+
   return (
-    <group position={[7.2, 0.72, 3.5]}>
+    <group
+      position={[7.2, 0.72, 3.5]}
+      onClick={() =>
+        notify({
+          kind: "info",
+          title: "Chip Master",
+          body: "Chip purchase and withdraw support will arrive in a future update."
+        })
+      }
+    >
       <mesh castShadow receiveShadow>
         <boxGeometry args={[2.2, 1.2, 1]} />
         <meshStandardMaterial color="#111111" emissive="#f4f1e8" emissiveIntensity={0.08} metalness={0.4} roughness={0.3} />
