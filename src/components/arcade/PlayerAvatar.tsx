@@ -25,6 +25,7 @@ export function PlayerAvatar() {
   const keys = useRef<Record<string, boolean>>({});
   const moving = useRef(false);
   const normie = useArcadeStore((state) => state.loadedNormies[0]);
+  const activeGame = useArcadeStore((state) => state.activeGame);
   const touchMove = usePlayerStore((state) => state.touchMove);
   const setPosition = usePlayerStore((state) => state.setPosition);
 
@@ -150,9 +151,11 @@ export function PlayerAvatar() {
         <ringGeometry args={[0.46, 0.58, 48]} />
         <meshBasicMaterial color="#f4f1e8" transparent opacity={0.55} />
       </mesh>
-      <Html transform center position={[0, 1.52, 0]} distanceFactor={5.2}>
-        <div className="h-0 w-0 border-x-[7px] border-t-[12px] border-x-transparent border-t-paper drop-shadow-[0_0_10px_rgba(244,241,232,0.9)]" />
-      </Html>
+      {activeGame === "lobby" ? (
+        <Html transform center position={[0, 1.52, 0]} distanceFactor={5.2} zIndexRange={[20, 0]}>
+          <div className="h-0 w-0 border-x-[7px] border-t-[12px] border-x-transparent border-t-paper drop-shadow-[0_0_10px_rgba(244,241,232,0.9)]" />
+        </Html>
+      ) : null}
     </group>
   );
 }

@@ -1,5 +1,5 @@
 import { RateLimiter } from "@/lib/rateLimiter";
-import { EXPRESSIONS, type Normie, type NormieExpression, type NormieMetadata, type NormieTraits } from "@/types/normie";
+import { EXPRESSIONS, type Normie, type NormieMetadata, type NormieTraits } from "@/types/normie";
 
 const BASE_URL = "https://api.normies.art";
 const MAX_ID = 9999;
@@ -74,10 +74,6 @@ function normalizeTraits(response: RawTraitsResponse, id: number): NormieTraits 
   return Object.keys(response).length ? (response as NormieTraits) : fallbackTraits(id);
 }
 
-function randomExpression(): NormieExpression {
-  return EXPRESSIONS[Math.floor(Math.random() * EXPRESSIONS.length)];
-}
-
 export const NormieAPIService = {
   imageUrl(id: number) {
     return `${BASE_URL}/normie/${id}/image.png`;
@@ -149,14 +145,6 @@ export const NormieAPIService = {
     const ids = new Set<number>();
     while (ids.size < count) ids.add(randomId());
     return Promise.all([...ids].map((id) => this.getNormie(id)));
-  },
-
-  async getRouletteNormies(count: number): Promise<Array<Normie & { rouletteExpression: NormieExpression }>> {
-    const normies = await this.getRandomNormies(count);
-    return normies.map((normie) => ({
-      ...normie,
-      rouletteExpression: randomExpression()
-    }));
   },
 
   async preloadNormies(count = 12) {

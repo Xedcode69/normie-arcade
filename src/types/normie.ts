@@ -35,5 +35,4 @@ export type Normie = {
 };
 
 export const EXPRESSIONS = ["Smile", "Frown", "Angry", "Surprised", "Neutral", "Smirk", "Sleepy"] as const;
-export type NormieExpression = (typeof EXPRESSIONS)[number];
 export const RPS_TYPES: RPSType[] = ["Human", "Cat", "Alien"];

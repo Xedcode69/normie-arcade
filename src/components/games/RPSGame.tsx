@@ -11,6 +11,7 @@ import type { Normie, RPSType } from "@/types/normie";
 import { RPS_TYPES } from "@/types/normie";
 import { playTone } from "@/lib/audio";
 import { NormieImage } from "@/components/normies/NormieImage";
+import { BetControls } from "./BetControls";
 
 type Score = { player: number; npc: number };
 
@@ -20,6 +21,7 @@ export function RPSGame() {
   const [playerNormie, setPlayerNormie] = useState<Normie | null>(null);
   const [npcNormie, setNpcNormie] = useState<Normie | null>(null);
   const [message, setMessage] = useState("Best of 3. Human beats Cat, Cat beats Alien, Alien beats Human.");
+  const [roundResult, setRoundResult] = useState("Choose a type to start the arena match.");
   const [locked, setLocked] = useState(false);
   const wager = useChipStore((state) => state.wager);
   const win = useChipStore((state) => state.win);
@@ -36,6 +38,7 @@ export function RPSGame() {
 
     setLocked(true);
     setMessage("Arena gates opening...");
+    setRoundResult("Round in progress...");
     const [player, npc] = await Promise.all([NormieAPIService.getRandomNormie(), NormieAPIService.getRandomNormie()]);
     const npcType = RPS_TYPES[Math.floor(Math.random() * RPS_TYPES.length)];
     setPlayerNormie({ ...player, traits: { ...player.traits, Type: playerType } });
@@ -49,9 +52,11 @@ export function RPSGame() {
 
     if (result === "draw") {
       setMessage(`${playerType} mirrors ${npcType}. Draw round.`);
+      setRoundResult(`DRAW - ${playerType} mirrored ${npcType}. Score ${nextScore.player}-${nextScore.npc}.`);
       playTone(420, 0.15);
     } else {
       setMessage(`${playerType} versus ${npcType}. ${result === "player" ? "You take the round." : "NPC takes the round."}`);
+      setRoundResult(`${result === "player" ? "ROUND WIN" : "ROUND LOSS"} - ${playerType} vs ${npcType}. Score ${nextScore.player}-${nextScore.npc}.`);
       playTone(result === "player" ? 680 : 220, 0.18, "triangle");
     }
 
@@ -59,10 +64,10 @@ export function RPSGame() {
       const won = nextScore.player > nextScore.npc;
       if (won) {
         win(bet * 2.4);
-        notify({ kind: "win", title: "Arena match won", body: "2.4x payout awarded." });
+        setRoundResult(`MATCH WIN - final score ${nextScore.player}-${nextScore.npc}. 2.4x payout awarded.`);
       } else {
         lose();
-        notify({ kind: "loss", title: "Arena match lost", body: "The dealer keeps the wager." });
+        setRoundResult(`MATCH LOSS - final score ${nextScore.player}-${nextScore.npc}. The dealer keeps the wager.`);
       }
       setTimeout(() => setScore({ player: 0, npc: 0 }), 900);
     }
@@ -71,40 +76,38 @@ export function RPSGame() {
   }
 
   return (
-    <div className="pr-10">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="font-display text-xl uppercase tracking-[0.2em] text-paper">Normie Type RPS</h2>
-          <p className="terminal-hash mt-1 max-w-2xl text-sm text-pixel/70">{message}</p>
-        </div>
-        <div className="pixel-card px-4 py-2 text-sm text-paper/70">
-          {score.player} - {score.npc}
-        </div>
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col justify-start px-4 pt-1">
+      <div className="shrink-0 text-center">
+        <h2 className="font-display text-lg uppercase tracking-[0.24em] text-paper">Normie Type RPS</h2>
+        <p className="terminal-hash mx-auto mt-1 max-w-4xl truncate text-xs text-pixel/70">{message}</p>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-8 grid shrink-0 grid-cols-1 justify-center gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,22rem)]">
+        <Fighter label="You" normie={playerNormie} />
+        <Fighter label="NPC" normie={npcNormie} />
+      </div>
+      <div className="mt-7 flex shrink-0 flex-wrap items-center justify-center gap-2">
         {RPS_TYPES.map((type) => (
           <button
             key={type}
             onClick={() => playRound(type)}
             disabled={locked}
-            className="inline-flex items-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-sm uppercase tracking-widest text-paper disabled:opacity-50"
+            className="inline-flex min-w-32 items-center justify-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15 disabled:opacity-50"
           >
             <Swords size={15} /> {type}
           </button>
         ))}
-        <input
-          aria-label="RPS bet"
-          type="number"
-          value={bet}
-          min={10}
-          step={10}
-          onChange={(event) => setBet(Number(event.target.value))}
-          className="w-28 border border-paper/40 bg-black/60 px-3 py-2 text-sm text-paper"
-        />
+        <BetControls bet={bet} setBet={setBet} />
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <Fighter label="You" normie={playerNormie} />
-        <Fighter label="NPC" normie={npcNormie} />
+      <div className="mt-5 flex shrink-0 justify-center">
+        <div className="pixel-card px-5 py-2 text-sm text-paper">
+          Score {score.player} - {score.npc}
+        </div>
+      </div>
+      <div className="mx-auto mt-4 w-full max-w-4xl shrink-0 border-t border-paper/20 pt-4 text-center">
+        <div className="mx-auto min-w-0 max-w-3xl text-center">
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Round Result</div>
+          <div className="truncate text-sm text-paper">{roundResult}</div>
+        </div>
       </div>
     </div>
   );
@@ -115,11 +118,11 @@ function Fighter({ label, normie }: { label: string; normie: Normie | null }) {
     <motion.div layout className="pixel-card p-3 text-center">
       <div className="text-xs uppercase tracking-widest text-white/50">{label}</div>
       {normie ? (
-        <NormieImage src={normie.image} alt={`${label} Normie`} className="mx-auto mt-2 h-28 w-28 object-cover" />
+        <NormieImage src={normie.image} alt={`${label} Normie`} className="mx-auto mt-2 h-24 w-24 object-cover" />
       ) : (
-        <div className="mx-auto mt-2 h-28 w-28 animate-pulse bg-white/10" />
+        <div className="mx-auto mt-2 h-24 w-24 animate-pulse bg-white/10" />
       )}
-      <div className="mt-2 font-display text-lg text-white">{normie?.traits.Type ?? "Awaiting"}</div>
+      <div className="mt-2 font-display text-base text-white">{normie?.traits.Type ?? "Awaiting"}</div>
     </motion.div>
   );
 }
