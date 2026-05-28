@@ -92,7 +92,7 @@ export function RouletteGame() {
           <p className="terminal-hash mx-auto mt-1 max-w-4xl truncate text-xs text-pixel/70">{result}</p>
         </div>
       </div>
-      <div className="mt-3 flex shrink-0 flex-wrap items-center justify-center gap-2">
+      <div className="mt-8 flex shrink-0 flex-wrap items-center justify-center gap-2">
         {(Object.keys(difficulty) as Difficulty[]).map((key) => (
           <button
             key={key}
@@ -108,7 +108,7 @@ export function RouletteGame() {
         <BetControls bet={bet} setBet={setBet} />
       </div>
       <div
-        className="mt-4 grid shrink-0 grid-cols-1 content-start justify-center gap-4 overflow-hidden sm:grid-cols-3"
+        className="mt-6 grid shrink-0 grid-cols-1 content-start justify-center gap-4 overflow-hidden sm:grid-cols-3"
         style={{ gridTemplateColumns: `repeat(${cardSlots.length}, minmax(0, 18rem))` }}
       >
         {cardSlots.map((normie, index) => (

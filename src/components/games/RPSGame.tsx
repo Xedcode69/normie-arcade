@@ -81,11 +81,11 @@ export function RPSGame() {
         <h2 className="font-display text-lg uppercase tracking-[0.24em] text-paper">Normie Type RPS</h2>
         <p className="terminal-hash mx-auto mt-1 max-w-4xl truncate text-xs text-pixel/70">{message}</p>
       </div>
-      <div className="mt-5 grid shrink-0 grid-cols-1 justify-center gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,22rem)]">
+      <div className="mt-8 grid shrink-0 grid-cols-1 justify-center gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,22rem)]">
         <Fighter label="You" normie={playerNormie} />
         <Fighter label="NPC" normie={npcNormie} />
       </div>
-      <div className="mt-5 flex shrink-0 flex-wrap items-center justify-center gap-2">
+      <div className="mt-7 flex shrink-0 flex-wrap items-center justify-center gap-2">
         {RPS_TYPES.map((type) => (
           <button
             key={type}
