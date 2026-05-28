@@ -8,19 +8,19 @@ export function BetControls({ bet, setBet }: { bet: number; setBet: (bet: number
   const balance = useChipStore((state) => state.balance);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center justify-center gap-2">
       <button
-        className="grid h-9 w-9 place-items-center border border-paper/40 bg-white/5"
+        className="grid h-9 w-9 place-items-center border border-paper/40 bg-black/70 transition hover:border-paper"
         onClick={() => setBet(clampBet(bet - 50, balance))}
         aria-label="Lower bet"
       >
         <Minus size={16} />
       </button>
-      <div className="pixel-card min-w-32 px-3 py-2 text-center text-sm text-paper">
+      <div className="min-w-32 border-2 border-paper bg-black/80 px-3 py-2 text-center text-sm text-paper shadow-neon">
         {formatChips(bet)} chips
       </div>
       <button
-        className="grid h-9 w-9 place-items-center border border-paper/40 bg-white/5"
+        className="grid h-9 w-9 place-items-center border border-paper/40 bg-black/70 transition hover:border-paper"
         onClick={() => setBet(clampBet(bet + 50, balance))}
         aria-label="Raise bet"
       >
@@ -30,7 +30,7 @@ export function BetControls({ bet, setBet }: { bet: number; setBet: (bet: number
         <button
           key={value}
           onClick={() => setBet(clampBet(value, balance))}
-          className="border border-paper/40 bg-white/5 px-3 py-2 text-xs text-paper/80 transition hover:border-paper"
+          className="border border-paper/30 bg-black/60 px-3 py-2 text-xs text-paper/75 transition hover:border-paper hover:text-paper"
         >
           {value}
         </button>

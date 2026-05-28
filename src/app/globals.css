@@ -53,6 +53,25 @@ img {
   border: 1px solid rgba(244, 241, 232, 0.18);
 }
 
+.game-panel {
+  position: relative;
+  border: 2px solid rgba(244, 241, 232, 0.9);
+  background:
+    linear-gradient(rgba(244, 241, 232, 0.045) 50%, rgba(0, 0, 0, 0) 50%) 0 0 / 100% 4px,
+    repeating-linear-gradient(90deg, rgba(244, 241, 232, 0.035) 0 1px, transparent 1px 10px),
+    #050505;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.95), 0 0 24px rgba(39, 246, 231, 0.18);
+  border-radius: 0 !important;
+}
+
+.game-panel::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(244, 241, 232, 0.18);
+}
+
 .neon-text {
   text-shadow: 2px 0 0 rgba(255, 67, 207, 0.45), -2px 0 0 rgba(39, 246, 231, 0.45), 0 0 18px rgba(244, 241, 232, 0.25);
 }

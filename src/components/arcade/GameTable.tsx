@@ -19,6 +19,7 @@ export function GameTable({ id, label, position, accent, dealer }: Props) {
   const activeGame = useArcadeStore((state) => state.activeGame);
   const group = useRef<Group>(null);
   const active = activeGame === id;
+  const showLobbyLabel = activeGame === "lobby";
 
   useFrame(({ clock }) => {
     if (!group.current) return;
@@ -37,15 +38,17 @@ export function GameTable({ id, label, position, accent, dealer }: Props) {
           <ringGeometry args={[1.15, 1.52, 96]} />
           <meshBasicMaterial color={accent} transparent opacity={active ? 0.72 : 0.42} />
         </mesh>
-        <Html center transform position={[0, 0.72, 0]} distanceFactor={7}>
-          <button
-            className="hud-panel min-w-44 border px-4 py-3 text-center uppercase tracking-[0.18em] transition hover:scale-105"
-            style={{ borderColor: accent, color: accent }}
-          >
-            <span className="terminal-hash block text-[10px] text-paper/70">{dealer?.persona ?? "Normie Dealer"}</span>
-            <span className="mt-1 block text-xs">{label}</span>
-          </button>
-        </Html>
+        {showLobbyLabel ? (
+          <Html center transform position={[0, 0.72, 0]} distanceFactor={7} zIndexRange={[20, 0]}>
+            <button
+              className="hud-panel min-w-44 border px-4 py-3 text-center uppercase tracking-[0.18em] transition hover:scale-105"
+              style={{ borderColor: accent, color: accent }}
+            >
+              <span className="terminal-hash block text-[10px] text-paper/70">{dealer?.persona ?? "Normie Dealer"}</span>
+              <span className="mt-1 block text-xs">{label}</span>
+            </button>
+          </Html>
+        ) : null}
       </group>
     </Float>
   );
