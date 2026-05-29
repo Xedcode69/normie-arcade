@@ -2,24 +2,34 @@
 
 import { motion } from "framer-motion";
 import { Swords } from "lucide-react";
+import Image from "next/image";
 import { useState } from "react";
 import { rpsWinner } from "@/lib/gameMath";
-import { NormieAPIService } from "@/services/NormieAPIService";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useChipStore } from "@/stores/chipStore";
-import type { Normie, RPSType } from "@/types/normie";
+import type { RPSType } from "@/types/normie";
 import { RPS_TYPES } from "@/types/normie";
 import { playTone } from "@/lib/audio";
-import { NormieImage } from "@/components/normies/NormieImage";
 import { BetControls } from "./BetControls";
 
 type Score = { player: number; npc: number };
+type FighterPick = { type: RPSType };
+
+const typeImages: Record<RPSType, string> = {
+  Human: "/human.png",
+  Cat: "/cat.png",
+  Alien: "/alien.png"
+};
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 export function RPSGame() {
   const [bet, setBet] = useState(150);
   const [score, setScore] = useState<Score>({ player: 0, npc: 0 });
-  const [playerNormie, setPlayerNormie] = useState<Normie | null>(null);
-  const [npcNormie, setNpcNormie] = useState<Normie | null>(null);
+  const [playerFighter, setPlayerFighter] = useState<FighterPick | null>(null);
+  const [npcFighter, setNpcFighter] = useState<FighterPick | null>(null);
   const [message, setMessage] = useState("Best of 3. Human beats Cat, Cat beats Alien, Alien beats Human.");
   const [roundResult, setRoundResult] = useState("Choose a type to start the arena match.");
   const [locked, setLocked] = useState(false);
@@ -39,10 +49,10 @@ export function RPSGame() {
     setLocked(true);
     setMessage("Arena gates opening...");
     setRoundResult("Round in progress...");
-    const [player, npc] = await Promise.all([NormieAPIService.getRandomNormie(), NormieAPIService.getRandomNormie()]);
+    await wait(280);
     const npcType = RPS_TYPES[Math.floor(Math.random() * RPS_TYPES.length)];
-    setPlayerNormie({ ...player, traits: { ...player.traits, Type: playerType } });
-    setNpcNormie({ ...npc, traits: { ...npc.traits, Type: npcType } });
+    setPlayerFighter({ type: playerType });
+    setNpcFighter({ type: npcType });
 
     const result = rpsWinner(playerType, npcType);
     const nextScore = { ...score };
@@ -82,8 +92,8 @@ export function RPSGame() {
         <p className="terminal-hash mx-auto mt-1 max-w-4xl truncate text-xs text-pixel/70">{message}</p>
       </div>
       <div className="mt-8 grid shrink-0 grid-cols-1 justify-center gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,22rem)]">
-        <Fighter label="You" normie={playerNormie} />
-        <Fighter label="NPC" normie={npcNormie} />
+        <Fighter label="You" fighter={playerFighter} />
+        <Fighter label="NPC" fighter={npcFighter} />
       </div>
       <div className="mt-7 flex shrink-0 flex-wrap items-center justify-center gap-2">
         {RPS_TYPES.map((type) => (
@@ -113,16 +123,22 @@ export function RPSGame() {
   );
 }
 
-function Fighter({ label, normie }: { label: string; normie: Normie | null }) {
+function Fighter({ label, fighter }: { label: string; fighter: FighterPick | null }) {
   return (
     <motion.div layout className="pixel-card p-3 text-center">
       <div className="text-xs uppercase tracking-widest text-white/50">{label}</div>
-      {normie ? (
-        <NormieImage src={normie.image} alt={`${label} Normie`} className="mx-auto mt-2 h-24 w-24 object-cover" />
+      {fighter ? (
+        <Image
+          src={typeImages[fighter.type]}
+          alt={`${fighter.type} fighter`}
+          width={96}
+          height={96}
+          className="mx-auto mt-2 h-24 w-24 object-contain"
+        />
       ) : (
         <div className="mx-auto mt-2 h-24 w-24 animate-pulse bg-white/10" />
       )}
-      <div className="mt-2 font-display text-base text-white">{normie?.traits.Type ?? "Awaiting"}</div>
+      <div className="mt-2 font-display text-base text-white">{fighter?.type ?? "Awaiting"}</div>
     </motion.div>
   );
 }
