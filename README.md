@@ -12,6 +12,8 @@ A browser-based 3D Normies casino arcade built with Next.js, React Three Fiber, 
 - TailwindCSS for HUD/game UI
 - Framer Motion for panel, card, and toast animation
 - Web Audio API for browser-safe synthesized arcade feedback
+- Privy for wallet/email login
+- PostgreSQL with Prisma for user profiles, wallets, chip accounts, sessions, and leaderboard data
 
 ## Run Locally
 
@@ -19,6 +21,25 @@ Install dependencies:
 
 ```bash
 npm install
+```
+
+Create `.env.local`:
+
+```bash
+NEXT_PUBLIC_PRIVY_APP_ID="your-privy-app-id"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/normie_arcade?schema=public"
+```
+
+Generate Prisma Client:
+
+```bash
+npm run db:generate
+```
+
+Run a migration after your PostgreSQL database exists:
+
+```bash
+npm run db:migrate
 ```
 
 Start the dev server:
@@ -39,6 +60,8 @@ src/
     providers.tsx
     globals.css
   components/
+    auth/
+      AuthSync.tsx
     arcade/
       ArcadeLobby.tsx
       GameTable.tsx
@@ -62,8 +85,10 @@ src/
   hooks/
     useNormiePreload.ts
   lib/
+    accountSchema.ts
     audio.ts
     gameMath.ts
+    prisma.ts
     rateLimiter.ts
   services/
     NormieAPIService.ts
@@ -75,6 +100,8 @@ src/
   types/
     audio.d.ts
     normie.ts
+prisma/
+  schema.prisma
 ```
 
 ## Normies API
@@ -100,7 +127,7 @@ It includes:
 - graceful fallback traits/metadata
 - optimized parallel fetching where safe
 
-## Gamess
+## Games
 
 ### Normie Expression Roulette
 
@@ -114,7 +141,7 @@ Human, Cat, and Alien form a best-of-3 arena:
 - Human beats Cat
 - Alien beats Human
 
-Every round fetches fresh Normie fighters and animates the reveal in the interface.
+Every round resolves the selected type against an NPC type and displays the matching local Normies-style type art.
 
 ### Up or Down
 

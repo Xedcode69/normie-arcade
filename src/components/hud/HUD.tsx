@@ -3,6 +3,7 @@
 import { Gamepad2, Volume2, VolumeX } from "lucide-react";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useAudioStore } from "@/stores/audioStore";
+import { AuthButton } from "./AuthButton";
 import { CreditSystem } from "./CreditSystem";
 import { RotateScreenButton } from "./RotateScreenButton";
 
@@ -19,6 +20,7 @@ export function HUD() {
           <div className="terminal-hash mt-1 text-xs text-pixel/70">Live API dealers, chips, and bitmap tables</div>
         </div>
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          <AuthButton />
           <CreditSystem />
           <Metric icon={<Gamepad2 size={16} />} label="Game" value={activeGame} />
           <RotateScreenButton />
