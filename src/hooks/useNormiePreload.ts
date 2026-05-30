@@ -5,8 +5,8 @@ import { useEffect } from "react";
 import { NormieAPIService } from "@/services/NormieAPIService";
 import { useArcadeStore } from "@/stores/arcadeStore";
 
-const personas = ["Serious dealer", "Lucky dealer", "Chaotic dealer", "Robotic dealer"] as const;
-const roles = ["Expression Croupier", "Arena Master", "Prediction Host", "Cashier"] as const;
+const personas = ["Serious dealer", "Lucky dealer", "Precise dealer", "Chaotic dealer", "Robotic dealer"] as const;
+const roles = ["Expression Croupier", "Arena Master", "DNA Card Sharp", "Prediction Host", "Cashier"] as const;
 
 export function useNormiePreload() {
   const setDealers = useArcadeStore((state) => state.setDealers);
@@ -14,7 +14,7 @@ export function useNormiePreload() {
 
   const query = useQuery({
     queryKey: ["normie-preload"],
-    queryFn: () => NormieAPIService.preloadNormies(16)
+    queryFn: () => NormieAPIService.preloadNormies(18)
   });
 
   useEffect(() => {

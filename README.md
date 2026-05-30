@@ -73,6 +73,7 @@ src/
     games/
       BetControls.tsx
       GameDock.tsx
+      PokerGame.tsx
       RPSGame.tsx
       RouletteGame.tsx
       UpDownGame.tsx
@@ -142,6 +143,15 @@ Human, Cat, and Alien form a best-of-3 arena:
 - Alien beats Human
 
 Every round resolves the selected type against an NPC type and displays the matching local Normies-style type art.
+
+### Normie DNA Poker
+
+Users deal five live Normies and score poker-style hands from API traits:
+
+- Pair: two matching Expressions
+- Three of a Kind: three matching Types
+- Flush: all cards share Gender or Age
+- Full House: Type pair plus Expression triple
 
 ### Up or Down
 

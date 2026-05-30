@@ -9,6 +9,7 @@ datasource db {
 enum GameKind {
   ROULETTE
   RPS
+  POKER
   UP_DOWN
 }
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { CircleDot, Joystick, TrendingUp } from "lucide-react";
+import { CircleDot, Dices, Joystick, TrendingUp } from "lucide-react";
 import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
 
 const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; shortcut: string; icon: React.ReactNode; color: string }> = [
   { id: "roulette", label: "Roulette", shortcut: "1", icon: <CircleDot size={16} />, color: "text-paper border-paper/70" },
   { id: "rps", label: "RPS Arena", shortcut: "2", icon: <Joystick size={16} />, color: "text-paper border-paper/70" },
-  { id: "updown", label: "Up or Down", shortcut: "3", icon: <TrendingUp size={16} />, color: "text-paper border-paper/70" }
+  { id: "poker", label: "DNA Poker", shortcut: "3", icon: <Dices size={16} />, color: "text-paper border-paper/70" },
+  { id: "updown", label: "Up or Down", shortcut: "4", icon: <TrendingUp size={16} />, color: "text-paper border-paper/70" }
 ];
 
 export function LobbyControls() {

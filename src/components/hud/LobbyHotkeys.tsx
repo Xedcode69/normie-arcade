@@ -22,7 +22,8 @@ export function LobbyHotkeys() {
 
       if (key === "1") setActiveGame("roulette");
       if (key === "2") setActiveGame("rps");
-      if (key === "3") setActiveGame("updown");
+      if (key === "3") setActiveGame("poker");
+      if (key === "4") setActiveGame("updown");
       if (key === "c") {
         notify({
           kind: "info",
