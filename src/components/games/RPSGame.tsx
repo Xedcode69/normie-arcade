@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Copy, Home, Search, Swords, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { rpsWinner } from "@/lib/gameMath";
 import { useRpsPvp } from "@/hooks/useRpsPvp";
 import { createRoomCode, normalizeRoomCode } from "@/lib/rpsPvp";
@@ -213,6 +213,10 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const [countdown, setCountdown] = useState<string | null>(null);
   const [effect, setEffect] = useState<"win" | "loss" | "draw" | null>(null);
   const [seenReveal, setSeenReveal] = useState<string | null>(null);
+  const previousOpponentConnected = useRef(false);
+  const previousYouLocked = useRef(false);
+  const previousOpponentLocked = useRef(false);
+  const previousPhase = useRef(state.phase);
   const phaseLabel = getPvpPhaseLabel({
     connected,
     error,
@@ -248,6 +252,38 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   });
 
   useEffect(() => {
+    const opponentConnected = Boolean(opponent?.connected);
+    if (connected && opponentConnected && !previousOpponentConnected.current) {
+      playTone(620, 0.12, "triangle");
+      window.setTimeout(() => playTone(840, 0.1, "triangle"), 90);
+    }
+    previousOpponentConnected.current = opponentConnected;
+  }, [connected, opponent?.connected]);
+
+  useEffect(() => {
+    const youLocked = Boolean(you?.pick);
+    const opponentLocked = Boolean(opponent?.pick);
+
+    if (youLocked && !previousYouLocked.current) {
+      playTone(520, 0.08, "square");
+    }
+    if (opponentLocked && !previousOpponentLocked.current) {
+      playTone(470, 0.08, "square");
+    }
+
+    previousYouLocked.current = youLocked;
+    previousOpponentLocked.current = opponentLocked;
+  }, [opponent?.pick, you?.pick]);
+
+  useEffect(() => {
+    if (state.phase === "finished" && previousPhase.current !== "finished") {
+      playTone(state.winnerId === playerId ? 880 : 180, 0.24, state.winnerId === playerId ? "triangle" : "sawtooth");
+      window.setTimeout(() => playTone(state.winnerId === playerId ? 1120 : 120, 0.18, "triangle"), 130);
+    }
+    previousPhase.current = state.phase;
+  }, [playerId, state.phase, state.winnerId]);
+
+  useEffect(() => {
     if (!bothLocked) {
       setCountdown(null);
       return;
@@ -260,6 +296,9 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     const timer = window.setInterval(() => {
       setCountdown(sequence[index] ?? null);
       playTone(index === 2 ? 720 : 420 + index * 80, 0.08, "square");
+      if (index === 2) {
+        window.setTimeout(() => playTone(980, 0.18, "triangle"), 120);
+      }
       index += 1;
       if (index > sequence.length) {
         window.clearInterval(timer);
@@ -730,16 +769,20 @@ function VersusArena({
   countdown: string | null;
 }) {
   return (
-    <div className="relative mt-6 grid shrink-0 grid-cols-1 items-center justify-center gap-4 overflow-hidden md:grid-cols-[minmax(0,22rem)_5rem_minmax(0,22rem)]">
+    <div className="relative mx-auto mt-6 grid w-full max-w-5xl shrink-0 grid-cols-1 items-center justify-center gap-4 overflow-hidden border border-paper/25 bg-black/45 p-4 shadow-[inset_0_0_42px_rgba(244,241,232,0.05)] md:grid-cols-[minmax(0,22rem)_6rem_minmax(0,22rem)]">
+      <div className="pointer-events-none absolute inset-0 opacity-45 [background-image:linear-gradient(rgba(244,241,232,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.06)_1px,transparent_1px)] [background-size:18px_18px]" />
+      <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-gradient-to-b from-transparent via-paper/35 to-transparent" />
       <motion.div animate={{ x: active ? 22 : 0, scale: active ? 1.04 : 1 }} transition={{ type: "spring", stiffness: 180, damping: 18 }}>
         {left}
       </motion.div>
-      <div className="grid min-h-16 place-items-center">
+      <div className="relative z-10 grid min-h-24 place-items-center">
+        <div className="absolute h-24 w-24 rounded-full border border-paper/25 bg-black/70 shadow-[0_0_36px_rgba(244,241,232,0.14)]" />
+        <div className="absolute h-14 w-14 rounded-full border border-mint/25 shadow-[0_0_28px_rgba(39,246,231,0.18)]" />
         <motion.div
           key={countdown ?? "vs"}
-          initial={{ scale: 0.72, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="font-display text-lg uppercase tracking-[0.2em] text-paper neon-text"
+          initial={{ scale: 0.72, opacity: 0, rotateX: -22 }}
+          animate={{ scale: 1, opacity: 1, rotateX: 0 }}
+          className="relative font-display text-lg uppercase tracking-[0.2em] text-paper neon-text"
         >
           {countdown ?? "VS"}
         </motion.div>
@@ -840,8 +883,9 @@ function Fighter({
   avatarUrl?: string | null;
 }) {
   return (
-    <motion.div layout className="pixel-card p-3 text-center">
-      <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-widest text-white/50">
+    <motion.div layout className="relative z-10 border border-paper/55 bg-black/75 p-3 text-center shadow-[inset_0_0_28px_rgba(244,241,232,0.06)]">
+      <div className="pointer-events-none absolute inset-x-3 top-10 h-px bg-gradient-to-r from-transparent via-paper/35 to-transparent" />
+      <div className="flex min-h-8 flex-wrap items-center justify-center gap-2 text-xs uppercase tracking-widest text-white/50">
         {avatarUrl ? (
           <Image
             src={avatarUrl}
@@ -860,26 +904,52 @@ function Fighter({
         ) : null}
         {status ? <span className="border border-paper/20 px-1.5 py-0.5 text-[9px] text-pixel/60">{status}</span> : null}
       </div>
-      {fighter ? (
-        <Image
-          src={typeImages[fighter.type]}
-          alt={`${fighter.type} fighter`}
-          width={96}
-          height={96}
-          className="mx-auto mt-2 h-24 w-24 object-contain"
-        />
-      ) : hiddenPick ? (
-        <motion.div
-          animate={{ boxShadow: ["0 0 0 rgba(244,241,232,0)", "0 0 24px rgba(244,241,232,0.35)", "0 0 0 rgba(244,241,232,0)"] }}
-          transition={{ duration: 1.2, repeat: Infinity }}
-          className="mx-auto mt-2 grid h-24 w-24 place-items-center border border-paper/40 bg-black/85"
-        >
-          <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-paper/70">Locked</span>
-        </motion.div>
-      ) : (
-        <div className="mx-auto mt-2 h-24 w-24 animate-pulse bg-white/10" />
-      )}
+      <div className="relative mx-auto mt-4 grid h-36 w-36 place-items-center">
+        <div className="absolute inset-0 rotate-45 border border-paper/15 bg-paper/5" />
+        <div className="absolute h-28 w-28 rounded-full border border-paper/20 bg-black/70" />
+        {fighter ? (
+          <motion.div
+            initial={{ y: 12, opacity: 0, scale: 0.86 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            className="relative grid h-28 w-28 place-items-center rounded-full border border-paper/50 bg-paper shadow-[0_0_24px_rgba(244,241,232,0.18)]"
+          >
+            <Image
+              src={typeImages[fighter.type]}
+              alt={`${fighter.type} fighter`}
+              width={104}
+              height={104}
+              className="h-24 w-24 object-contain drop-shadow-[0_0_12px_rgba(0,0,0,0.5)]"
+            />
+          </motion.div>
+        ) : hiddenPick ? (
+          <LockedFighterBack />
+        ) : (
+          <div className="relative grid h-28 w-28 place-items-center border border-paper/25 bg-black/80">
+            <div className="h-16 w-16 animate-pulse border border-paper/15 bg-paper/10" />
+          </div>
+        )}
+      </div>
       <div className="mt-2 font-display text-base text-white">{fighter?.type ?? (locked ? "Locked" : "Awaiting")}</div>
+    </motion.div>
+  );
+}
+
+function LockedFighterBack() {
+  return (
+    <motion.div
+      animate={{
+        boxShadow: ["0 0 0 rgba(244,241,232,0)", "0 0 28px rgba(244,241,232,0.34)", "0 0 0 rgba(244,241,232,0)"],
+        rotateY: [0, 4, -4, 0]
+      }}
+      transition={{ duration: 1.4, repeat: Infinity }}
+      className="relative grid h-28 w-24 place-items-center overflow-hidden border border-paper/60 bg-black/90"
+    >
+      <div className="absolute inset-2 border border-paper/20" />
+      <div className="absolute inset-0 opacity-50 [background-image:linear-gradient(rgba(244,241,232,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.08)_1px,transparent_1px)] [background-size:10px_10px]" />
+      <div className="relative grid h-14 w-14 place-items-center rounded-full border border-mint/40 text-mint shadow-[0_0_20px_rgba(39,246,231,0.2)]">
+        <Swords size={20} />
+      </div>
+      <span className="relative terminal-hash text-[9px] uppercase tracking-[0.22em] text-paper/70">Locked</span>
     </motion.div>
   );
 }
