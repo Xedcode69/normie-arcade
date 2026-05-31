@@ -22,6 +22,11 @@ function getPlayerName(playerId: string) {
   return `Player ${playerId.slice(0, 4).toUpperCase()}`;
 }
 
+type JoinOptions = {
+  privyToken: string;
+  bet: number;
+};
+
 export function useRpsPvp(room = "rps-quickplay") {
   const socketRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -36,7 +41,7 @@ export function useRpsPvp(room = "rps-quickplay") {
     }
   }, []);
 
-  const connect = useCallback(() => {
+  const connect = useCallback((options: JoinOptions) => {
     if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) {
       return;
     }
@@ -50,7 +55,13 @@ export function useRpsPvp(room = "rps-quickplay") {
 
     socket.onopen = () => {
       setConnected(true);
-      send({ type: "join", playerId: nextPlayerId, name: getPlayerName(nextPlayerId) });
+      send({
+        type: "join",
+        playerId: nextPlayerId,
+        name: getPlayerName(nextPlayerId),
+        privyToken: options.privyToken,
+        bet: options.bet
+      });
     };
 
     socket.onmessage = (event) => {

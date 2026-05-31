@@ -155,7 +155,8 @@ Every round resolves the selected type against an NPC type and displays the matc
 The RPS panel also includes a PartyKit-powered PvP mode for 1v1 quick matches. Run `npm run party:dev`
 alongside `npm run dev`, then choose `PvP 1v1` in the RPS game. PvP supports room codes,
 copyable invite links, canceling matchmaking while waiting, clear match states, and opponent
-disconnect/reconnect messaging.
+disconnect/reconnect messaging. PvP chip reservation, refund, and final payout are handled by
+PartyKit through protected Next.js API routes backed by Prisma.
 
 ### Normie DNA Poker
 

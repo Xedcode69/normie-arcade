@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Copy, Search, Swords, Users, X } from "lucide-react";
 import Image from "next/image";
+import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useState } from "react";
 import { rpsWinner } from "@/lib/gameMath";
 import { useRpsPvp } from "@/hooks/useRpsPvp";
@@ -185,11 +186,8 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     return normalizeRoomCode(new URLSearchParams(window.location.search).get("rpsRoom") ?? "") || "QUICKPLAY";
   });
   const { connected, connect, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
-  const [entryPaid, setEntryPaid] = useState(false);
-  const wager = useChipStore((store) => store.wager);
-  const refund = useChipStore((store) => store.refund);
-  const win = useChipStore((store) => store.win);
-  const lose = useChipStore((store) => store.lose);
+  const { authenticated, getAccessToken, login } = usePrivy();
+  const setBalance = useChipStore((store) => store.setBalance);
   const notify = useArcadeStore((store) => store.notify);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
@@ -215,6 +213,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   });
   const roundResult =
     error ??
+    you?.accountError ??
     (opponentDisconnected
       ? `${opponent?.name ?? "Opponent"} disconnected. They can rejoin this room code.`
       : state.phase === "finished"
@@ -280,24 +279,31 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     return url.toString();
   }
 
-  function joinMatch() {
-    if (!entryPaid) {
-      if (!wager(bet)) {
-        notify({ kind: "loss", title: "PvP entry rejected", body: "You need more chips for that match." });
-        return;
-      }
-      setEntryPaid(true);
+  useEffect(() => {
+    if (typeof you?.serverBalance === "number") {
+      setBalance(you.serverBalance);
     }
-    connect();
+  }, [setBalance, you?.serverBalance]);
+
+  async function joinMatch() {
+    if (!authenticated) {
+      notify({ kind: "info", title: "Login Required", body: "Connect your account before entering PvP." });
+      login();
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      notify({ kind: "loss", title: "PvP rejected", body: "Could not read your Privy session token." });
+      return;
+    }
+
+    connect({ privyToken: token, bet });
   }
 
   function cancelMatchmaking() {
     disconnect();
-    if (entryPaid && waitingForOpponent) {
-      refund(bet);
-      notify({ kind: "info", title: "Matchmaking Canceled", body: `${bet} chips returned.` });
-      setEntryPaid(false);
-    }
+    notify({ kind: "info", title: "Matchmaking Canceled", body: "The server is refunding your reserved PvP wager." });
   }
 
   async function copyInvite() {
@@ -314,14 +320,6 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   }
 
   function handleReset() {
-    if (state.phase === "finished") {
-      if (state.winnerId === playerId) {
-        win(bet * 2);
-      } else {
-        lose();
-      }
-      setEntryPaid(false);
-    }
     reset();
   }
 
@@ -407,7 +405,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
           <button
             key={type}
             onClick={() => submitPick(type)}
-            disabled={!connected || state.phase !== "playing" || Boolean(you?.pick) || state.players.length < 2}
+            disabled={!connected || state.phase !== "playing" || Boolean(you?.pick) || state.players.length < 2 || Boolean(you?.accountError)}
             className="inline-flex min-w-32 items-center justify-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15 disabled:opacity-50"
           >
             <Swords size={15} /> {type}
@@ -422,6 +420,9 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
         <div className="pixel-card px-5 py-2 text-sm uppercase tracking-widest text-paper/80">
           {connected ? `Round ${state.round}` : "Offline"}
         </div>
+        {typeof you?.serverBalance === "number" ? (
+          <div className="pixel-card px-5 py-2 text-sm text-paper">Server chips {you.serverBalance}</div>
+        ) : null}
         {state.phase === "finished" ? (
           <button
             onClick={handleReset}
@@ -440,7 +441,6 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     </div>
   );
 }
-
 function getRoundBanner({
   connected,
   phase,

@@ -60,6 +60,7 @@ model ChipAccount {
 
 model GameSession {
   id          String      @id @default(cuid())
+  externalId  String?     @unique
   userId      String?
   game        GameKind
   outcome     GameOutcome @default(IN_PROGRESS)

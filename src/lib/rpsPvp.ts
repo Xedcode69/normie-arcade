@@ -6,6 +6,8 @@ export type RPSPvPPlayer = {
   seat: 0 | 1;
   score: number;
   connected: boolean;
+  serverBalance?: number;
+  accountError?: string;
   pick?: "Locked";
 };
 

@@ -5,6 +5,8 @@ type PartyConnection = {
   send(message: string): void;
 };
 type PartyRoom = {
+  id?: string;
+  env?: Record<string, unknown>;
   broadcast(message: string): void;
 };
 
@@ -14,6 +16,11 @@ type Player = {
   seat: 0 | 1;
   score: number;
   connected: boolean;
+  bet: number;
+  privyToken: string;
+  reserved: boolean;
+  serverBalance?: number;
+  accountError?: string;
   pick?: RPSType;
 };
 
@@ -33,7 +40,7 @@ type MatchState = {
 };
 
 type ClientMessage =
-  | { type: "join"; playerId: string; name?: string }
+  | { type: "join"; playerId: string; name?: string; privyToken: string; bet: number }
   | { type: "pick"; playerId: string; pick: RPSType }
   | { type: "reset"; playerId: string };
 
@@ -54,6 +61,7 @@ function cleanPlayerName(name?: string) {
 export default class RPSParty {
   private connections = new Map<string, string>();
   private revealTimer?: ReturnType<typeof setTimeout>;
+  private matchId = this.createMatchId();
   private state: MatchState = {
     phase: "waiting",
     players: [],
@@ -67,13 +75,16 @@ export default class RPSParty {
     connection.send(JSON.stringify({ type: "state", state: this.publicState() }));
   }
 
-  onClose(connection: PartyConnection) {
+  async onClose(connection: PartyConnection) {
     const playerId = this.connections.get(connection.id);
     if (!playerId) return;
 
     this.connections.delete(connection.id);
     const player = this.state.players.find((item) => item.id === playerId);
     if (player) {
+      if (this.state.phase === "waiting" && player.reserved) {
+        await this.refundWager(player);
+      }
       player.connected = false;
       player.pick = undefined;
       if (this.revealTimer) {
@@ -86,12 +97,12 @@ export default class RPSParty {
     }
   }
 
-  onMessage(message: string, connection: PartyConnection) {
+  async onMessage(message: string, connection: PartyConnection) {
     const data = this.parseMessage(message);
     if (!data) return;
 
     if (data.type === "join") {
-      this.join(data, connection);
+      await this.join(data, connection);
       return;
     }
 
@@ -101,14 +112,21 @@ export default class RPSParty {
     }
 
     if (data.type === "reset") {
-      this.reset(data.playerId);
+      await this.reset(data.playerId);
     }
   }
 
   private parseMessage(message: string): ClientMessage | null {
     try {
       const data = JSON.parse(message) as ClientMessage;
-      if (data.type === "join" && typeof data.playerId === "string") return data;
+      if (
+        data.type === "join" &&
+        typeof data.playerId === "string" &&
+        typeof data.privyToken === "string" &&
+        typeof data.bet === "number"
+      ) {
+        return { ...data, bet: Math.max(1, Math.round(data.bet)) };
+      }
       if (data.type === "pick" && typeof data.playerId === "string" && picks.includes(data.pick)) return data;
       if (data.type === "reset" && typeof data.playerId === "string") return data;
       return null;
@@ -117,12 +135,13 @@ export default class RPSParty {
     }
   }
 
-  private join(data: Extract<ClientMessage, { type: "join" }>, connection: PartyConnection) {
+  private async join(data: Extract<ClientMessage, { type: "join" }>, connection: PartyConnection) {
     const existing = this.state.players.find((player) => player.id === data.playerId);
 
     if (existing) {
       existing.connected = true;
       existing.name = cleanPlayerName(data.name);
+      existing.privyToken = data.privyToken;
       this.connections.set(connection.id, existing.id);
     } else {
       const openSeat = this.state.players.find((player) => !player.connected)?.seat;
@@ -139,10 +158,25 @@ export default class RPSParty {
         name: cleanPlayerName(data.name),
         seat,
         score: 0,
-        connected: true
+        connected: true,
+        bet: data.bet,
+        privyToken: data.privyToken,
+        reserved: false
       };
       this.state.players.push(player);
       this.connections.set(connection.id, player.id);
+    }
+
+    const player = this.state.players.find((item) => item.id === data.playerId);
+    if (player && !player.reserved) {
+      const reserved = await this.reserveWager(player);
+      if (!reserved.ok) {
+        this.state.players = this.state.players.filter((item) => item.id !== player.id);
+        this.connections.delete(connection.id);
+        connection.send(JSON.stringify({ type: "full", message: reserved.error }));
+        this.broadcast();
+        return;
+      }
     }
 
     this.state.players.sort((a, b) => a.seat - b.seat);
@@ -196,6 +230,7 @@ export default class RPSParty {
       this.state.message = `${matchWinner.name} wins the match.`;
       this.clearPicks();
       this.broadcast();
+      void this.settleMatch(matchWinner.id);
       return;
     }
 
@@ -209,7 +244,7 @@ export default class RPSParty {
     }, 1800);
   }
 
-  private reset(playerId: string) {
+  private async reset(playerId: string) {
     if (this.state.phase !== "finished") return;
     if (!this.state.players.some((player) => player.id === playerId)) return;
 
@@ -217,8 +252,17 @@ export default class RPSParty {
       clearTimeout(this.revealTimer);
       this.revealTimer = undefined;
     }
-    this.state.players = this.state.players.map((player) => ({ ...player, score: 0, pick: undefined }));
-    this.state.phase = this.state.players.filter((player) => player.connected).length === 2 ? "playing" : "waiting";
+    this.matchId = this.createMatchId();
+    this.state.players = this.state.players.map((player) => ({
+      ...player,
+      score: 0,
+      pick: undefined,
+      reserved: false,
+      accountError: undefined
+    }));
+    await Promise.all(this.state.players.filter((player) => player.connected).map((player) => this.reserveWager(player)));
+    const readyPlayers = this.state.players.filter((player) => player.connected && player.reserved);
+    this.state.phase = readyPlayers.length === 2 ? "playing" : "waiting";
     this.state.round = 1;
     this.state.reveal = undefined;
     this.state.winnerId = undefined;
@@ -237,6 +281,7 @@ export default class RPSParty {
       ...this.state,
       players: this.state.players.map((player) => ({
         ...player,
+        privyToken: undefined,
         pick: player.pick ? "Locked" : undefined
       }))
     };
@@ -244,5 +289,122 @@ export default class RPSParty {
 
   private broadcast() {
     this.room.broadcast(JSON.stringify({ type: "state", state: this.publicState() }));
+  }
+
+  private createMatchId() {
+    return `rps-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  private apiBaseUrl() {
+    const value = this.room.env?.PARTYKIT_API_BASE_URL;
+    return typeof value === "string" ? value : "http://localhost:3000";
+  }
+
+  private internalSecret() {
+    const value = this.room.env?.PARTYKIT_INTERNAL_SECRET;
+    return typeof value === "string" ? value : "dev-internal-secret";
+  }
+
+  private async reserveWager(player: Player) {
+    try {
+      const response = await fetch(`${this.apiBaseUrl()}/api/pvp/rps/reserve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partykit-secret": this.internalSecret()
+        },
+        body: JSON.stringify({
+          matchId: this.matchId,
+          roomId: this.room.id ?? "rps-room",
+          playerId: player.id,
+          privyToken: player.privyToken,
+          bet: player.bet
+        })
+      });
+      const data = (await response.json()) as { ok?: boolean; error?: string; balance?: number };
+
+      if (!response.ok || !data.ok) {
+        player.accountError = data.error ?? "Could not reserve chips.";
+        return { ok: false as const, error: player.accountError };
+      }
+
+      player.reserved = true;
+      player.serverBalance = data.balance;
+      player.accountError = undefined;
+      return { ok: true as const };
+    } catch {
+      player.accountError = "Chip reserve service unavailable.";
+      return { ok: false as const, error: player.accountError };
+    }
+  }
+
+  private async settleMatch(winnerId: string) {
+    const score = `${this.state.players[0]?.score ?? 0}-${this.state.players[1]?.score ?? 0}`;
+
+    await Promise.all(
+      this.state.players.map(async (player) => {
+        if (!player.reserved) return;
+
+        try {
+          const response = await fetch(`${this.apiBaseUrl()}/api/pvp/rps/settle`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-partykit-secret": this.internalSecret()
+            },
+            body: JSON.stringify({
+              matchId: this.matchId,
+              roomId: this.room.id ?? "rps-room",
+              playerId: player.id,
+              privyToken: player.privyToken,
+              bet: player.bet,
+              outcome: player.id === winnerId ? "WIN" : "LOSS",
+              score
+            })
+          });
+          const data = (await response.json()) as { ok?: boolean; balance?: number; error?: string };
+          if (!response.ok || !data.ok) {
+            player.accountError = data.error ?? "Could not settle chips.";
+            return;
+          }
+          player.serverBalance = data.balance;
+          player.accountError = undefined;
+        } catch {
+          player.accountError = "Chip settle service unavailable.";
+        }
+      })
+    );
+
+    this.broadcast();
+  }
+
+  private async refundWager(player: Player) {
+    try {
+      const response = await fetch(`${this.apiBaseUrl()}/api/pvp/rps/refund`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partykit-secret": this.internalSecret()
+        },
+        body: JSON.stringify({
+          matchId: this.matchId,
+          roomId: this.room.id ?? "rps-room",
+          playerId: player.id,
+          privyToken: player.privyToken,
+          bet: player.bet
+        })
+      });
+      const data = (await response.json()) as { ok?: boolean; balance?: number; error?: string };
+      if (!response.ok || !data.ok) {
+        player.accountError = data.error ?? "Could not refund chips.";
+        return;
+      }
+
+      player.serverBalance = data.balance;
+      player.reserved = false;
+      player.accountError = undefined;
+    } catch {
+      player.accountError = "Chip refund service unavailable.";
+    }
   }
 }

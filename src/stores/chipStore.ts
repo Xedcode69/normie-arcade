@@ -6,6 +6,7 @@ type ChipState = {
   multiplier: number;
   wager: (amount: number) => boolean;
   refund: (amount: number) => void;
+  setBalance: (amount: number) => void;
   win: (amount: number) => void;
   lose: () => void;
   setMultiplier: (value: number) => void;
@@ -25,6 +26,7 @@ export const useChipStore = create<ChipState>((set, get) => ({
     return true;
   },
   refund: (amount) => set((state) => ({ balance: state.balance + Math.max(0, Math.round(amount)) })),
+  setBalance: (amount) => set({ balance: Math.max(0, Math.round(amount)) }),
   win: (amount) =>
     set((state) => {
       const streak = state.streak + 1;
