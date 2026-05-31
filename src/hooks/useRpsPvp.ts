@@ -10,11 +10,11 @@ type ServerMessage =
 
 function getOrCreatePlayerId() {
   const key = "normie-rps-player-id";
-  const existing = window.localStorage.getItem(key);
+  const existing = window.sessionStorage.getItem(key);
   if (existing) return existing;
 
   const next = window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-  window.localStorage.setItem(key, next);
+  window.sessionStorage.setItem(key, next);
   return next;
 }
 
@@ -76,6 +76,7 @@ export function useRpsPvp(room = "rps-quickplay") {
     socketRef.current?.close();
     socketRef.current = null;
     setConnected(false);
+    setState(initialRpsPvpState);
   }, []);
 
   const submitPick = useCallback(

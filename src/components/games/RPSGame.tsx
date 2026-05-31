@@ -1,11 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Swords } from "lucide-react";
+import { Copy, Search, Swords, Users, X } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
 import { rpsWinner } from "@/lib/gameMath";
 import { useRpsPvp } from "@/hooks/useRpsPvp";
+import { createRoomCode, normalizeRoomCode } from "@/lib/rpsPvp";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useChipStore } from "@/stores/chipStore";
 import type { RPSType } from "@/types/normie";
@@ -179,24 +180,51 @@ function RPSSolo({
 }
 
 function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void }) {
-  const { connected, connect, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp();
+  const [roomCode, setRoomCode] = useState(() => {
+    if (typeof window === "undefined") return "QUICKPLAY";
+    return normalizeRoomCode(new URLSearchParams(window.location.search).get("rpsRoom") ?? "") || "QUICKPLAY";
+  });
+  const { connected, connect, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
   const [entryPaid, setEntryPaid] = useState(false);
   const wager = useChipStore((store) => store.wager);
+  const refund = useChipStore((store) => store.refund);
   const win = useChipStore((store) => store.win);
   const lose = useChipStore((store) => store.lose);
   const notify = useArcadeStore((store) => store.notify);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
+  const waitingForOpponent = connected && state.phase === "waiting" && !opponent?.connected;
+  const opponentDisconnected = Boolean(opponent && !opponent.connected);
   const reveal = state.reveal;
   const playerSeat = you?.seat ?? 0;
   const playerPick = reveal ? (playerSeat === 0 ? reveal.playerA : reveal.playerB) : undefined;
   const opponentPick = reveal ? (playerSeat === 0 ? reveal.playerB : reveal.playerA) : undefined;
+  const phaseLabel = getPvpPhaseLabel({
+    connected,
+    error,
+    opponentDisconnected,
+    waitingForOpponent,
+    youLocked: Boolean(you?.pick),
+    opponentLocked: Boolean(opponent?.pick),
+    phase: state.phase,
+    hasOpponent: Boolean(opponent?.connected)
+  });
   const roundResult =
-    state.phase === "finished"
+    error ??
+    (opponentDisconnected
+      ? `${opponent?.name ?? "Opponent"} disconnected. They can rejoin this room code.`
+      : state.phase === "finished"
       ? state.winnerId === playerId
         ? `MATCH WIN - final score ${you?.score ?? 0}-${opponent?.score ?? 0}.`
         : `MATCH LOSS - final score ${you?.score ?? 0}-${opponent?.score ?? 0}.`
-      : state.message;
+      : state.message);
+
+  function inviteUrl() {
+    if (typeof window === "undefined") return "";
+    const url = new URL(window.location.href);
+    url.searchParams.set("rpsRoom", roomCode);
+    return url.toString();
+  }
 
   function joinMatch() {
     if (!entryPaid) {
@@ -207,6 +235,28 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
       setEntryPaid(true);
     }
     connect();
+  }
+
+  function cancelMatchmaking() {
+    disconnect();
+    if (entryPaid && waitingForOpponent) {
+      refund(bet);
+      notify({ kind: "info", title: "Matchmaking Canceled", body: `${bet} chips returned.` });
+      setEntryPaid(false);
+    }
+  }
+
+  async function copyInvite() {
+    const link = inviteUrl();
+    if (!link) return;
+
+    await navigator.clipboard?.writeText(link);
+    notify({ kind: "info", title: "Invite Copied", body: `Room ${roomCode} link copied.` });
+  }
+
+  function createRoom() {
+    if (connected) return;
+    setRoomCode(createRoomCode());
   }
 
   function handleReset() {
@@ -223,9 +273,42 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
 
   return (
     <>
+      <div className="mx-auto mt-6 grid w-full max-w-4xl shrink-0 gap-3 md:grid-cols-[1fr_auto_auto]">
+        <label className="pixel-card flex min-w-0 items-center gap-3 px-3 py-2">
+          <span className="terminal-hash shrink-0 text-[10px] uppercase tracking-[0.22em] text-pixel/60">Room</span>
+          <input
+            value={roomCode}
+            disabled={connected}
+            onChange={(event) => setRoomCode(normalizeRoomCode(event.target.value) || "QUICKPLAY")}
+            className="min-w-0 flex-1 bg-transparent text-center font-display text-sm uppercase tracking-[0.22em] text-paper outline-none disabled:text-paper/60"
+            aria-label="RPS room code"
+          />
+        </label>
+        <button
+          onClick={createRoom}
+          disabled={connected}
+          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
+        >
+          <Users size={15} /> New Room
+        </button>
+        <button
+          onClick={copyInvite}
+          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"
+        >
+          <Copy size={15} /> Copy Link
+        </button>
+      </div>
+      <div className="mx-auto mt-3 flex w-full max-w-4xl shrink-0 items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
+        <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">{phaseLabel}</span>
+      </div>
       <div className="mt-8 grid shrink-0 grid-cols-1 justify-center gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,22rem)]">
-        <Fighter label={you?.name ?? "You"} fighter={playerPick ? { type: playerPick } : null} locked={Boolean(you?.pick)} />
-        <Fighter label={opponent?.name ?? "Opponent"} fighter={opponentPick ? { type: opponentPick } : null} locked={Boolean(opponent?.pick)} />
+        <Fighter label={you?.name ?? "You"} fighter={playerPick ? { type: playerPick } : null} locked={Boolean(you?.pick)} status={connected ? "Connected" : "Offline"} />
+        <Fighter
+          label={opponent?.name ?? "Opponent"}
+          fighter={opponentPick ? { type: opponentPick } : null}
+          locked={Boolean(opponent?.pick)}
+          status={opponentDisconnected ? "Disconnected" : opponent?.connected ? "Connected" : "Searching"}
+        />
       </div>
       <div className="mt-7 flex shrink-0 flex-wrap items-center justify-center gap-2">
         {!connected ? (
@@ -233,7 +316,14 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
             onClick={joinMatch}
             className="inline-flex min-w-36 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-4 py-2 text-sm uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
           >
-            Join PvP
+            <Search size={15} /> Join Room
+          </button>
+        ) : waitingForOpponent ? (
+          <button
+            onClick={cancelMatchmaking}
+            className="inline-flex min-w-44 items-center justify-center gap-2 border border-paper/50 bg-black/70 px-4 py-2 text-sm uppercase tracking-widest text-paper/80 transition hover:border-paper hover:text-paper"
+          >
+            <X size={15} /> Cancel Matchmaking
           </button>
         ) : (
           <button
@@ -260,7 +350,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
           Score {you?.score ?? 0} - {opponent?.score ?? 0}
         </div>
         <div className="pixel-card px-5 py-2 text-sm uppercase tracking-widest text-paper/80">
-          {connected ? state.phase : "Offline"}
+          {connected ? `Round ${state.round}` : "Offline"}
         </div>
         {state.phase === "finished" ? (
           <button
@@ -274,17 +364,61 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
       <div className="mx-auto mt-4 w-full max-w-4xl shrink-0 border-t border-paper/20 pt-4 text-center">
         <div className="mx-auto min-w-0 max-w-3xl text-center">
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">PvP Result</div>
-          <div className="truncate text-sm text-paper">{error ?? roundResult}</div>
+          <div className="truncate text-sm text-paper">{roundResult}</div>
         </div>
       </div>
     </>
   );
 }
 
-function Fighter({ label, fighter, locked = false }: { label: string; fighter: FighterPick | null; locked?: boolean }) {
+function getPvpPhaseLabel({
+  connected,
+  error,
+  opponentDisconnected,
+  waitingForOpponent,
+  youLocked,
+  opponentLocked,
+  phase,
+  hasOpponent
+}: {
+  connected: boolean;
+  error: string | null;
+  opponentDisconnected: boolean;
+  waitingForOpponent: boolean;
+  youLocked: boolean;
+  opponentLocked: boolean;
+  phase: "waiting" | "playing" | "revealed" | "finished";
+  hasOpponent: boolean;
+}) {
+  if (error) return "Connection Error";
+  if (!connected) return "Enter or create a room, then join";
+  if (opponentDisconnected) return "Opponent disconnected - waiting for reconnect";
+  if (waitingForOpponent) return "Searching for opponent";
+  if (phase === "revealed") return "Reveal";
+  if (phase === "finished") return "Match complete";
+  if (phase === "playing" && hasOpponent && !youLocked) return "Opponent joined - choose move";
+  if (phase === "playing" && youLocked && !opponentLocked) return "Waiting for opponent";
+  if (phase === "playing" && youLocked && opponentLocked) return "Both moves locked - reveal incoming";
+  return "Connecting to arena";
+}
+
+function Fighter({
+  label,
+  fighter,
+  locked = false,
+  status
+}: {
+  label: string;
+  fighter: FighterPick | null;
+  locked?: boolean;
+  status?: string;
+}) {
   return (
     <motion.div layout className="pixel-card p-3 text-center">
-      <div className="text-xs uppercase tracking-widest text-white/50">{label}</div>
+      <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-widest text-white/50">
+        {label}
+        {status ? <span className="border border-paper/20 px-1.5 py-0.5 text-[9px] text-pixel/60">{status}</span> : null}
+      </div>
       {fighter ? (
         <Image
           src={typeImages[fighter.type]}

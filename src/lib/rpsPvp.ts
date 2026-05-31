@@ -36,5 +36,21 @@ export function getPartyKitHost() {
 export function buildPartySocketUrl(room: string) {
   const host = getPartyKitHost();
   const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "ws" : "wss";
-  return `${protocol}://${host}/parties/main/${room}`;
+  return `${protocol}://${host}/parties/main/${encodeURIComponent(room)}`;
+}
+
+export function normalizeRoomCode(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, "")
+    .slice(0, 18);
+}
+
+export function createRoomCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint8Array(6);
+  globalThis.crypto?.getRandomValues?.(bytes);
+
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
