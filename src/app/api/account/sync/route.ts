@@ -12,13 +12,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const { privyId, email, displayName, walletAddress } = payload.data;
+  const { privyId, email, username, displayName, walletAddress } = payload.data;
 
   const user = await prisma.user.upsert({
     where: { privyId },
     create: {
       privyId,
       email: email ?? null,
+      username: username ?? null,
       displayName: displayName ?? null,
       chipAccount: {
         create: {}
@@ -26,11 +27,15 @@ export async function POST(request: Request) {
     },
     update: {
       email: email ?? null,
+      ...(username ? { username } : {}),
       displayName: displayName ?? null
     },
     include: {
       chipAccount: true,
-      wallets: true
+      wallets: true,
+      ownedNormies: {
+        orderBy: { normieId: "asc" }
+      }
     }
   });
 

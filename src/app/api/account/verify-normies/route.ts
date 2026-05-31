@@ -11,6 +11,8 @@ const verifyNormiesSchema = z.object({
 });
 
 function profileResponse(user: {
+  username: string | null;
+  displayName: string | null;
   isNormieHolder: boolean;
   selectedNormieId: number | null;
   holderVerifiedAt: Date | null;
@@ -21,6 +23,8 @@ function profileResponse(user: {
     : undefined;
 
   return {
+    username: user.username,
+    displayName: user.displayName,
     isNormieHolder: user.isNormieHolder,
     selectedNormieId: user.selectedNormieId,
     selectedNormieImage: selected?.imageUrl ?? (user.selectedNormieId !== null ? normieImageUrl(user.selectedNormieId) : null),

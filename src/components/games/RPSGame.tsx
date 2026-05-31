@@ -189,6 +189,8 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const { connected, connect, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
   const { authenticated, getAccessToken, login } = usePrivy();
   const holderProfile = useAccountStore((store) => ({
+    username: store.username,
+    displayName: store.displayName,
     isNormieHolder: store.isNormieHolder,
     selectedNormieId: store.selectedNormieId,
     selectedNormieImage: store.selectedNormieImage
@@ -307,6 +309,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     connect({
       privyToken: token,
       bet,
+      name: holderProfile.displayName || holderProfile.username,
       isNormieHolder: holderProfile.isNormieHolder,
       selectedNormieId: holderProfile.selectedNormieId ?? null,
       avatarUrl: holderProfile.selectedNormieImage ?? null

@@ -46,6 +46,8 @@ export function AuthSync() {
       const account = (await response.json()) as {
         account?: {
           isNormieHolder?: boolean;
+          username?: string | null;
+          displayName?: string | null;
           selectedNormieId?: number | null;
           ownedNormies?: Array<{ normieId: number; imageUrl: string }>;
           holderVerifiedAt?: string | null;
@@ -72,6 +74,8 @@ export function AuthSync() {
             const verified = (await verifyResponse.json()) as {
               profile: {
                 isNormieHolder: boolean;
+                username: string | null;
+                displayName: string | null;
                 selectedNormieId: number | null;
                 selectedNormieImage: string | null;
                 holderVerifiedAt: string | null;

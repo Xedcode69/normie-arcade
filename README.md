@@ -16,6 +16,7 @@ A browser-based 3D Normies casino arcade built with Next.js, React Three Fiber, 
 - PostgreSQL with Prisma for user profiles, wallets, chip accounts, sessions, and leaderboard data
 - PartyKit for realtime PvP RPS rooms
 - Normie holder verification through the official `/holders/{address}` API
+- In-HUD profile editing for username, display name, holder badge, and verified Normie avatar selection
 
 ## Run Locally
 
@@ -49,7 +50,7 @@ Run a migration after your PostgreSQL database exists:
 npm run db:migrate
 ```
 
-This creates the user, wallet, chip, PvP, and Normie holder tables. Holder verification refreshes on login when the cached wallet check is stale, so users who sell their Normies lose the holder badge/avatar after the next refresh.
+This creates the user, wallet, chip, PvP, profile, and Normie holder tables. Holder verification refreshes on login when the cached wallet check is stale, so users who sell their Normies lose the holder badge/avatar after the next refresh.
 
 Start the dev server:
 
