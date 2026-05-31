@@ -4,7 +4,7 @@ import { Minus, Plus } from "lucide-react";
 import { clampBet, formatChips } from "@/lib/gameMath";
 import { useChipStore } from "@/stores/chipStore";
 
-export function BetControls({ bet, setBet }: { bet: number; setBet: (bet: number) => void }) {
+export function BetControls({ bet, setBet, disabled = false }: { bet: number; setBet: (bet: number) => void; disabled?: boolean }) {
   const balance = useChipStore((state) => state.balance);
 
   return (
@@ -12,6 +12,7 @@ export function BetControls({ bet, setBet }: { bet: number; setBet: (bet: number
       <button
         className="grid h-9 w-9 place-items-center border border-paper/40 bg-black/70 transition hover:border-paper"
         onClick={() => setBet(clampBet(bet - 50, balance))}
+        disabled={disabled}
         aria-label="Lower bet"
       >
         <Minus size={16} />
@@ -22,6 +23,7 @@ export function BetControls({ bet, setBet }: { bet: number; setBet: (bet: number
       <button
         className="grid h-9 w-9 place-items-center border border-paper/40 bg-black/70 transition hover:border-paper"
         onClick={() => setBet(clampBet(bet + 50, balance))}
+        disabled={disabled}
         aria-label="Raise bet"
       >
         <Plus size={16} />
@@ -30,7 +32,8 @@ export function BetControls({ bet, setBet }: { bet: number; setBet: (bet: number
         <button
           key={value}
           onClick={() => setBet(clampBet(value, balance))}
-          className="border border-paper/30 bg-black/60 px-3 py-2 text-xs text-paper/75 transition hover:border-paper hover:text-paper"
+          disabled={disabled}
+          className="border border-paper/30 bg-black/60 px-3 py-2 text-xs text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
         >
           {value}
         </button>

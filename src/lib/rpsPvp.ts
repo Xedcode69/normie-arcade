@@ -6,6 +6,7 @@ export type RPSPvPPlayer = {
   seat: 0 | 1;
   score: number;
   connected: boolean;
+  bet: number;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
@@ -18,6 +19,14 @@ export type RPSPvPState = {
   phase: "waiting" | "playing" | "revealed" | "finished";
   players: RPSPvPPlayer[];
   round: number;
+  history: Array<{
+    round: number;
+    playerA: RPSType;
+    playerB: RPSType;
+    winner: "playerA" | "playerB" | "draw";
+    scoreA: number;
+    scoreB: number;
+  }>;
   reveal?: {
     playerA: RPSType;
     playerB: RPSType;
@@ -31,6 +40,7 @@ export const initialRpsPvpState: RPSPvPState = {
   phase: "waiting",
   players: [],
   round: 1,
+  history: [],
   message: "Connect to quick match."
 };
 

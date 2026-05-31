@@ -6,7 +6,8 @@ import { buildPartySocketUrl, initialRpsPvpState, type RPSPvPState } from "@/lib
 
 type ServerMessage =
   | { type: "state"; state: RPSPvPState }
-  | { type: "full"; message: string };
+  | { type: "full"; message: string }
+  | { type: "error"; message: string };
 
 function getOrCreatePlayerId() {
   const key = "normie-rps-player-id";
@@ -76,7 +77,7 @@ export function useRpsPvp(room = "rps-quickplay") {
       if (data.type === "state") {
         setState(data.state);
       }
-      if (data.type === "full") {
+      if (data.type === "full" || data.type === "error") {
         setError(data.message);
       }
     };
@@ -97,6 +98,10 @@ export function useRpsPvp(room = "rps-quickplay") {
     setState(initialRpsPvpState);
   }, []);
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   const submitPick = useCallback(
     (pick: RPSType) => {
       if (!playerId) return;
@@ -115,6 +120,7 @@ export function useRpsPvp(room = "rps-quickplay") {
   return {
     connected,
     connect,
+    clearError,
     disconnect,
     error,
     playerId,

@@ -1,10 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Copy, Search, Swords, Users, X } from "lucide-react";
+import { Copy, Home, Search, Swords, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { rpsWinner } from "@/lib/gameMath";
 import { useRpsPvp } from "@/hooks/useRpsPvp";
 import { createRoomCode, normalizeRoomCode } from "@/lib/rpsPvp";
@@ -19,6 +19,8 @@ import { BetControls } from "./BetControls";
 type Score = { player: number; npc: number };
 type FighterPick = { type: RPSType };
 type MatchMode = "solo" | "pvp";
+type RoomMode = "quick" | "create" | "join";
+const RPS_RECONNECT_KEY = "normie-rps-active-room";
 
 const typeImages: Record<RPSType, string> = {
   Human: "/human.png",
@@ -28,6 +30,14 @@ const typeImages: Record<RPSType, string> = {
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function friendlyPvpError(error: string | null) {
+  if (!error) return null;
+  if (error.toLowerCase().includes("full")) return error;
+  if (error.toLowerCase().includes("insufficient")) return "You do not have enough chips reserved for this PvP wager.";
+  if (error.toLowerCase().includes("connect")) return "The PvP room is not reachable. Make sure PartyKit is running, then try again.";
+  return error;
 }
 
 export function RPSGame() {
@@ -184,10 +194,21 @@ function RPSSolo({
 function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void }) {
   const [roomCode, setRoomCode] = useState(() => {
     if (typeof window === "undefined") return "QUICKPLAY";
-    return normalizeRoomCode(new URLSearchParams(window.location.search).get("rpsRoom") ?? "") || "QUICKPLAY";
+    const urlRoom = normalizeRoomCode(new URLSearchParams(window.location.search).get("rpsRoom") ?? "");
+    if (urlRoom) return urlRoom;
+    const stored = window.sessionStorage.getItem(RPS_RECONNECT_KEY);
+    if (!stored) return "QUICKPLAY";
+    try {
+      const parsed = JSON.parse(stored) as { roomCode?: string };
+      return normalizeRoomCode(parsed.roomCode ?? "") || "QUICKPLAY";
+    } catch {
+      return "QUICKPLAY";
+    }
   });
-  const { connected, connect, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
-  const { authenticated, getAccessToken, login } = usePrivy();
+  const [roomMode, setRoomMode] = useState<RoomMode>(() => (roomCode === "QUICKPLAY" ? "quick" : "join"));
+  const [joinCode, setJoinCode] = useState(() => (roomCode === "QUICKPLAY" ? "" : roomCode));
+  const { connected, connect, clearError, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
+  const { ready, authenticated, getAccessToken, login } = usePrivy();
   const holderProfile = useAccountStore((store) => ({
     username: store.username,
     displayName: store.displayName,
@@ -197,6 +218,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   }));
   const setBalance = useChipStore((store) => store.setBalance);
   const notify = useArcadeStore((store) => store.notify);
+  const setActiveGame = useArcadeStore((store) => store.setActiveGame);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
   const waitingForOpponent = connected && state.phase === "waiting" && !opponent?.connected;
@@ -209,6 +231,12 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const [countdown, setCountdown] = useState<string | null>(null);
   const [effect, setEffect] = useState<"win" | "loss" | "draw" | null>(null);
   const [seenReveal, setSeenReveal] = useState<string | null>(null);
+  const previousOpponentConnected = useRef(false);
+  const previousYouLocked = useRef(false);
+  const previousOpponentLocked = useRef(false);
+  const previousPhase = useRef(state.phase);
+  const reconnectAttempted = useRef(false);
+  const friendlyError = friendlyPvpError(error);
   const phaseLabel = getPvpPhaseLabel({
     connected,
     error,
@@ -220,7 +248,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     hasOpponent: Boolean(opponent?.connected)
   });
   const roundResult =
-    error ??
+    friendlyError ??
     you?.accountError ??
     (opponentDisconnected
       ? `${opponent?.name ?? "Opponent"} disconnected. They can rejoin this room code.`
@@ -244,6 +272,38 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   });
 
   useEffect(() => {
+    const opponentConnected = Boolean(opponent?.connected);
+    if (connected && opponentConnected && !previousOpponentConnected.current) {
+      playTone(620, 0.12, "triangle");
+      window.setTimeout(() => playTone(840, 0.1, "triangle"), 90);
+    }
+    previousOpponentConnected.current = opponentConnected;
+  }, [connected, opponent?.connected]);
+
+  useEffect(() => {
+    const youLocked = Boolean(you?.pick);
+    const opponentLocked = Boolean(opponent?.pick);
+
+    if (youLocked && !previousYouLocked.current) {
+      playTone(520, 0.08, "square");
+    }
+    if (opponentLocked && !previousOpponentLocked.current) {
+      playTone(470, 0.08, "square");
+    }
+
+    previousYouLocked.current = youLocked;
+    previousOpponentLocked.current = opponentLocked;
+  }, [opponent?.pick, you?.pick]);
+
+  useEffect(() => {
+    if (state.phase === "finished" && previousPhase.current !== "finished") {
+      playTone(state.winnerId === playerId ? 880 : 180, 0.24, state.winnerId === playerId ? "triangle" : "sawtooth");
+      window.setTimeout(() => playTone(state.winnerId === playerId ? 1120 : 120, 0.18, "triangle"), 130);
+    }
+    previousPhase.current = state.phase;
+  }, [playerId, state.phase, state.winnerId]);
+
+  useEffect(() => {
     if (!bothLocked) {
       setCountdown(null);
       return;
@@ -256,6 +316,9 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     const timer = window.setInterval(() => {
       setCountdown(sequence[index] ?? null);
       playTone(index === 2 ? 720 : 420 + index * 80, 0.08, "square");
+      if (index === 2) {
+        window.setTimeout(() => playTone(980, 0.18, "triangle"), 120);
+      }
       index += 1;
       if (index > sequence.length) {
         window.clearInterval(timer);
@@ -280,10 +343,53 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     return () => window.clearTimeout(timer);
   }, [playerSeat, reveal, seenReveal, state.round]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || reconnectAttempted.current || connected || !ready || !authenticated) return;
+    const stored = window.sessionStorage.getItem(RPS_RECONNECT_KEY);
+    if (!stored) return;
+
+    reconnectAttempted.current = true;
+    try {
+      const parsed = JSON.parse(stored) as { roomCode?: string; bet?: number; roomMode?: RoomMode };
+      const storedRoom = normalizeRoomCode(parsed.roomCode ?? "") || "QUICKPLAY";
+      setRoomCode(storedRoom);
+      setJoinCode(storedRoom === "QUICKPLAY" ? "" : storedRoom);
+      setRoomMode(parsed.roomMode ?? (storedRoom === "QUICKPLAY" ? "quick" : "join"));
+      if (typeof parsed.bet === "number") {
+        setBet(parsed.bet);
+      }
+
+      getAccessToken().then((token) => {
+        if (!token) return;
+        connect({
+          privyToken: token,
+          bet: typeof parsed.bet === "number" ? parsed.bet : bet,
+          name: holderProfile.displayName || holderProfile.username,
+          isNormieHolder: holderProfile.isNormieHolder,
+          selectedNormieId: holderProfile.selectedNormieId ?? null,
+          avatarUrl: holderProfile.selectedNormieImage ?? null
+        });
+        notify({ kind: "info", title: "Reconnected", body: `Rejoining ${storedRoom === "QUICKPLAY" ? "quick match" : `room ${storedRoom}`}.` });
+      });
+    } catch {
+      window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
+    }
+  }, [authenticated, bet, connect, connected, getAccessToken, holderProfile, notify, ready, setBet]);
+
+  useEffect(() => {
+    if (error?.toLowerCase().includes("full")) {
+      window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
+    }
+  }, [error]);
+
   function inviteUrl() {
     if (typeof window === "undefined") return "";
     const url = new URL(window.location.href);
-    url.searchParams.set("rpsRoom", roomCode);
+    if (roomCode === "QUICKPLAY") {
+      url.searchParams.delete("rpsRoom");
+    } else {
+      url.searchParams.set("rpsRoom", roomCode);
+    }
     return url.toString();
   }
 
@@ -314,9 +420,39 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
       selectedNormieId: holderProfile.selectedNormieId ?? null,
       avatarUrl: holderProfile.selectedNormieImage ?? null
     });
+
+    window.sessionStorage.setItem(
+      RPS_RECONNECT_KEY,
+      JSON.stringify({
+        roomCode,
+        roomMode,
+        bet
+      })
+    );
+  }
+
+  function selectRoomMode(mode: RoomMode) {
+    if (connected) return;
+    clearError();
+    setRoomMode(mode);
+
+    if (mode === "quick") {
+      setRoomCode("QUICKPLAY");
+      return;
+    }
+
+    if (mode === "create") {
+      const nextCode = createRoomCode();
+      setRoomCode(nextCode);
+      setJoinCode(nextCode);
+      return;
+    }
+
+    setRoomCode(normalizeRoomCode(joinCode) || "QUICKPLAY");
   }
 
   function cancelMatchmaking() {
+    window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
     disconnect();
     notify({ kind: "info", title: "Matchmaking Canceled", body: "The server is refunding your reserved PvP wager." });
   }
@@ -329,46 +465,109 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     notify({ kind: "info", title: "Invite Copied", body: `Room ${roomCode} link copied.` });
   }
 
-  function createRoom() {
+  function createPrivateRoom() {
     if (connected) return;
-    setRoomCode(createRoomCode());
+    clearError();
+    const nextCode = createRoomCode();
+    setRoomMode("create");
+    setRoomCode(nextCode);
+    setJoinCode(nextCode);
+  }
+
+  function updateJoinCode(value: string) {
+    clearError();
+    const nextCode = normalizeRoomCode(value);
+    setJoinCode(nextCode);
+    if (!connected && roomMode === "join") {
+      setRoomCode(nextCode || "QUICKPLAY");
+    }
   }
 
   function handleReset() {
     reset();
   }
 
+  function leaveMatch() {
+    window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
+    disconnect();
+  }
+
+  function returnToLobby() {
+    window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
+    disconnect();
+    setActiveGame("lobby");
+  }
+
   return (
     <div className="relative">
       <VisualPulse effect={effect} />
       <ChipBurst active={effect === "win" || (state.phase === "finished" && state.winnerId === playerId)} />
-      <div className="mx-auto mt-6 grid w-full max-w-4xl shrink-0 gap-3 md:grid-cols-[1fr_auto_auto]">
-        <label className="pixel-card flex min-w-0 items-center gap-3 px-3 py-2">
-          <span className="terminal-hash shrink-0 text-[10px] uppercase tracking-[0.22em] text-pixel/60">Room</span>
-          <input
-            value={roomCode}
-            disabled={connected}
-            onChange={(event) => setRoomCode(normalizeRoomCode(event.target.value) || "QUICKPLAY")}
-            className="min-w-0 flex-1 bg-transparent text-center font-display text-sm uppercase tracking-[0.22em] text-paper outline-none disabled:text-paper/60"
-            aria-label="RPS room code"
-          />
-        </label>
-        <button
-          onClick={createRoom}
-          disabled={connected}
-          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
-        >
-          <Users size={15} /> New Room
-        </button>
-        <button
-          onClick={copyInvite}
-          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"
-        >
-          <Copy size={15} /> Copy Link
-        </button>
+      <div className="mx-auto mt-6 w-full max-w-4xl shrink-0">
+        <div className="flex flex-wrap justify-center gap-2">
+          {(["quick", "create", "join"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => selectRoomMode(mode)}
+              disabled={connected}
+              className={`min-w-32 border px-4 py-2 text-xs uppercase tracking-widest transition disabled:opacity-50 ${
+                roomMode === mode ? "border-paper bg-paper/15 text-paper shadow-neon" : "border-paper/30 bg-black/70 text-paper/60 hover:border-paper/70"
+              }`}
+            >
+              {mode === "quick" ? "Quick Match" : mode === "create" ? "Create Room" : "Join Room"}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+          <div className="pixel-card flex min-w-0 items-center gap-3 px-3 py-2">
+            <span className="terminal-hash shrink-0 text-[10px] uppercase tracking-[0.22em] text-pixel/60">
+              {roomMode === "quick" ? "Match" : "Room"}
+            </span>
+            {roomMode === "join" && !connected ? (
+              <input
+                value={joinCode}
+                onChange={(event) => updateJoinCode(event.target.value)}
+                placeholder="ENTER CODE"
+                className="min-w-0 flex-1 bg-transparent text-center font-display text-sm uppercase tracking-[0.22em] text-paper outline-none placeholder:text-paper/25"
+                aria-label="RPS room code"
+              />
+            ) : (
+              <div className="min-w-0 flex-1 truncate text-center font-display text-sm uppercase tracking-[0.22em] text-paper/85">
+                {roomCode === "QUICKPLAY" ? "Quickplay" : roomCode}
+              </div>
+            )}
+          </div>
+
+          {roomMode === "create" && !connected ? (
+            <button
+              onClick={createPrivateRoom}
+              className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"
+            >
+              <Users size={15} /> Regenerate
+            </button>
+          ) : roomMode === "join" && !connected ? (
+            <button
+              onClick={() => setRoomCode(normalizeRoomCode(joinCode) || "QUICKPLAY")}
+              disabled={!joinCode}
+              className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
+            >
+              Use Code
+            </button>
+          ) : (
+            <div className="hidden md:block" />
+          )}
+
+          <button
+            onClick={copyInvite}
+            disabled={roomMode === "join" && !joinCode && !connected}
+            className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
+          >
+            <Copy size={15} /> Copy Invite
+          </button>
+        </div>
       </div>
       <div className="mx-auto mt-3 flex w-full max-w-4xl shrink-0 items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
-        <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">{phaseLabel}</span>
+        <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${friendlyError ? "text-magenta" : "text-pixel/60"}`}>{phaseLabel}</span>
       </div>
       <RoundBanner text={banner} effect={effect} />
       <VersusArena
@@ -414,9 +613,9 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
           >
             <X size={15} /> Cancel Matchmaking
           </button>
-        ) : (
-          <button
-            onClick={disconnect}
+          ) : (
+            <button
+            onClick={leaveMatch}
             className="inline-flex min-w-32 items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-sm uppercase tracking-widest text-paper/70 transition hover:border-paper hover:text-paper"
           >
             Leave
@@ -432,7 +631,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
             <Swords size={15} /> {type}
           </button>
         ))}
-        <BetControls bet={bet} setBet={setBet} />
+        <BetControls bet={bet} setBet={setBet} disabled={connected} />
       </div>
       <div className="mt-5 flex shrink-0 flex-wrap justify-center gap-3">
         <div className="pixel-card px-5 py-2 text-sm text-paper">
@@ -459,7 +658,124 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
           <div className="truncate text-sm text-paper">{roundResult}</div>
         </div>
       </div>
+      <PvPMatchSummary
+        visible={state.phase === "finished"}
+        you={you}
+        opponent={opponent}
+        playerSeat={playerSeat}
+        winnerId={state.winnerId}
+        history={state.history}
+        fallbackBet={bet}
+        onRematch={handleReset}
+        onReturnToLobby={returnToLobby}
+      />
     </div>
+  );
+}
+
+function PvPMatchSummary({
+  visible,
+  you,
+  opponent,
+  playerSeat,
+  winnerId,
+  history,
+  fallbackBet,
+  onRematch,
+  onReturnToLobby
+}: {
+  visible: boolean;
+  you: { id: string; name: string; score: number; bet?: number } | undefined;
+  opponent: { id: string; name: string; score: number; bet?: number } | undefined;
+  playerSeat: 0 | 1;
+  winnerId?: string;
+  history: Array<{
+    round: number;
+    playerA: RPSType;
+    playerB: RPSType;
+    winner: "playerA" | "playerB" | "draw";
+    scoreA: number;
+    scoreB: number;
+  }>;
+  fallbackBet: number;
+  onRematch: () => void;
+  onReturnToLobby: () => void;
+}) {
+  if (!visible) return null;
+
+  const won = winnerId === you?.id;
+  const wager = you?.bet ?? fallbackBet;
+  const chipDelta = won ? wager : -wager;
+  const finalScore = `${you?.score ?? 0} - ${opponent?.score ?? 0}`;
+
+  function moveFor(entry: (typeof history)[number], seat: 0 | 1) {
+    return seat === 0 ? entry.playerA : entry.playerB;
+  }
+
+  function resultFor(entry: (typeof history)[number]) {
+    if (entry.winner === "draw") return "Draw";
+    const playerWon = (playerSeat === 0 && entry.winner === "playerA") || (playerSeat === 1 && entry.winner === "playerB");
+    return playerWon ? "Win" : "Loss";
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-auto mt-5 w-full max-w-4xl border border-paper/55 bg-black/85 p-4 shadow-neon"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.24em] text-pixel/60">Match Summary</div>
+          <h3 className="mt-1 font-display text-lg uppercase tracking-[0.18em] text-paper">{won ? "Victory" : "Defeat"}</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-right">
+          <div className="border border-paper/25 px-3 py-2">
+            <div className="terminal-hash text-[9px] uppercase tracking-widest text-pixel/55">Final Score</div>
+            <div className="text-lg text-paper">{finalScore}</div>
+          </div>
+          <div className="border border-paper/25 px-3 py-2">
+            <div className="terminal-hash text-[9px] uppercase tracking-widest text-pixel/55">Chips</div>
+            <div className={`text-lg ${chipDelta >= 0 ? "text-mint" : "text-magenta"}`}>
+              {chipDelta >= 0 ? "+" : ""}
+              {chipDelta}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        {history.map((entry) => (
+          <div
+            key={`${entry.round}-${entry.playerA}-${entry.playerB}`}
+            className="grid grid-cols-[4.5rem_1fr_5rem] items-center gap-3 border border-paper/20 bg-black/55 px-3 py-2 text-xs text-paper/75"
+          >
+            <span className="terminal-hash uppercase tracking-widest text-pixel/55">Round {entry.round}</span>
+            <span className="truncate text-center">
+              {moveFor(entry, playerSeat)} vs {moveFor(entry, playerSeat === 0 ? 1 : 0)}
+            </span>
+            <span className={`text-right uppercase ${resultFor(entry) === "Win" ? "text-mint" : resultFor(entry) === "Loss" ? "text-magenta" : "text-paper/55"}`}>
+              {resultFor(entry)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button
+          onClick={onRematch}
+          className="inline-flex items-center justify-center gap-2 border border-paper/60 bg-paper/10 px-5 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15"
+        >
+          <Swords size={15} /> Rematch
+        </button>
+        <button
+          onClick={onReturnToLobby}
+          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-5 py-2 text-sm uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"
+        >
+          <Home size={15} /> Return to Lobby
+        </button>
+      </div>
+    </motion.div>
   );
 }
 function getRoundBanner({
@@ -531,16 +847,20 @@ function VersusArena({
   countdown: string | null;
 }) {
   return (
-    <div className="relative mt-6 grid shrink-0 grid-cols-1 items-center justify-center gap-4 overflow-hidden md:grid-cols-[minmax(0,22rem)_5rem_minmax(0,22rem)]">
+    <div className="relative mx-auto mt-6 grid w-full max-w-5xl shrink-0 grid-cols-1 items-center justify-center gap-4 overflow-hidden border border-paper/25 bg-black/45 p-4 shadow-[inset_0_0_42px_rgba(244,241,232,0.05)] md:grid-cols-[minmax(0,22rem)_6rem_minmax(0,22rem)]">
+      <div className="pointer-events-none absolute inset-0 opacity-45 [background-image:linear-gradient(rgba(244,241,232,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.06)_1px,transparent_1px)] [background-size:18px_18px]" />
+      <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-gradient-to-b from-transparent via-paper/35 to-transparent" />
       <motion.div animate={{ x: active ? 22 : 0, scale: active ? 1.04 : 1 }} transition={{ type: "spring", stiffness: 180, damping: 18 }}>
         {left}
       </motion.div>
-      <div className="grid min-h-16 place-items-center">
+      <div className="relative z-10 grid min-h-24 place-items-center">
+        <div className="absolute h-24 w-24 rounded-full border border-paper/25 bg-black/70 shadow-[0_0_36px_rgba(244,241,232,0.14)]" />
+        <div className="absolute h-14 w-14 rounded-full border border-mint/25 shadow-[0_0_28px_rgba(39,246,231,0.18)]" />
         <motion.div
           key={countdown ?? "vs"}
-          initial={{ scale: 0.72, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="font-display text-lg uppercase tracking-[0.2em] text-paper neon-text"
+          initial={{ scale: 0.72, opacity: 0, rotateX: -22 }}
+          animate={{ scale: 1, opacity: 1, rotateX: 0 }}
+          className="relative font-display text-lg uppercase tracking-[0.2em] text-paper neon-text"
         >
           {countdown ?? "VS"}
         </motion.div>
@@ -641,8 +961,9 @@ function Fighter({
   avatarUrl?: string | null;
 }) {
   return (
-    <motion.div layout className="pixel-card p-3 text-center">
-      <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-widest text-white/50">
+    <motion.div layout className="relative z-10 border border-paper/55 bg-black/75 p-3 text-center shadow-[inset_0_0_28px_rgba(244,241,232,0.06)]">
+      <div className="pointer-events-none absolute inset-x-3 top-10 h-px bg-gradient-to-r from-transparent via-paper/35 to-transparent" />
+      <div className="flex min-h-8 flex-wrap items-center justify-center gap-2 text-xs uppercase tracking-widest text-white/50">
         {avatarUrl ? (
           <Image
             src={avatarUrl}
@@ -661,26 +982,52 @@ function Fighter({
         ) : null}
         {status ? <span className="border border-paper/20 px-1.5 py-0.5 text-[9px] text-pixel/60">{status}</span> : null}
       </div>
-      {fighter ? (
-        <Image
-          src={typeImages[fighter.type]}
-          alt={`${fighter.type} fighter`}
-          width={96}
-          height={96}
-          className="mx-auto mt-2 h-24 w-24 object-contain"
-        />
-      ) : hiddenPick ? (
-        <motion.div
-          animate={{ boxShadow: ["0 0 0 rgba(244,241,232,0)", "0 0 24px rgba(244,241,232,0.35)", "0 0 0 rgba(244,241,232,0)"] }}
-          transition={{ duration: 1.2, repeat: Infinity }}
-          className="mx-auto mt-2 grid h-24 w-24 place-items-center border border-paper/40 bg-black/85"
-        >
-          <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-paper/70">Locked</span>
-        </motion.div>
-      ) : (
-        <div className="mx-auto mt-2 h-24 w-24 animate-pulse bg-white/10" />
-      )}
+      <div className="relative mx-auto mt-4 grid h-36 w-36 place-items-center">
+        <div className="absolute inset-0 rotate-45 border border-paper/15 bg-paper/5" />
+        <div className="absolute h-28 w-28 rounded-full border border-paper/20 bg-black/70" />
+        {fighter ? (
+          <motion.div
+            initial={{ y: 12, opacity: 0, scale: 0.86 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            className="relative grid h-28 w-28 place-items-center rounded-full border border-paper/50 bg-paper shadow-[0_0_24px_rgba(244,241,232,0.18)]"
+          >
+            <Image
+              src={typeImages[fighter.type]}
+              alt={`${fighter.type} fighter`}
+              width={104}
+              height={104}
+              className="h-24 w-24 object-contain drop-shadow-[0_0_12px_rgba(0,0,0,0.5)]"
+            />
+          </motion.div>
+        ) : hiddenPick ? (
+          <LockedFighterBack />
+        ) : (
+          <div className="relative grid h-28 w-28 place-items-center border border-paper/25 bg-black/80">
+            <div className="h-16 w-16 animate-pulse border border-paper/15 bg-paper/10" />
+          </div>
+        )}
+      </div>
       <div className="mt-2 font-display text-base text-white">{fighter?.type ?? (locked ? "Locked" : "Awaiting")}</div>
+    </motion.div>
+  );
+}
+
+function LockedFighterBack() {
+  return (
+    <motion.div
+      animate={{
+        boxShadow: ["0 0 0 rgba(244,241,232,0)", "0 0 28px rgba(244,241,232,0.34)", "0 0 0 rgba(244,241,232,0)"],
+        rotateY: [0, 4, -4, 0]
+      }}
+      transition={{ duration: 1.4, repeat: Infinity }}
+      className="relative grid h-28 w-24 place-items-center overflow-hidden border border-paper/60 bg-black/90"
+    >
+      <div className="absolute inset-2 border border-paper/20" />
+      <div className="absolute inset-0 opacity-50 [background-image:linear-gradient(rgba(244,241,232,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.08)_1px,transparent_1px)] [background-size:10px_10px]" />
+      <div className="relative grid h-14 w-14 place-items-center rounded-full border border-mint/40 text-mint shadow-[0_0_20px_rgba(39,246,231,0.2)]">
+        <Swords size={20} />
+      </div>
+      <span className="relative terminal-hash text-[9px] uppercase tracking-[0.22em] text-paper/70">Locked</span>
     </motion.div>
   );
 }
