@@ -14,6 +14,7 @@ A browser-based 3D Normies casino arcade built with Next.js, React Three Fiber, 
 - Web Audio API for browser-safe synthesized arcade feedback
 - Privy for wallet/email login
 - PostgreSQL with Prisma for user profiles, wallets, chip accounts, sessions, and leaderboard data
+- PartyKit for realtime PvP RPS rooms
 
 ## Run Locally
 
@@ -28,6 +29,7 @@ Create `.env.local`:
 ```bash
 NEXT_PUBLIC_PRIVY_APP_ID="your-privy-app-id"
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/normie_arcade?schema=public"
+NEXT_PUBLIC_PARTYKIT_HOST="localhost:1999"
 ```
 
 Generate Prisma Client:
@@ -46,6 +48,12 @@ Start the dev server:
 
 ```bash
 npm run dev
+```
+
+Start the PartyKit PvP room server in another terminal:
+
+```bash
+npm run party:dev
 ```
 
 Then open `http://localhost:3000`.
@@ -143,6 +151,9 @@ Human, Cat, and Alien form a best-of-3 arena:
 - Alien beats Human
 
 Every round resolves the selected type against an NPC type and displays the matching local Normies-style type art.
+
+The RPS panel also includes a PartyKit-powered PvP mode for 1v1 quick matches. Run `npm run party:dev`
+alongside `npm run dev`, then choose `PvP 1v1` in the RPS game.
 
 ### Normie DNA Poker
 

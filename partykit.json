@@ -1,0 +1,5 @@
+{
+  "name": "normie-arcade-rps",
+  "main": "party/rps.ts",
+  "compatibilityDate": "2025-01-01"
+}
