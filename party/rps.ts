@@ -49,6 +49,24 @@ type MatchState = {
   message: string;
 };
 
+type PokerPlayer = {
+  id: string;
+  name: string;
+  seat: number;
+  connected: boolean;
+  ready: boolean;
+  isNormieHolder?: boolean;
+  selectedNormieId?: number | null;
+  avatarUrl?: string | null;
+};
+
+type PokerState = {
+  phase: "waiting" | "ready";
+  players: PokerPlayer[];
+  maxPlayers: number;
+  message: string;
+};
+
 type ClientMessage =
   | {
       type: "join";
@@ -62,6 +80,17 @@ type ClientMessage =
     }
   | { type: "pick"; playerId: string; pick: RPSType }
   | { type: "reset"; playerId: string };
+
+type PokerClientMessage =
+  | {
+      type: "poker_join";
+      playerId: string;
+      name?: string;
+      isNormieHolder?: boolean;
+      selectedNormieId?: number | null;
+      avatarUrl?: string | null;
+    }
+  | { type: "poker_ready"; playerId: string };
 
 const picks: RPSType[] = ["Human", "Cat", "Alien"];
 
@@ -79,6 +108,7 @@ function cleanPlayerName(name?: string) {
 
 export default class RPSParty {
   private connections = new Map<string, string>();
+  private pokerConnections = new Map<string, string>();
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
   private matchId = this.createMatchId();
@@ -89,14 +119,39 @@ export default class RPSParty {
     history: [],
     message: "Waiting for a second challenger."
   };
+  private pokerState: PokerState = {
+    phase: "waiting",
+    players: [],
+    maxPlayers: 5,
+    message: "Waiting for players to sit at the DNA Poker table."
+  };
 
   constructor(readonly room: PartyRoom) {}
 
   onConnect(connection: PartyConnection) {
+    if (this.isPokerRoom()) {
+      connection.send(JSON.stringify({ type: "poker_state", state: this.publicPokerState() }));
+      return;
+    }
+
     connection.send(JSON.stringify({ type: "state", state: this.publicState() }));
   }
 
   async onClose(connection: PartyConnection) {
+    const pokerPlayerId = this.pokerConnections.get(connection.id);
+    if (pokerPlayerId) {
+      this.pokerConnections.delete(connection.id);
+      const pokerPlayer = this.pokerState.players.find((player) => player.id === pokerPlayerId);
+      if (pokerPlayer) {
+        pokerPlayer.connected = false;
+        pokerPlayer.ready = false;
+        this.updatePokerPhase();
+        this.pokerState.message = `${pokerPlayer.name} disconnected. Their seat is waiting.`;
+        this.broadcastPoker();
+      }
+      return;
+    }
+
     const playerId = this.connections.get(connection.id);
     if (!playerId) return;
 
@@ -120,6 +175,12 @@ export default class RPSParty {
   }
 
   async onMessage(message: string, connection: PartyConnection) {
+    const pokerData = this.parsePokerMessage(message);
+    if (pokerData) {
+      this.handlePokerMessage(pokerData, connection);
+      return;
+    }
+
     const data = this.parseMessage(message);
     if (!data) return;
 
@@ -136,6 +197,90 @@ export default class RPSParty {
     if (data.type === "reset") {
       await this.reset(data.playerId);
     }
+  }
+
+  private parsePokerMessage(message: string): PokerClientMessage | null {
+    try {
+      const data = JSON.parse(message) as PokerClientMessage;
+      if (data.type === "poker_join" && typeof data.playerId === "string") {
+        return {
+          ...data,
+          isNormieHolder: Boolean(data.isNormieHolder),
+          selectedNormieId: typeof data.selectedNormieId === "number" ? data.selectedNormieId : null,
+          avatarUrl: typeof data.avatarUrl === "string" ? data.avatarUrl.slice(0, 240) : null
+        };
+      }
+      if (data.type === "poker_ready" && typeof data.playerId === "string") return data;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private handlePokerMessage(data: PokerClientMessage, connection: PartyConnection) {
+    if (data.type === "poker_join") {
+      this.joinPoker(data, connection);
+      return;
+    }
+
+    if (data.type === "poker_ready") {
+      this.togglePokerReady(data.playerId);
+    }
+  }
+
+  private joinPoker(data: Extract<PokerClientMessage, { type: "poker_join" }>, connection: PartyConnection) {
+    const existing = this.pokerState.players.find((player) => player.id === data.playerId);
+
+    if (existing) {
+      existing.connected = true;
+      existing.name = cleanPlayerName(data.name);
+      existing.isNormieHolder = data.isNormieHolder;
+      existing.selectedNormieId = data.selectedNormieId;
+      existing.avatarUrl = data.avatarUrl;
+      this.pokerConnections.set(connection.id, existing.id);
+    } else {
+      this.pokerState.players = this.pokerState.players.filter((player) => player.connected);
+      const occupiedSeats = new Set(this.pokerState.players.map((player) => player.seat));
+      const seat = Array.from({ length: this.pokerState.maxPlayers }, (_, index) => index).find((index) => !occupiedSeats.has(index));
+
+      if (seat === undefined) {
+        connection.send(JSON.stringify({ type: "full", message: "This DNA Poker table is full. Create a new room or join another invite." }));
+        return;
+      }
+
+      this.pokerState.players.push({
+        id: data.playerId,
+        name: cleanPlayerName(data.name),
+        seat,
+        connected: true,
+        ready: false,
+        isNormieHolder: data.isNormieHolder,
+        selectedNormieId: data.selectedNormieId,
+        avatarUrl: data.avatarUrl
+      });
+      this.pokerConnections.set(connection.id, data.playerId);
+    }
+
+    this.pokerState.players.sort((a, b) => a.seat - b.seat);
+    this.updatePokerPhase();
+    this.pokerState.message = "Table joined. Toggle ready when you want to start.";
+    this.broadcastPoker();
+  }
+
+  private togglePokerReady(playerId: string) {
+    const player = this.pokerState.players.find((item) => item.id === playerId && item.connected);
+    if (!player) return;
+
+    player.ready = !player.ready;
+    this.updatePokerPhase();
+    this.pokerState.message = player.ready ? `${player.name} is ready.` : `${player.name} is no longer ready.`;
+    this.broadcastPoker();
+  }
+
+  private updatePokerPhase() {
+    const connectedPlayers = this.pokerState.players.filter((player) => player.connected);
+    this.pokerState.phase =
+      connectedPlayers.length >= 2 && connectedPlayers.every((player) => player.ready) ? "ready" : "waiting";
   }
 
   private parseMessage(message: string): ClientMessage | null {
@@ -377,8 +522,23 @@ export default class RPSParty {
     };
   }
 
+  private publicPokerState() {
+    return {
+      ...this.pokerState,
+      players: this.pokerState.players.map((player) => ({ ...player }))
+    };
+  }
+
   private broadcast() {
     this.room.broadcast(JSON.stringify({ type: "state", state: this.publicState() }));
+  }
+
+  private broadcastPoker() {
+    this.room.broadcast(JSON.stringify({ type: "poker_state", state: this.publicPokerState() }));
+  }
+
+  private isPokerRoom() {
+    return (this.room.id ?? "").startsWith("poker-");
   }
 
   private createMatchId() {
