@@ -53,6 +53,7 @@ function cleanPlayerName(name?: string) {
 
 export default class RPSParty {
   private connections = new Map<string, string>();
+  private revealTimer?: ReturnType<typeof setTimeout>;
   private state: MatchState = {
     phase: "waiting",
     players: [],
@@ -75,6 +76,10 @@ export default class RPSParty {
     if (player) {
       player.connected = false;
       player.pick = undefined;
+      if (this.revealTimer) {
+        clearTimeout(this.revealTimer);
+        this.revealTimer = undefined;
+      }
       this.state.message = `${player.name} disconnected. Waiting for players.`;
       this.state.phase = this.state.players.filter((item) => item.connected).length >= 2 ? this.state.phase : "waiting";
       this.broadcast();
@@ -164,7 +169,7 @@ export default class RPSParty {
     this.broadcast();
 
     if (this.state.players.length === 2 && this.state.players.every((item) => item.pick)) {
-      this.revealRound();
+      this.revealTimer = setTimeout(() => this.revealRound(), 3000);
     }
   }
 
@@ -208,6 +213,10 @@ export default class RPSParty {
     if (this.state.phase !== "finished") return;
     if (!this.state.players.some((player) => player.id === playerId)) return;
 
+    if (this.revealTimer) {
+      clearTimeout(this.revealTimer);
+      this.revealTimer = undefined;
+    }
     this.state.players = this.state.players.map((player) => ({ ...player, score: 0, pick: undefined }));
     this.state.phase = this.state.players.filter((player) => player.connected).length === 2 ? "playing" : "waiting";
     this.state.round = 1;

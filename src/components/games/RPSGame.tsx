@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Copy, Search, Swords, Users, X } from "lucide-react";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { rpsWinner } from "@/lib/gameMath";
 import { useRpsPvp } from "@/hooks/useRpsPvp";
 import { createRoomCode, normalizeRoomCode } from "@/lib/rpsPvp";
@@ -199,6 +199,10 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const playerSeat = you?.seat ?? 0;
   const playerPick = reveal ? (playerSeat === 0 ? reveal.playerA : reveal.playerB) : undefined;
   const opponentPick = reveal ? (playerSeat === 0 ? reveal.playerB : reveal.playerA) : undefined;
+  const bothLocked = connected && state.phase === "playing" && Boolean(you?.pick) && Boolean(opponent?.pick);
+  const [countdown, setCountdown] = useState<string | null>(null);
+  const [effect, setEffect] = useState<"win" | "loss" | "draw" | null>(null);
+  const [seenReveal, setSeenReveal] = useState<string | null>(null);
   const phaseLabel = getPvpPhaseLabel({
     connected,
     error,
@@ -218,6 +222,56 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
         ? `MATCH WIN - final score ${you?.score ?? 0}-${opponent?.score ?? 0}.`
         : `MATCH LOSS - final score ${you?.score ?? 0}-${opponent?.score ?? 0}.`
       : state.message);
+  const banner = getRoundBanner({
+    connected,
+    phase: state.phase,
+    round: state.round,
+    bothLocked,
+    countdown,
+    reveal,
+    playerSeat,
+    playerScore: you?.score ?? 0,
+    opponentScore: opponent?.score ?? 0,
+    winnerId: state.winnerId,
+    playerId
+  });
+
+  useEffect(() => {
+    if (!bothLocked) {
+      setCountdown(null);
+      return;
+    }
+
+    setCountdown("3");
+    playTone(360, 0.08, "square");
+    const sequence = ["2", "1", "Reveal"];
+    let index = 0;
+    const timer = window.setInterval(() => {
+      setCountdown(sequence[index] ?? null);
+      playTone(index === 2 ? 720 : 420 + index * 80, 0.08, "square");
+      index += 1;
+      if (index > sequence.length) {
+        window.clearInterval(timer);
+      }
+    }, 750);
+
+    return () => window.clearInterval(timer);
+  }, [bothLocked]);
+
+  useEffect(() => {
+    if (!reveal) return;
+    const key = `${state.round}-${reveal.playerA}-${reveal.playerB}-${reveal.winner}`;
+    if (seenReveal === key) return;
+
+    setSeenReveal(key);
+    const playerWon =
+      reveal.winner !== "draw" && ((playerSeat === 0 && reveal.winner === "playerA") || (playerSeat === 1 && reveal.winner === "playerB"));
+    const nextEffect = reveal.winner === "draw" ? "draw" : playerWon ? "win" : "loss";
+    setEffect(nextEffect);
+    playTone(nextEffect === "win" ? 740 : nextEffect === "loss" ? 190 : 430, 0.2, nextEffect === "loss" ? "square" : "triangle");
+    const timer = window.setTimeout(() => setEffect(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [playerSeat, reveal, seenReveal, state.round]);
 
   function inviteUrl() {
     if (typeof window === "undefined") return "";
@@ -272,7 +326,9 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   }
 
   return (
-    <>
+    <div className="relative">
+      <VisualPulse effect={effect} />
+      <ChipBurst active={effect === "win" || (state.phase === "finished" && state.winnerId === playerId)} />
       <div className="mx-auto mt-6 grid w-full max-w-4xl shrink-0 gap-3 md:grid-cols-[1fr_auto_auto]">
         <label className="pixel-card flex min-w-0 items-center gap-3 px-3 py-2">
           <span className="terminal-hash shrink-0 text-[10px] uppercase tracking-[0.22em] text-pixel/60">Room</span>
@@ -301,15 +357,29 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
       <div className="mx-auto mt-3 flex w-full max-w-4xl shrink-0 items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
         <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">{phaseLabel}</span>
       </div>
-      <div className="mt-8 grid shrink-0 grid-cols-1 justify-center gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,22rem)]">
-        <Fighter label={you?.name ?? "You"} fighter={playerPick ? { type: playerPick } : null} locked={Boolean(you?.pick)} status={connected ? "Connected" : "Offline"} />
-        <Fighter
-          label={opponent?.name ?? "Opponent"}
-          fighter={opponentPick ? { type: opponentPick } : null}
-          locked={Boolean(opponent?.pick)}
-          status={opponentDisconnected ? "Disconnected" : opponent?.connected ? "Connected" : "Searching"}
-        />
-      </div>
+      <RoundBanner text={banner} effect={effect} />
+      <VersusArena
+        left={
+          <Fighter
+            label={you?.name ?? "You"}
+            fighter={playerPick ? { type: playerPick } : null}
+            locked={Boolean(you?.pick)}
+            status={connected ? "Connected" : "Offline"}
+            hiddenPick={Boolean(you?.pick) && !playerPick}
+          />
+        }
+        right={
+          <Fighter
+            label={opponent?.name ?? "Opponent"}
+            fighter={opponentPick ? { type: opponentPick } : null}
+            locked={Boolean(opponent?.pick)}
+            status={opponentDisconnected ? "Disconnected" : opponent?.connected ? "Connected" : "Searching"}
+            hiddenPick={Boolean(opponent?.pick) && !opponentPick}
+          />
+        }
+        active={state.phase === "revealed" || state.phase === "finished"}
+        countdown={countdown}
+      />
       <div className="mt-7 flex shrink-0 flex-wrap items-center justify-center gap-2">
         {!connected ? (
           <button
@@ -367,7 +437,135 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
           <div className="truncate text-sm text-paper">{roundResult}</div>
         </div>
       </div>
-    </>
+    </div>
+  );
+}
+
+function getRoundBanner({
+  connected,
+  phase,
+  round,
+  bothLocked,
+  countdown,
+  reveal,
+  playerSeat,
+  playerScore,
+  opponentScore,
+  winnerId,
+  playerId
+}: {
+  connected: boolean;
+  phase: "waiting" | "playing" | "revealed" | "finished";
+  round: number;
+  bothLocked: boolean;
+  countdown: string | null;
+  reveal: { winner: "playerA" | "playerB" | "draw" } | undefined;
+  playerSeat: 0 | 1;
+  playerScore: number;
+  opponentScore: number;
+  winnerId?: string;
+  playerId: string | null;
+}) {
+  if (!connected) return "RPS Arena";
+  if (phase === "waiting") return "Searching";
+  if (bothLocked) return countdown ? `${countdown}` : "Moves Locked";
+  if (phase === "finished") return winnerId === playerId ? "Match Win" : "Match Loss";
+  if (phase === "revealed" && reveal) {
+    if (reveal.winner === "draw") return "Draw Round";
+    const playerWon = (playerSeat === 0 && reveal.winner === "playerA") || (playerSeat === 1 && reveal.winner === "playerB");
+    return playerWon ? "Round Win" : "Round Loss";
+  }
+  if (playerScore === 1 || opponentScore === 1) return "Match Point";
+  return `Round ${round}`;
+}
+
+function RoundBanner({ text, effect }: { text: string; effect: "win" | "loss" | "draw" | null }) {
+  return (
+    <motion.div
+      key={text}
+      initial={{ y: -8, opacity: 0, scale: 0.96 }}
+      animate={{ y: 0, opacity: 1, scale: 1 }}
+      className={`mx-auto mt-5 w-fit border px-6 py-2 text-center font-display text-sm uppercase tracking-[0.28em] shadow-neon ${
+        effect === "win"
+          ? "border-mint text-mint"
+          : effect === "loss"
+          ? "border-magenta text-magenta"
+          : "border-paper/60 text-paper"
+      }`}
+    >
+      {text}
+    </motion.div>
+  );
+}
+
+function VersusArena({
+  left,
+  right,
+  active,
+  countdown
+}: {
+  left: React.ReactNode;
+  right: React.ReactNode;
+  active: boolean;
+  countdown: string | null;
+}) {
+  return (
+    <div className="relative mt-6 grid shrink-0 grid-cols-1 items-center justify-center gap-4 overflow-hidden md:grid-cols-[minmax(0,22rem)_5rem_minmax(0,22rem)]">
+      <motion.div animate={{ x: active ? 22 : 0, scale: active ? 1.04 : 1 }} transition={{ type: "spring", stiffness: 180, damping: 18 }}>
+        {left}
+      </motion.div>
+      <div className="grid min-h-16 place-items-center">
+        <motion.div
+          key={countdown ?? "vs"}
+          initial={{ scale: 0.72, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="font-display text-lg uppercase tracking-[0.2em] text-paper neon-text"
+        >
+          {countdown ?? "VS"}
+        </motion.div>
+      </div>
+      <motion.div animate={{ x: active ? -22 : 0, scale: active ? 1.04 : 1 }} transition={{ type: "spring", stiffness: 180, damping: 18 }}>
+        {right}
+      </motion.div>
+    </div>
+  );
+}
+
+function VisualPulse({ effect }: { effect: "win" | "loss" | "draw" | null }) {
+  if (!effect) return null;
+
+  return (
+    <motion.div
+      aria-hidden
+      initial={{ opacity: 0 }}
+      animate={{ opacity: [0, 0.22, 0] }}
+      transition={{ duration: 0.95 }}
+      className={`pointer-events-none absolute inset-x-[-1rem] top-20 z-0 h-80 border ${
+        effect === "win" ? "border-mint bg-mint/15" : effect === "loss" ? "border-magenta bg-magenta/15" : "border-paper/40 bg-paper/10"
+      }`}
+    />
+  );
+}
+
+function ChipBurst({ active }: { active: boolean }) {
+  if (!active) return null;
+
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-52 z-20 h-1 w-1">
+      {Array.from({ length: 14 }, (_, index) => {
+        const angle = (Math.PI * 2 * index) / 14;
+        const distance = 72 + (index % 4) * 12;
+        return (
+          <motion.span
+            key={index}
+            initial={{ x: 0, y: 0, opacity: 1, scale: 0.6 }}
+            animate={{ x: Math.cos(angle) * distance, y: Math.sin(angle) * distance, opacity: 0, scale: 1 }}
+            transition={{ duration: 0.9, ease: "easeOut" }}
+            className="absolute h-3 w-3 rounded-full border border-paper bg-black shadow-neon"
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -406,12 +604,14 @@ function Fighter({
   label,
   fighter,
   locked = false,
-  status
+  status,
+  hiddenPick = false
 }: {
   label: string;
   fighter: FighterPick | null;
   locked?: boolean;
   status?: string;
+  hiddenPick?: boolean;
 }) {
   return (
     <motion.div layout className="pixel-card p-3 text-center">
@@ -427,6 +627,14 @@ function Fighter({
           height={96}
           className="mx-auto mt-2 h-24 w-24 object-contain"
         />
+      ) : hiddenPick ? (
+        <motion.div
+          animate={{ boxShadow: ["0 0 0 rgba(244,241,232,0)", "0 0 24px rgba(244,241,232,0.35)", "0 0 0 rgba(244,241,232,0)"] }}
+          transition={{ duration: 1.2, repeat: Infinity }}
+          className="mx-auto mt-2 grid h-24 w-24 place-items-center border border-paper/40 bg-black/85"
+        >
+          <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-paper/70">Locked</span>
+        </motion.div>
       ) : (
         <div className="mx-auto mt-2 h-24 w-24 animate-pulse bg-white/10" />
       )}
