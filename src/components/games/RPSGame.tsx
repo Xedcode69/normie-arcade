@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Copy, Search, Swords, Users, X } from "lucide-react";
+import { Copy, Home, Search, Swords, Users, X } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useState } from "react";
@@ -200,6 +200,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   }));
   const setBalance = useChipStore((store) => store.setBalance);
   const notify = useArcadeStore((store) => store.notify);
+  const setActiveGame = useArcadeStore((store) => store.setActiveGame);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
   const waitingForOpponent = connected && state.phase === "waiting" && !opponent?.connected;
@@ -375,6 +376,11 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     reset();
   }
 
+  function returnToLobby() {
+    disconnect();
+    setActiveGame("lobby");
+  }
+
   return (
     <div className="relative">
       <VisualPulse effect={effect} />
@@ -535,7 +541,124 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
           <div className="truncate text-sm text-paper">{roundResult}</div>
         </div>
       </div>
+      <PvPMatchSummary
+        visible={state.phase === "finished"}
+        you={you}
+        opponent={opponent}
+        playerSeat={playerSeat}
+        winnerId={state.winnerId}
+        history={state.history}
+        fallbackBet={bet}
+        onRematch={handleReset}
+        onReturnToLobby={returnToLobby}
+      />
     </div>
+  );
+}
+
+function PvPMatchSummary({
+  visible,
+  you,
+  opponent,
+  playerSeat,
+  winnerId,
+  history,
+  fallbackBet,
+  onRematch,
+  onReturnToLobby
+}: {
+  visible: boolean;
+  you: { id: string; name: string; score: number; bet?: number } | undefined;
+  opponent: { id: string; name: string; score: number; bet?: number } | undefined;
+  playerSeat: 0 | 1;
+  winnerId?: string;
+  history: Array<{
+    round: number;
+    playerA: RPSType;
+    playerB: RPSType;
+    winner: "playerA" | "playerB" | "draw";
+    scoreA: number;
+    scoreB: number;
+  }>;
+  fallbackBet: number;
+  onRematch: () => void;
+  onReturnToLobby: () => void;
+}) {
+  if (!visible) return null;
+
+  const won = winnerId === you?.id;
+  const wager = you?.bet ?? fallbackBet;
+  const chipDelta = won ? wager : -wager;
+  const finalScore = `${you?.score ?? 0} - ${opponent?.score ?? 0}`;
+
+  function moveFor(entry: (typeof history)[number], seat: 0 | 1) {
+    return seat === 0 ? entry.playerA : entry.playerB;
+  }
+
+  function resultFor(entry: (typeof history)[number]) {
+    if (entry.winner === "draw") return "Draw";
+    const playerWon = (playerSeat === 0 && entry.winner === "playerA") || (playerSeat === 1 && entry.winner === "playerB");
+    return playerWon ? "Win" : "Loss";
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-auto mt-5 w-full max-w-4xl border border-paper/55 bg-black/85 p-4 shadow-neon"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.24em] text-pixel/60">Match Summary</div>
+          <h3 className="mt-1 font-display text-lg uppercase tracking-[0.18em] text-paper">{won ? "Victory" : "Defeat"}</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-right">
+          <div className="border border-paper/25 px-3 py-2">
+            <div className="terminal-hash text-[9px] uppercase tracking-widest text-pixel/55">Final Score</div>
+            <div className="text-lg text-paper">{finalScore}</div>
+          </div>
+          <div className="border border-paper/25 px-3 py-2">
+            <div className="terminal-hash text-[9px] uppercase tracking-widest text-pixel/55">Chips</div>
+            <div className={`text-lg ${chipDelta >= 0 ? "text-mint" : "text-magenta"}`}>
+              {chipDelta >= 0 ? "+" : ""}
+              {chipDelta}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        {history.map((entry) => (
+          <div
+            key={`${entry.round}-${entry.playerA}-${entry.playerB}`}
+            className="grid grid-cols-[4.5rem_1fr_5rem] items-center gap-3 border border-paper/20 bg-black/55 px-3 py-2 text-xs text-paper/75"
+          >
+            <span className="terminal-hash uppercase tracking-widest text-pixel/55">Round {entry.round}</span>
+            <span className="truncate text-center">
+              {moveFor(entry, playerSeat)} vs {moveFor(entry, playerSeat === 0 ? 1 : 0)}
+            </span>
+            <span className={`text-right uppercase ${resultFor(entry) === "Win" ? "text-mint" : resultFor(entry) === "Loss" ? "text-magenta" : "text-paper/55"}`}>
+              {resultFor(entry)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button
+          onClick={onRematch}
+          className="inline-flex items-center justify-center gap-2 border border-paper/60 bg-paper/10 px-5 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15"
+        >
+          <Swords size={15} /> Rematch
+        </button>
+        <button
+          onClick={onReturnToLobby}
+          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-5 py-2 text-sm uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"
+        >
+          <Home size={15} /> Return to Lobby
+        </button>
+      </div>
+    </motion.div>
   );
 }
 function getRoundBanner({

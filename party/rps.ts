@@ -33,10 +33,17 @@ type RoundReveal = {
   winner: "playerA" | "playerB" | "draw";
 };
 
+type RoundHistoryEntry = RoundReveal & {
+  round: number;
+  scoreA: number;
+  scoreB: number;
+};
+
 type MatchState = {
   phase: Phase;
   players: Player[];
   round: number;
+  history: RoundHistoryEntry[];
   reveal?: RoundReveal;
   winnerId?: string;
   message: string;
@@ -78,6 +85,7 @@ export default class RPSParty {
     phase: "waiting",
     players: [],
     round: 1,
+    history: [],
     message: "Waiting for a second challenger."
   };
 
@@ -239,6 +247,15 @@ export default class RPSParty {
     if (winner === "playerA") playerA.score += 1;
     if (winner === "playerB") playerB.score += 1;
 
+    this.state.history.push({
+      round: this.state.round,
+      playerA: playerA.pick,
+      playerB: playerB.pick,
+      winner,
+      scoreA: playerA.score,
+      scoreB: playerB.score
+    });
+
     this.state.phase = "revealed";
     this.state.reveal = { playerA: playerA.pick, playerB: playerB.pick, winner };
     this.state.message =
@@ -288,6 +305,7 @@ export default class RPSParty {
     const readyPlayers = this.state.players.filter((player) => player.connected && player.reserved);
     this.state.phase = readyPlayers.length === 2 ? "playing" : "waiting";
     this.state.round = 1;
+    this.state.history = [];
     this.state.reveal = undefined;
     this.state.winnerId = undefined;
     this.state.message = this.state.phase === "playing" ? "Rematch ready. Submit your type." : "Waiting for a second challenger.";
