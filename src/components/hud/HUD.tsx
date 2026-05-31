@@ -5,6 +5,7 @@ import { useArcadeStore } from "@/stores/arcadeStore";
 import { useAudioStore } from "@/stores/audioStore";
 import { AuthButton } from "./AuthButton";
 import { CreditSystem } from "./CreditSystem";
+import { ProfileButton } from "./ProfileButton";
 import { RotateScreenButton } from "./RotateScreenButton";
 
 export function HUD() {
@@ -21,6 +22,7 @@ export function HUD() {
         </div>
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <AuthButton />
+          <ProfileButton />
           <CreditSystem />
           <Metric icon={<Gamepad2 size={16} />} label="Game" value={activeGame} />
           <RotateScreenButton />

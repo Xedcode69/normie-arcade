@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
 type AccountProfile = {
+  username?: string | null;
+  displayName?: string | null;
   isNormieHolder: boolean;
   selectedNormieId?: number | null;
   selectedNormieImage?: string | null;
@@ -14,6 +16,8 @@ type AccountState = AccountProfile & {
 };
 
 const emptyProfile: AccountProfile = {
+  username: null,
+  displayName: null,
   isNormieHolder: false,
   selectedNormieId: null,
   selectedNormieImage: null,
