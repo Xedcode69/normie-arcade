@@ -19,6 +19,7 @@ import { BetControls } from "./BetControls";
 type Score = { player: number; npc: number };
 type FighterPick = { type: RPSType };
 type MatchMode = "solo" | "pvp";
+type RoomMode = "quick" | "create" | "join";
 
 const typeImages: Record<RPSType, string> = {
   Human: "/human.png",
@@ -186,6 +187,8 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     if (typeof window === "undefined") return "QUICKPLAY";
     return normalizeRoomCode(new URLSearchParams(window.location.search).get("rpsRoom") ?? "") || "QUICKPLAY";
   });
+  const [roomMode, setRoomMode] = useState<RoomMode>(() => (roomCode === "QUICKPLAY" ? "quick" : "join"));
+  const [joinCode, setJoinCode] = useState(() => (roomCode === "QUICKPLAY" ? "" : roomCode));
   const { connected, connect, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
   const { authenticated, getAccessToken, login } = usePrivy();
   const holderProfile = useAccountStore((store) => ({
@@ -283,7 +286,11 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   function inviteUrl() {
     if (typeof window === "undefined") return "";
     const url = new URL(window.location.href);
-    url.searchParams.set("rpsRoom", roomCode);
+    if (roomCode === "QUICKPLAY") {
+      url.searchParams.delete("rpsRoom");
+    } else {
+      url.searchParams.set("rpsRoom", roomCode);
+    }
     return url.toString();
   }
 
@@ -316,6 +323,25 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     });
   }
 
+  function selectRoomMode(mode: RoomMode) {
+    if (connected) return;
+    setRoomMode(mode);
+
+    if (mode === "quick") {
+      setRoomCode("QUICKPLAY");
+      return;
+    }
+
+    if (mode === "create") {
+      const nextCode = createRoomCode();
+      setRoomCode(nextCode);
+      setJoinCode(nextCode);
+      return;
+    }
+
+    setRoomCode(normalizeRoomCode(joinCode) || "QUICKPLAY");
+  }
+
   function cancelMatchmaking() {
     disconnect();
     notify({ kind: "info", title: "Matchmaking Canceled", body: "The server is refunding your reserved PvP wager." });
@@ -329,9 +355,20 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     notify({ kind: "info", title: "Invite Copied", body: `Room ${roomCode} link copied.` });
   }
 
-  function createRoom() {
+  function createPrivateRoom() {
     if (connected) return;
-    setRoomCode(createRoomCode());
+    const nextCode = createRoomCode();
+    setRoomMode("create");
+    setRoomCode(nextCode);
+    setJoinCode(nextCode);
+  }
+
+  function updateJoinCode(value: string) {
+    const nextCode = normalizeRoomCode(value);
+    setJoinCode(nextCode);
+    if (!connected && roomMode === "join") {
+      setRoomCode(nextCode || "QUICKPLAY");
+    }
   }
 
   function handleReset() {
@@ -342,30 +379,69 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     <div className="relative">
       <VisualPulse effect={effect} />
       <ChipBurst active={effect === "win" || (state.phase === "finished" && state.winnerId === playerId)} />
-      <div className="mx-auto mt-6 grid w-full max-w-4xl shrink-0 gap-3 md:grid-cols-[1fr_auto_auto]">
-        <label className="pixel-card flex min-w-0 items-center gap-3 px-3 py-2">
-          <span className="terminal-hash shrink-0 text-[10px] uppercase tracking-[0.22em] text-pixel/60">Room</span>
-          <input
-            value={roomCode}
-            disabled={connected}
-            onChange={(event) => setRoomCode(normalizeRoomCode(event.target.value) || "QUICKPLAY")}
-            className="min-w-0 flex-1 bg-transparent text-center font-display text-sm uppercase tracking-[0.22em] text-paper outline-none disabled:text-paper/60"
-            aria-label="RPS room code"
-          />
-        </label>
-        <button
-          onClick={createRoom}
-          disabled={connected}
-          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
-        >
-          <Users size={15} /> New Room
-        </button>
-        <button
-          onClick={copyInvite}
-          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"
-        >
-          <Copy size={15} /> Copy Link
-        </button>
+      <div className="mx-auto mt-6 w-full max-w-4xl shrink-0">
+        <div className="flex flex-wrap justify-center gap-2">
+          {(["quick", "create", "join"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => selectRoomMode(mode)}
+              disabled={connected}
+              className={`min-w-32 border px-4 py-2 text-xs uppercase tracking-widest transition disabled:opacity-50 ${
+                roomMode === mode ? "border-paper bg-paper/15 text-paper shadow-neon" : "border-paper/30 bg-black/70 text-paper/60 hover:border-paper/70"
+              }`}
+            >
+              {mode === "quick" ? "Quick Match" : mode === "create" ? "Create Room" : "Join Room"}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+          <div className="pixel-card flex min-w-0 items-center gap-3 px-3 py-2">
+            <span className="terminal-hash shrink-0 text-[10px] uppercase tracking-[0.22em] text-pixel/60">
+              {roomMode === "quick" ? "Match" : "Room"}
+            </span>
+            {roomMode === "join" && !connected ? (
+              <input
+                value={joinCode}
+                onChange={(event) => updateJoinCode(event.target.value)}
+                placeholder="ENTER CODE"
+                className="min-w-0 flex-1 bg-transparent text-center font-display text-sm uppercase tracking-[0.22em] text-paper outline-none placeholder:text-paper/25"
+                aria-label="RPS room code"
+              />
+            ) : (
+              <div className="min-w-0 flex-1 truncate text-center font-display text-sm uppercase tracking-[0.22em] text-paper/85">
+                {roomCode === "QUICKPLAY" ? "Quickplay" : roomCode}
+              </div>
+            )}
+          </div>
+
+          {roomMode === "create" && !connected ? (
+            <button
+              onClick={createPrivateRoom}
+              className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"
+            >
+              <Users size={15} /> Regenerate
+            </button>
+          ) : roomMode === "join" && !connected ? (
+            <button
+              onClick={() => setRoomCode(normalizeRoomCode(joinCode) || "QUICKPLAY")}
+              disabled={!joinCode}
+              className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
+            >
+              Use Code
+            </button>
+          ) : (
+            <div className="hidden md:block" />
+          )}
+
+          <button
+            onClick={copyInvite}
+            disabled={roomMode === "join" && !joinCode && !connected}
+            className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
+          >
+            <Copy size={15} /> Copy Invite
+          </button>
+        </div>
       </div>
       <div className="mx-auto mt-3 flex w-full max-w-4xl shrink-0 items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
         <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">{phaseLabel}</span>
