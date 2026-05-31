@@ -20,6 +20,7 @@ type Score = { player: number; npc: number };
 type FighterPick = { type: RPSType };
 type MatchMode = "solo" | "pvp";
 type RoomMode = "quick" | "create" | "join";
+const RPS_RECONNECT_KEY = "normie-rps-active-room";
 
 const typeImages: Record<RPSType, string> = {
   Human: "/human.png",
@@ -29,6 +30,14 @@ const typeImages: Record<RPSType, string> = {
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function friendlyPvpError(error: string | null) {
+  if (!error) return null;
+  if (error.toLowerCase().includes("full")) return error;
+  if (error.toLowerCase().includes("insufficient")) return "You do not have enough chips reserved for this PvP wager.";
+  if (error.toLowerCase().includes("connect")) return "The PvP room is not reachable. Make sure PartyKit is running, then try again.";
+  return error;
 }
 
 export function RPSGame() {
@@ -185,12 +194,21 @@ function RPSSolo({
 function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void }) {
   const [roomCode, setRoomCode] = useState(() => {
     if (typeof window === "undefined") return "QUICKPLAY";
-    return normalizeRoomCode(new URLSearchParams(window.location.search).get("rpsRoom") ?? "") || "QUICKPLAY";
+    const urlRoom = normalizeRoomCode(new URLSearchParams(window.location.search).get("rpsRoom") ?? "");
+    if (urlRoom) return urlRoom;
+    const stored = window.sessionStorage.getItem(RPS_RECONNECT_KEY);
+    if (!stored) return "QUICKPLAY";
+    try {
+      const parsed = JSON.parse(stored) as { roomCode?: string };
+      return normalizeRoomCode(parsed.roomCode ?? "") || "QUICKPLAY";
+    } catch {
+      return "QUICKPLAY";
+    }
   });
   const [roomMode, setRoomMode] = useState<RoomMode>(() => (roomCode === "QUICKPLAY" ? "quick" : "join"));
   const [joinCode, setJoinCode] = useState(() => (roomCode === "QUICKPLAY" ? "" : roomCode));
-  const { connected, connect, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
-  const { authenticated, getAccessToken, login } = usePrivy();
+  const { connected, connect, clearError, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
+  const { ready, authenticated, getAccessToken, login } = usePrivy();
   const holderProfile = useAccountStore((store) => ({
     username: store.username,
     displayName: store.displayName,
@@ -217,6 +235,8 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const previousYouLocked = useRef(false);
   const previousOpponentLocked = useRef(false);
   const previousPhase = useRef(state.phase);
+  const reconnectAttempted = useRef(false);
+  const friendlyError = friendlyPvpError(error);
   const phaseLabel = getPvpPhaseLabel({
     connected,
     error,
@@ -228,7 +248,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     hasOpponent: Boolean(opponent?.connected)
   });
   const roundResult =
-    error ??
+    friendlyError ??
     you?.accountError ??
     (opponentDisconnected
       ? `${opponent?.name ?? "Opponent"} disconnected. They can rejoin this room code.`
@@ -323,6 +343,45 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     return () => window.clearTimeout(timer);
   }, [playerSeat, reveal, seenReveal, state.round]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || reconnectAttempted.current || connected || !ready || !authenticated) return;
+    const stored = window.sessionStorage.getItem(RPS_RECONNECT_KEY);
+    if (!stored) return;
+
+    reconnectAttempted.current = true;
+    try {
+      const parsed = JSON.parse(stored) as { roomCode?: string; bet?: number; roomMode?: RoomMode };
+      const storedRoom = normalizeRoomCode(parsed.roomCode ?? "") || "QUICKPLAY";
+      setRoomCode(storedRoom);
+      setJoinCode(storedRoom === "QUICKPLAY" ? "" : storedRoom);
+      setRoomMode(parsed.roomMode ?? (storedRoom === "QUICKPLAY" ? "quick" : "join"));
+      if (typeof parsed.bet === "number") {
+        setBet(parsed.bet);
+      }
+
+      getAccessToken().then((token) => {
+        if (!token) return;
+        connect({
+          privyToken: token,
+          bet: typeof parsed.bet === "number" ? parsed.bet : bet,
+          name: holderProfile.displayName || holderProfile.username,
+          isNormieHolder: holderProfile.isNormieHolder,
+          selectedNormieId: holderProfile.selectedNormieId ?? null,
+          avatarUrl: holderProfile.selectedNormieImage ?? null
+        });
+        notify({ kind: "info", title: "Reconnected", body: `Rejoining ${storedRoom === "QUICKPLAY" ? "quick match" : `room ${storedRoom}`}.` });
+      });
+    } catch {
+      window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
+    }
+  }, [authenticated, bet, connect, connected, getAccessToken, holderProfile, notify, ready, setBet]);
+
+  useEffect(() => {
+    if (error?.toLowerCase().includes("full")) {
+      window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
+    }
+  }, [error]);
+
   function inviteUrl() {
     if (typeof window === "undefined") return "";
     const url = new URL(window.location.href);
@@ -361,10 +420,20 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
       selectedNormieId: holderProfile.selectedNormieId ?? null,
       avatarUrl: holderProfile.selectedNormieImage ?? null
     });
+
+    window.sessionStorage.setItem(
+      RPS_RECONNECT_KEY,
+      JSON.stringify({
+        roomCode,
+        roomMode,
+        bet
+      })
+    );
   }
 
   function selectRoomMode(mode: RoomMode) {
     if (connected) return;
+    clearError();
     setRoomMode(mode);
 
     if (mode === "quick") {
@@ -383,6 +452,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   }
 
   function cancelMatchmaking() {
+    window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
     disconnect();
     notify({ kind: "info", title: "Matchmaking Canceled", body: "The server is refunding your reserved PvP wager." });
   }
@@ -397,6 +467,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
 
   function createPrivateRoom() {
     if (connected) return;
+    clearError();
     const nextCode = createRoomCode();
     setRoomMode("create");
     setRoomCode(nextCode);
@@ -404,6 +475,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   }
 
   function updateJoinCode(value: string) {
+    clearError();
     const nextCode = normalizeRoomCode(value);
     setJoinCode(nextCode);
     if (!connected && roomMode === "join") {
@@ -415,7 +487,13 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     reset();
   }
 
+  function leaveMatch() {
+    window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
+    disconnect();
+  }
+
   function returnToLobby() {
+    window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
     disconnect();
     setActiveGame("lobby");
   }
@@ -489,7 +567,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
         </div>
       </div>
       <div className="mx-auto mt-3 flex w-full max-w-4xl shrink-0 items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
-        <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">{phaseLabel}</span>
+        <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${friendlyError ? "text-magenta" : "text-pixel/60"}`}>{phaseLabel}</span>
       </div>
       <RoundBanner text={banner} effect={effect} />
       <VersusArena
@@ -535,9 +613,9 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
           >
             <X size={15} /> Cancel Matchmaking
           </button>
-        ) : (
-          <button
-            onClick={disconnect}
+          ) : (
+            <button
+            onClick={leaveMatch}
             className="inline-flex min-w-32 items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-sm uppercase tracking-widest text-paper/70 transition hover:border-paper hover:text-paper"
           >
             Leave
@@ -553,7 +631,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
             <Swords size={15} /> {type}
           </button>
         ))}
-        <BetControls bet={bet} setBet={setBet} />
+        <BetControls bet={bet} setBet={setBet} disabled={connected} />
       </div>
       <div className="mt-5 flex shrink-0 flex-wrap justify-center gap-3">
         <div className="pixel-card px-5 py-2 text-sm text-paper">

@@ -79,6 +79,7 @@ function cleanPlayerName(name?: string) {
 
 export default class RPSParty {
   private connections = new Map<string, string>();
+  private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
   private matchId = this.createMatchId();
   private state: MatchState = {
@@ -113,6 +114,7 @@ export default class RPSParty {
       }
       this.state.message = `${player.name} disconnected. Waiting for players.`;
       this.state.phase = this.state.players.filter((item) => item.connected).length >= 2 ? this.state.phase : "waiting";
+      this.scheduleStaleCleanup(player.id);
       this.broadcast();
     }
   }
@@ -165,6 +167,7 @@ export default class RPSParty {
     const existing = this.state.players.find((player) => player.id === data.playerId);
 
     if (existing) {
+      this.clearStaleCleanup(existing.id);
       existing.connected = true;
       existing.name = cleanPlayerName(data.name);
       existing.privyToken = data.privyToken;
@@ -177,7 +180,7 @@ export default class RPSParty {
       const seat = openSeat ?? (this.state.players.length === 0 ? 0 : this.state.players.length === 1 ? 1 : null);
 
       if (seat === null) {
-        connection.send(JSON.stringify({ type: "full", message: "This RPS arena already has two challengers." }));
+        connection.send(JSON.stringify({ type: "full", message: "This RPS arena is full. Create a new room or ask your friend for a fresh invite." }));
         return;
       }
 
@@ -316,6 +319,51 @@ export default class RPSParty {
     this.state.players.forEach((player) => {
       player.pick = undefined;
     });
+  }
+
+  private scheduleStaleCleanup(playerId: string) {
+    this.clearStaleCleanup(playerId);
+    const timer = setTimeout(() => {
+      void this.cleanupStalePlayer(playerId);
+    }, 60_000);
+    this.staleTimers.set(playerId, timer);
+  }
+
+  private clearStaleCleanup(playerId: string) {
+    const timer = this.staleTimers.get(playerId);
+    if (timer) clearTimeout(timer);
+    this.staleTimers.delete(playerId);
+  }
+
+  private async cleanupStalePlayer(playerId: string) {
+    const stalePlayer = this.state.players.find((player) => player.id === playerId);
+    if (!stalePlayer || stalePlayer.connected) return;
+
+    const matchInterrupted = this.state.phase === "playing" || this.state.phase === "revealed";
+    const playersToRefund = matchInterrupted ? this.state.players.filter((player) => player.reserved) : [stalePlayer].filter((player) => player.reserved);
+    await Promise.all(playersToRefund.map((player) => this.refundWager(player)));
+
+    this.state.players = this.state.players
+      .filter((player) => player.connected)
+      .map((player) => ({
+        ...player,
+        score: matchInterrupted ? 0 : player.score,
+        pick: undefined,
+        reserved: matchInterrupted ? false : player.reserved
+      }));
+    if (matchInterrupted) {
+      this.matchId = this.createMatchId();
+    }
+    this.state.phase = this.state.players.length >= 2 ? "playing" : "waiting";
+    this.state.round = matchInterrupted ? 1 : this.state.round;
+    this.state.history = matchInterrupted ? [] : this.state.history;
+    this.state.reveal = undefined;
+    this.state.winnerId = undefined;
+    this.state.message = matchInterrupted
+      ? "Disconnected player timed out. Match was voided and wagers were refunded."
+      : "Disconnected player timed out. Seat reopened.";
+    this.clearStaleCleanup(playerId);
+    this.broadcast();
   }
 
   private publicState() {
