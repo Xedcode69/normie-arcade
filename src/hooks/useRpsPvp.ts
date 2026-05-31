@@ -25,6 +25,9 @@ function getPlayerName(playerId: string) {
 type JoinOptions = {
   privyToken: string;
   bet: number;
+  isNormieHolder?: boolean;
+  selectedNormieId?: number | null;
+  avatarUrl?: string | null;
 };
 
 export function useRpsPvp(room = "rps-quickplay") {
@@ -60,7 +63,10 @@ export function useRpsPvp(room = "rps-quickplay") {
         playerId: nextPlayerId,
         name: getPlayerName(nextPlayerId),
         privyToken: options.privyToken,
-        bet: options.bet
+        bet: options.bet,
+        isNormieHolder: options.isNormieHolder,
+        selectedNormieId: options.selectedNormieId,
+        avatarUrl: options.avatarUrl
       });
     };
 

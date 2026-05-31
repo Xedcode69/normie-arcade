@@ -6,6 +6,9 @@ export type RPSPvPPlayer = {
   seat: 0 | 1;
   score: number;
   connected: boolean;
+  isNormieHolder?: boolean;
+  selectedNormieId?: number | null;
+  avatarUrl?: string | null;
   serverBalance?: number;
   accountError?: string;
   pick?: "Locked";

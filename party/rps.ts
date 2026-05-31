@@ -16,6 +16,9 @@ type Player = {
   seat: 0 | 1;
   score: number;
   connected: boolean;
+  isNormieHolder?: boolean;
+  selectedNormieId?: number | null;
+  avatarUrl?: string | null;
   bet: number;
   privyToken: string;
   reserved: boolean;
@@ -40,7 +43,16 @@ type MatchState = {
 };
 
 type ClientMessage =
-  | { type: "join"; playerId: string; name?: string; privyToken: string; bet: number }
+  | {
+      type: "join";
+      playerId: string;
+      name?: string;
+      privyToken: string;
+      bet: number;
+      isNormieHolder?: boolean;
+      selectedNormieId?: number | null;
+      avatarUrl?: string | null;
+    }
   | { type: "pick"; playerId: string; pick: RPSType }
   | { type: "reset"; playerId: string };
 
@@ -125,7 +137,13 @@ export default class RPSParty {
         typeof data.privyToken === "string" &&
         typeof data.bet === "number"
       ) {
-        return { ...data, bet: Math.max(1, Math.round(data.bet)) };
+        return {
+          ...data,
+          bet: Math.max(1, Math.round(data.bet)),
+          isNormieHolder: Boolean(data.isNormieHolder),
+          selectedNormieId: typeof data.selectedNormieId === "number" ? data.selectedNormieId : null,
+          avatarUrl: typeof data.avatarUrl === "string" ? data.avatarUrl.slice(0, 240) : null
+        };
       }
       if (data.type === "pick" && typeof data.playerId === "string" && picks.includes(data.pick)) return data;
       if (data.type === "reset" && typeof data.playerId === "string") return data;
@@ -142,6 +160,9 @@ export default class RPSParty {
       existing.connected = true;
       existing.name = cleanPlayerName(data.name);
       existing.privyToken = data.privyToken;
+      existing.isNormieHolder = data.isNormieHolder;
+      existing.selectedNormieId = data.selectedNormieId;
+      existing.avatarUrl = data.avatarUrl;
       this.connections.set(connection.id, existing.id);
     } else {
       const openSeat = this.state.players.find((player) => !player.connected)?.seat;
@@ -159,6 +180,9 @@ export default class RPSParty {
         seat,
         score: 0,
         connected: true,
+        isNormieHolder: data.isNormieHolder,
+        selectedNormieId: data.selectedNormieId,
+        avatarUrl: data.avatarUrl,
         bet: data.bet,
         privyToken: data.privyToken,
         reserved: false

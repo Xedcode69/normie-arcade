@@ -10,6 +10,7 @@ import { useRpsPvp } from "@/hooks/useRpsPvp";
 import { createRoomCode, normalizeRoomCode } from "@/lib/rpsPvp";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useChipStore } from "@/stores/chipStore";
+import { useAccountStore } from "@/stores/accountStore";
 import type { RPSType } from "@/types/normie";
 import { RPS_TYPES } from "@/types/normie";
 import { playTone } from "@/lib/audio";
@@ -187,6 +188,11 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   });
   const { connected, connect, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
   const { authenticated, getAccessToken, login } = usePrivy();
+  const holderProfile = useAccountStore((store) => ({
+    isNormieHolder: store.isNormieHolder,
+    selectedNormieId: store.selectedNormieId,
+    selectedNormieImage: store.selectedNormieImage
+  }));
   const setBalance = useChipStore((store) => store.setBalance);
   const notify = useArcadeStore((store) => store.notify);
   const you = state.players.find((player) => player.id === playerId);
@@ -298,7 +304,13 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
       return;
     }
 
-    connect({ privyToken: token, bet });
+    connect({
+      privyToken: token,
+      bet,
+      isNormieHolder: holderProfile.isNormieHolder,
+      selectedNormieId: holderProfile.selectedNormieId ?? null,
+      avatarUrl: holderProfile.selectedNormieImage ?? null
+    });
   }
 
   function cancelMatchmaking() {
@@ -364,6 +376,9 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
             locked={Boolean(you?.pick)}
             status={connected ? "Connected" : "Offline"}
             hiddenPick={Boolean(you?.pick) && !playerPick}
+            isNormieHolder={you?.isNormieHolder}
+            selectedNormieId={you?.selectedNormieId}
+            avatarUrl={you?.avatarUrl}
           />
         }
         right={
@@ -373,6 +388,9 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
             locked={Boolean(opponent?.pick)}
             status={opponentDisconnected ? "Disconnected" : opponent?.connected ? "Connected" : "Searching"}
             hiddenPick={Boolean(opponent?.pick) && !opponentPick}
+            isNormieHolder={opponent?.isNormieHolder}
+            selectedNormieId={opponent?.selectedNormieId}
+            avatarUrl={opponent?.avatarUrl}
           />
         }
         active={state.phase === "revealed" || state.phase === "finished"}
@@ -605,18 +623,39 @@ function Fighter({
   fighter,
   locked = false,
   status,
-  hiddenPick = false
+  hiddenPick = false,
+  isNormieHolder = false,
+  selectedNormieId,
+  avatarUrl
 }: {
   label: string;
   fighter: FighterPick | null;
   locked?: boolean;
   status?: string;
   hiddenPick?: boolean;
+  isNormieHolder?: boolean;
+  selectedNormieId?: number | null;
+  avatarUrl?: string | null;
 }) {
   return (
     <motion.div layout className="pixel-card p-3 text-center">
       <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-widest text-white/50">
-        {label}
+        {avatarUrl ? (
+          <Image
+            src={avatarUrl}
+            alt={selectedNormieId !== null && selectedNormieId !== undefined ? `Normie #${selectedNormieId}` : "Normie avatar"}
+            width={28}
+            height={28}
+            className="h-7 w-7 border border-paper/40 bg-paper object-contain"
+            unoptimized
+          />
+        ) : null}
+        <span>{label}</span>
+        {isNormieHolder ? (
+          <span className="border border-mint/60 px-1.5 py-0.5 text-[9px] text-mint">
+            0xN{selectedNormieId !== null && selectedNormieId !== undefined ? ` #${selectedNormieId}` : ""}
+          </span>
+        ) : null}
         {status ? <span className="border border-paper/20 px-1.5 py-0.5 text-[9px] text-pixel/60">{status}</span> : null}
       </div>
       {fighter ? (

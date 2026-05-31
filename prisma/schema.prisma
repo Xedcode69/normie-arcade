@@ -25,13 +25,31 @@ model User {
   privyId    String   @unique
   email       String?
   displayName String?
+  isNormieHolder Boolean @default(false)
+  selectedNormieId Int?
+  holderVerifiedAt DateTime?
+  holderWalletAddress String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   wallets      Wallet[]
+  ownedNormies UserNormie[]
   chipAccount  ChipAccount?
   gameSessions GameSession[]
   leaderboard  LeaderboardEntry[]
+}
+
+model UserNormie {
+  id         String   @id @default(cuid())
+  userId     String
+  normieId   Int
+  imageUrl   String
+  verifiedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, normieId])
+  @@index([userId])
 }
 
 model Wallet {

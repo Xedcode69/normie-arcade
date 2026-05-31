@@ -26,8 +26,10 @@ export function PlayerAvatar() {
   const moving = useRef(false);
   const normie = useArcadeStore((state) => state.loadedNormies[0]);
   const activeGame = useArcadeStore((state) => state.activeGame);
+  const holderAvatarUrl = usePlayerStore((state) => state.avatarUrl);
   const touchMove = usePlayerStore((state) => state.touchMove);
   const setPosition = usePlayerStore((state) => state.setPosition);
+  const avatarImage = holderAvatarUrl ?? normie?.image;
 
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
@@ -132,7 +134,7 @@ export function PlayerAvatar() {
         </group>
 
         <group ref={face} position={[0, 1.18, 0]}>
-          <NormieHead image={normie?.image} />
+          <NormieHead image={avatarImage} />
           <mesh position={[0, 0.49, 0]}>
             <boxGeometry args={[0.9, 0.18, 0.26]} />
             <meshStandardMaterial color="#080808" emissive="#f4f1e8" emissiveIntensity={0.08} roughness={0.35} />
