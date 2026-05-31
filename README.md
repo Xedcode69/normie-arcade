@@ -12,6 +12,10 @@ A browser-based 3D Normies casino arcade built with Next.js, React Three Fiber, 
 - TailwindCSS for HUD/game UI
 - Framer Motion for panel, card, and toast animation
 - Web Audio API for browser-safe synthesized arcade feedback
+- Privy for wallet/email login
+- PostgreSQL with Prisma for user profiles, wallets, chip accounts, sessions, and leaderboard data
+- PartyKit for realtime PvP RPS rooms
+- Normie holder verification through the official `/holders/{address}` API
 
 ## Run Locally
 
@@ -21,10 +25,42 @@ Install dependencies:
 npm install
 ```
 
+Create `.env.local`:
+
+```bash
+NEXT_PUBLIC_PRIVY_APP_ID="your-privy-app-id"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/normie_arcade?schema=public"
+NEXT_PUBLIC_PARTYKIT_HOST="localhost:1999"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+PARTYKIT_API_BASE_URL="http://localhost:3000"
+PARTYKIT_INTERNAL_SECRET="dev-internal-secret"
+PRIVY_VERIFICATION_KEY="your-privy-jwt-verification-key"
+```
+
+Generate Prisma Client:
+
+```bash
+npm run db:generate
+```
+
+Run a migration after your PostgreSQL database exists:
+
+```bash
+npm run db:migrate
+```
+
+This creates the user, wallet, chip, PvP, and Normie holder tables. Holder verification refreshes on login when the cached wallet check is stale, so users who sell their Normies lose the holder badge/avatar after the next refresh.
+
 Start the dev server:
 
 ```bash
 npm run dev
+```
+
+Start the PartyKit PvP room server in another terminal:
+
+```bash
+npm run party:dev
 ```
 
 Then open `http://localhost:3000`.
@@ -39,6 +75,8 @@ src/
     providers.tsx
     globals.css
   components/
+    auth/
+      AuthSync.tsx
     arcade/
       ArcadeLobby.tsx
       GameTable.tsx
@@ -50,6 +88,7 @@ src/
     games/
       BetControls.tsx
       GameDock.tsx
+      PokerGame.tsx
       RPSGame.tsx
       RouletteGame.tsx
       UpDownGame.tsx
@@ -62,8 +101,10 @@ src/
   hooks/
     useNormiePreload.ts
   lib/
+    accountSchema.ts
     audio.ts
     gameMath.ts
+    prisma.ts
     rateLimiter.ts
   services/
     NormieAPIService.ts
@@ -75,6 +116,8 @@ src/
   types/
     audio.d.ts
     normie.ts
+prisma/
+  schema.prisma
 ```
 
 ## Normies API
@@ -100,7 +143,7 @@ It includes:
 - graceful fallback traits/metadata
 - optimized parallel fetching where safe
 
-## Gamess
+## Games
 
 ### Normie Expression Roulette
 
@@ -114,7 +157,22 @@ Human, Cat, and Alien form a best-of-3 arena:
 - Human beats Cat
 - Alien beats Human
 
-Every round fetches fresh Normie fighters and animates the reveal in the interface.
+Every round resolves the selected type against an NPC type and displays the matching local Normies-style type art.
+
+The RPS panel also includes a PartyKit-powered PvP mode for 1v1 quick matches. Run `npm run party:dev`
+alongside `npm run dev`, then choose `PvP 1v1` in the RPS game. PvP supports room codes,
+copyable invite links, canceling matchmaking while waiting, clear match states, and opponent
+disconnect/reconnect messaging. PvP chip reservation, refund, and final payout are handled by
+PartyKit through protected Next.js API routes backed by Prisma.
+
+### Normie DNA Poker
+
+Users deal five live Normies and score poker-style hands from API traits:
+
+- Pair: two matching Expressions
+- Three of a Kind: three matching Types
+- Flush: all cards share Gender or Age
+- Full House: Type pair plus Expression triple
 
 ### Up or Down
 

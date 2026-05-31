@@ -36,9 +36,16 @@ function LobbyScene() {
   const loadedNormies = useArcadeStore((state) => state.loadedNormies);
   const playerPosition = usePlayerStore((state) => state.position);
   const rig = useRef<Group>(null);
+  const tableTargets = {
+    roulette: -6,
+    rps: -2,
+    poker: 2,
+    updown: 6,
+    lobby: 0
+  } satisfies Record<typeof activeGame, number>;
 
   useFrame(({ clock, camera }) => {
-    const targetX = activeGame === "roulette" ? -4.8 : activeGame === "rps" ? 0 : activeGame === "updown" ? 4.8 : 0;
+    const targetX = tableTargets[activeGame];
     if (activeGame === "lobby") {
       camera.position.x += (playerPosition.x - camera.position.x) * 0.06;
       camera.position.y += (4.7 - camera.position.y) * 0.04;
@@ -48,7 +55,7 @@ function LobbyScene() {
       camera.position.x += (targetX - camera.position.x) * 0.035;
       camera.position.y = 6.2 + Math.sin(clock.elapsedTime * 0.4) * 0.08;
       camera.position.z += (12 - camera.position.z) * 0.04;
-      camera.lookAt(targetX * 0.25, 0.7, 0);
+      camera.lookAt(targetX * 0.25, 0.7, activeGame === "poker" ? -0.55 : 0);
     }
     if (rig.current) rig.current.rotation.y = Math.sin(clock.elapsedTime * 0.08) * 0.015;
   });
@@ -65,19 +72,23 @@ function LobbyScene() {
       <CasinoFloor />
       <CeilingGrid />
       <HologramSign />
-      <GameTable id="roulette" label="Expression Roulette" position={[-5.2, 0.72, 0]} accent="#27f6e7" dealer={dealers[0]} />
-      <GameTable id="rps" label="Type RPS Arena" position={[0, 0.72, -0.8]} accent="#ff43cf" dealer={dealers[1]} />
-      <GameTable id="updown" label="Up or Down" position={[5.2, 0.72, 0]} accent="#d7ff35" dealer={dealers[2]} />
-      <Cashier normie={dealers[3]?.normie ?? loadedNormies[4]} />
+      <GameTable id="roulette" label="Expression Roulette" position={[-6, 0.72, 0]} accent="#27f6e7" dealer={dealers[0]} />
+      <GameTable id="rps" label="Type RPS Arena" position={[-2, 0.72, -0.8]} accent="#ff43cf" dealer={dealers[1]} />
+      <GameTable id="poker" label="DNA Poker" position={[2, 0.72, -0.8]} accent="#f4f1e8" dealer={dealers[2]} />
+      <GameTable id="updown" label="Up or Down" position={[6, 0.72, 0]} accent="#d7ff35" dealer={dealers[3]} />
+      <Cashier normie={dealers[4]?.normie ?? loadedNormies[4]} />
       <PlayerAvatar />
-      {dealers.slice(0, 3).map((dealer, index) => (
-        <NormieDealer
-          key={dealer.role}
-          dealer={dealer}
-          position={[-5.2 + index * 5.2, 1.42, -1.35 - (index === 1 ? 0.8 : 0)]}
-        />
-      ))}
-      <NormieCrowd normies={loadedNormies.slice(5, 13)} />
+      {dealers.slice(0, 4).map((dealer, index) => {
+        const positions: Array<[number, number, number]> = [
+          [-6, 1.42, -1.35],
+          [-2, 1.42, -2.15],
+          [2, 1.42, -2.15],
+          [6, 1.42, -1.35]
+        ];
+
+        return <NormieDealer key={dealer.role} dealer={dealer} position={positions[index]} />;
+      })}
+      <NormieCrowd normies={loadedNormies.slice(6, 14)} />
     </group>
   );
 }

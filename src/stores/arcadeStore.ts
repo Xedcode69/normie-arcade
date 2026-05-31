@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import type { Normie } from "@/types/normie";
 
-export type GameId = "lobby" | "roulette" | "rps" | "updown";
+export type GameId = "lobby" | "roulette" | "rps" | "poker" | "updown";
 
-type DealerRole = "Expression Croupier" | "Arena Master" | "Prediction Host" | "Cashier";
+type DealerRole = "Expression Croupier" | "Arena Master" | "DNA Card Sharp" | "Prediction Host" | "Cashier";
 
 export type Dealer = {
   role: DealerRole;
@@ -37,6 +37,7 @@ export const useArcadeStore = create<ArcadeState>((set) => ({
   dealers: [
     { role: "Expression Croupier", persona: "Serious dealer" },
     { role: "Arena Master", persona: "Chaotic dealer" },
+    { role: "DNA Card Sharp", persona: "Precise dealer" },
     { role: "Prediction Host", persona: "Robotic dealer" },
     { role: "Cashier", persona: "Lucky dealer" }
   ],

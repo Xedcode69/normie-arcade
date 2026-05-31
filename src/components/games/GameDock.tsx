@@ -8,6 +8,7 @@ import { NormieImage } from "@/components/normies/NormieImage";
 import type { GameId } from "@/stores/arcadeStore";
 import { RouletteGame } from "./RouletteGame";
 import { RPSGame } from "./RPSGame";
+import { PokerGame } from "./PokerGame";
 import { UpDownGame } from "./UpDownGame";
 
 const instructions = {
@@ -25,6 +26,14 @@ const instructions = {
       "Choose Human, Cat, or Alien to start a round.",
       "Cat beats Alien, Human beats Cat, and Alien beats Human.",
       "The match is best of three. First side to two round wins takes the match."
+    ]
+  },
+  poker: {
+    title: "Normie DNA Poker",
+    lines: [
+      "Deal five real Normies from the API and inspect their decoded traits.",
+      "Pair scores when two cards share an Expression; Three of a Kind scores when three share a Type.",
+      "Flush scores when all cards share Gender or Age. Full House scores with a Type pair and Expression triple."
     ]
   },
   updown: {
@@ -100,6 +109,7 @@ export function GameDock() {
             <div className="min-h-0 flex-1 overflow-hidden thin-scroll max-md:overflow-auto">
               {activeGame === "roulette" ? <RouletteGame /> : null}
               {activeGame === "rps" ? <RPSGame /> : null}
+              {activeGame === "poker" ? <PokerGame /> : null}
               {activeGame === "updown" ? <UpDownGame /> : null}
             </div>
             <AnimatePresence>

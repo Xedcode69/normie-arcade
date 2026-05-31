@@ -7,6 +7,14 @@ const nextConfig = {
         hostname: "api.normies.art"
       }
     ]
+  },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@farcaster/mini-app-solana": false
+    };
+
+    return config;
   }
 };
 

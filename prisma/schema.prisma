@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum GameKind {
+  ROULETTE
+  RPS
+  POKER
+  UP_DOWN
+}
+
+enum GameOutcome {
+  WIN
+  LOSS
+  DRAW
+  IN_PROGRESS
+}
+
+model User {
+  id          String   @id @default(cuid())
+  privyId    String   @unique
+  email       String?
+  displayName String?
+  isNormieHolder Boolean @default(false)
+  selectedNormieId Int?
+  holderVerifiedAt DateTime?
+  holderWalletAddress String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  wallets      Wallet[]
+  ownedNormies UserNormie[]
+  chipAccount  ChipAccount?
+  gameSessions GameSession[]
+  leaderboard  LeaderboardEntry[]
+}
+
+model UserNormie {
+  id         String   @id @default(cuid())
+  userId     String
+  normieId   Int
+  imageUrl   String
+  verifiedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, normieId])
+  @@index([userId])
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ChipAccount {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   Int      @default(2500)
+  streak    Int      @default(0)
+  multiplier Float   @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GameSession {
+  id          String      @id @default(cuid())
+  externalId  String?     @unique
+  userId      String?
+  game        GameKind
+  outcome     GameOutcome @default(IN_PROGRESS)
+  bet         Int         @default(0)
+  payout      Int         @default(0)
+  metadata    Json?
+  startedAt   DateTime    @default(now())
+  completedAt DateTime?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([game, outcome])
+}
+
+model LeaderboardEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  game      GameKind
+  score     Int
+  chipsWon  Int      @default(0)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([game, score])
+  @@index([userId])
+}
+
+model NormieCache {
+  id        Int      @id
+  traits    Json?
+  metadata  Json?
+  imageUrl  String?
+  owner     String?
+  fetchedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

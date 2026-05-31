@@ -9,6 +9,8 @@ build
 coverage
 *.tsbuildinfo
 .vercel
+.partykit
+.partykit/
 .turbo
 .eslintcache
 next-env.d.ts.bak
