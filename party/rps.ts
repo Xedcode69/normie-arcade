@@ -97,6 +97,9 @@ type NormieTraits = {
   Gender?: string;
   Age?: string;
   Expression?: string;
+  Eyes?: string;
+  Accessory?: string;
+  "Facial Feature"?: string;
 };
 
 type PokerEvaluation = {
@@ -673,6 +676,10 @@ export default class RPSParty {
     return Object.values(counts).some((count) => count >= target);
   }
 
+  private matchingValue(counts: Record<string, number>, target: number) {
+    return Object.entries(counts).find(([, count]) => count >= target)?.[0] ?? "Unknown";
+  }
+
   private allSame(values: Array<string | undefined>) {
     const known = values.map((value) => value ?? "Unknown");
     return known.every((value) => value === known[0]);
@@ -680,21 +687,42 @@ export default class RPSParty {
 
   private evaluatePokerHand(traits: NormieTraits[]): PokerEvaluation {
     const expressions = traits.map((trait) => trait.Expression);
-    const types = traits.map((trait) => trait.Type);
+    const eyes = traits.map((trait) => trait.Eyes);
+    const accessories = traits.map((trait) => trait.Accessory);
+    const facialFeatures = traits.map((trait) => trait["Facial Feature"]);
     const genders = traits.map((trait) => trait.Gender);
     const ages = traits.map((trait) => trait.Age);
     const expressionCounts = this.countValues(expressions);
-    const typeCounts = this.countValues(types);
-    const expressionTriple = this.hasCount(expressionCounts, 3);
-    const typePair = this.hasCount(typeCounts, 2);
-    const typeTriple = this.hasCount(typeCounts, 3);
+    const eyeCounts = this.countValues(eyes);
+    const accessoryCounts = this.countValues(accessories);
+    const facialFeatureCounts = this.countValues(facialFeatures);
+    const eyePerfect = this.hasCount(eyeCounts, 4);
+    const accessoryPerfect = this.hasCount(accessoryCounts, 4);
+    const facialFeaturePerfect = this.hasCount(facialFeatureCounts, 4);
+    const accessoryTriple = this.hasCount(accessoryCounts, 3);
+    const eyeTriple = this.hasCount(eyeCounts, 3);
     const expressionPair = this.hasCount(expressionCounts, 2);
     const genderFlush = this.allSame(genders);
     const ageFlush = this.allSame(ages);
 
-    if (typePair && expressionTriple) return { handName: "DNA Full House", score: 50, summary: "Type pair plus Expression triple." };
-    if (genderFlush || ageFlush) return { handName: "Trait Flush", score: 40, summary: `All cards share ${genderFlush ? "Gender" : "Age"}.` };
-    if (typeTriple) return { handName: "Type Three Of A Kind", score: 30, summary: "Three or more cards share a Type." };
+    if (eyePerfect || accessoryPerfect || facialFeaturePerfect) {
+      return {
+        handName: "Perfect DNA",
+        score: 60,
+        summary: `Four or more cards match ${
+          eyePerfect
+            ? `Eyes ${this.matchingValue(eyeCounts, 4)}`
+            : accessoryPerfect
+            ? `Accessory ${this.matchingValue(accessoryCounts, 4)}`
+            : `Facial Feature ${this.matchingValue(facialFeatureCounts, 4)}`
+        }.`
+      };
+    }
+    if (expressionPair && accessoryTriple) {
+      return { handName: "Accessory Full House", score: 50, summary: "Expression pair plus Accessory triple." };
+    }
+    if (genderFlush || ageFlush) return { handName: "Age/Gender Flush", score: 40, summary: `All cards share ${genderFlush ? "Gender" : "Age"}.` };
+    if (eyeTriple) return { handName: "Eye Trips", score: 30, summary: `Three or more cards share Eyes ${this.matchingValue(eyeCounts, 3)}.` };
     if (expressionPair) return { handName: "Expression Pair", score: 20, summary: "Two or more cards share an Expression." };
     return { handName: "No DNA Hand", score: 10, summary: "No scoring DNA combination." };
   }

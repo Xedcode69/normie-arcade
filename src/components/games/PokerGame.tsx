@@ -28,9 +28,10 @@ const POKER_RECONNECT_KEY = "normie-poker-active-room";
 const handRanks = {
   none: { name: "No DNA Hand", multiplier: 0 },
   pair: { name: "Expression Pair", multiplier: 2 },
-  threeType: { name: "Type Three Of A Kind", multiplier: 4 },
-  flush: { name: "Trait Flush", multiplier: 7 },
-  fullHouse: { name: "DNA Full House", multiplier: 12 }
+  eyeTrips: { name: "Eye Trips", multiplier: 4 },
+  flush: { name: "Age/Gender Flush", multiplier: 7 },
+  accessoryFullHouse: { name: "Accessory Full House", multiplier: 12 },
+  perfectDna: { name: "Perfect DNA", multiplier: 20 }
 } as const;
 
 function wait(ms: number) {
@@ -49,6 +50,10 @@ function hasCount(counts: Record<string, number>, target: number) {
   return Object.values(counts).some((count) => count >= target);
 }
 
+function matchingValue(counts: Record<string, number>, target: number) {
+  return Object.entries(counts).find(([, count]) => count >= target)?.[0] ?? "Unknown";
+}
+
 function allSame(values: Array<string | undefined>) {
   const known = values.map((value) => value ?? "Unknown");
   return known.every((value) => value === known[0]);
@@ -56,22 +61,41 @@ function allSame(values: Array<string | undefined>) {
 
 function evaluateHand(cards: Normie[]): PokerHand {
   const expressions = cards.map((card) => card.traits.Expression);
-  const types = cards.map((card) => card.traits.Type);
+  const eyes = cards.map((card) => card.traits.Eyes);
+  const accessories = cards.map((card) => card.traits.Accessory);
+  const facialFeatures = cards.map((card) => card.traits["Facial Feature"]);
   const genders = cards.map((card) => card.traits.Gender);
   const ages = cards.map((card) => card.traits.Age);
   const expressionCounts = countValues(expressions);
-  const typeCounts = countValues(types);
-  const expressionTriple = hasCount(expressionCounts, 3);
-  const typePair = hasCount(typeCounts, 2);
-  const typeTriple = hasCount(typeCounts, 3);
+  const eyeCounts = countValues(eyes);
+  const accessoryCounts = countValues(accessories);
+  const facialFeatureCounts = countValues(facialFeatures);
+  const eyePerfect = hasCount(eyeCounts, 4);
+  const accessoryPerfect = hasCount(accessoryCounts, 4);
+  const facialFeaturePerfect = hasCount(facialFeatureCounts, 4);
+  const accessoryTriple = hasCount(accessoryCounts, 3);
+  const eyeTriple = hasCount(eyeCounts, 3);
   const expressionPair = hasCount(expressionCounts, 2);
   const genderFlush = allSame(genders);
   const ageFlush = allSame(ages);
 
-  if (typePair && expressionTriple) {
+  if (eyePerfect || accessoryPerfect || facialFeaturePerfect) {
     return {
-      ...handRanks.fullHouse,
-      summary: `Type pair plus Expression triple. Expressions: ${expressions.join(" / ")}.`
+      ...handRanks.perfectDna,
+      summary: `Four or more cards match ${
+        eyePerfect
+          ? `Eyes ${matchingValue(eyeCounts, 4)}`
+          : accessoryPerfect
+          ? `Accessory ${matchingValue(accessoryCounts, 4)}`
+          : `Facial Feature ${matchingValue(facialFeatureCounts, 4)}`
+      }.`
+    };
+  }
+
+  if (expressionPair && accessoryTriple) {
+    return {
+      ...handRanks.accessoryFullHouse,
+      summary: `Expression pair plus Accessory triple. Expressions: ${expressions.join(" / ")}. Accessories: ${accessories.join(" / ")}.`
     };
   }
 
@@ -82,10 +106,10 @@ function evaluateHand(cards: Normie[]): PokerHand {
     };
   }
 
-  if (typeTriple) {
+  if (eyeTriple) {
     return {
-      ...handRanks.threeType,
-      summary: `Three or more cards share a Type. Types: ${types.join(" / ")}.`
+      ...handRanks.eyeTrips,
+      summary: `Three or more cards share Eyes ${matchingValue(eyeCounts, 3)}. Eyes: ${eyes.join(" / ")}.`
     };
   }
 
@@ -181,13 +205,16 @@ export function PokerGame() {
           Pair 2x
         </div>
         <div className="border border-paper/35 bg-black/70 px-3 py-2 text-xs uppercase tracking-widest text-paper/70">
-          Three Type 4x
+          Eye Trips 4x
         </div>
         <div className="border border-paper/35 bg-black/70 px-3 py-2 text-xs uppercase tracking-widest text-paper/70">
-          Flush 7x
+          Age/Gender Flush 7x
+        </div>
+        <div className="border border-paper/35 bg-black/70 px-3 py-2 text-xs uppercase tracking-widest text-paper/70">
+          Accessory Full House 12x
         </div>
         <div className="border border-paper/60 bg-paper/10 px-3 py-2 text-xs uppercase tracking-widest text-paper shadow-neon">
-          Full House 12x
+          Perfect DNA 20x
         </div>
         <BetControls bet={bet} setBet={setBet} />
       </div>
