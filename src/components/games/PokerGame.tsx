@@ -280,8 +280,11 @@ function PokerPvP() {
   const streetLabel = state.street ? state.street.toUpperCase() : "WAITING";
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
   const connectedCount = state.players.filter((player) => player.connected).length;
-  const callAmount = Math.max(0, state.currentBet - (you?.committed ?? 0));
-  const raiseTo = state.currentBet + state.minRaise;
+  const streetCommitted = you?.streetCommitted ?? 0;
+  const serverBalance = you?.serverBalance ?? 0;
+  const callAmount = Math.max(0, state.currentBet - streetCommitted);
+  const minRaiseTo = state.currentBet + state.minRaise;
+  const maxRaiseTo = streetCommitted + serverBalance;
   const isYourTurn = connected && state.phase === "betting" && state.turnPlayerId === playerId;
   const reconnectAttempted = useRef(false);
 
@@ -470,6 +473,7 @@ function PokerPvP() {
       <div className="mx-auto mt-4 flex max-w-4xl items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
         <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${error ? "text-magenta" : "text-pixel/60"}`}>
           {error ??
+            you?.accountError ??
             `${state.message} ${
               state.phase === "dealt" || state.phase === "betting" ? `Hand ${state.handId ?? "active"}.` : `${readyCount}/${Math.max(connectedCount, 2)} ready.`
             }`}
@@ -524,12 +528,14 @@ function PokerPvP() {
 
       {state.phase === "betting" ? (
         <PokerBettingControls
+          availableChips={serverBalance}
           callAmount={callAmount}
           currentBet={state.currentBet}
           disabled={!isYourTurn}
           isYourTurn={isYourTurn}
+          maxRaiseTo={maxRaiseTo}
           minRaise={state.minRaise}
-          raiseTo={raiseTo}
+          minRaiseTo={minRaiseTo}
           onAction={submitAction}
         />
       ) : null}
@@ -597,27 +603,40 @@ function PokerPvP() {
 }
 
 function PokerBettingControls({
+  availableChips,
   callAmount,
   currentBet,
   disabled,
   isYourTurn,
+  maxRaiseTo,
   minRaise,
-  raiseTo,
+  minRaiseTo,
   onAction
 }: {
+  availableChips: number;
   callAmount: number;
   currentBet: number;
   disabled: boolean;
   isYourTurn: boolean;
+  maxRaiseTo: number;
   minRaise: number;
-  raiseTo: number;
+  minRaiseTo: number;
   onAction: (action: "check" | "call" | "raise" | "fold", raiseTo?: number) => void;
 }) {
+  const [raiseInput, setRaiseInput] = useState(minRaiseTo);
+  const canCall = !disabled && callAmount > 0 && availableChips >= callAmount;
+  const canRaise = !disabled && maxRaiseTo >= minRaiseTo;
+  const normalizedRaise = Math.min(maxRaiseTo, Math.max(minRaiseTo, Math.round(raiseInput || minRaiseTo)));
+
+  useEffect(() => {
+    setRaiseInput(minRaiseTo);
+  }, [minRaiseTo, maxRaiseTo]);
+
   return (
     <div className="mx-auto mt-5 w-full max-w-5xl border border-paper/35 bg-black/65 p-4 text-center">
       <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Betting Action</div>
       <div className="mt-1 text-sm text-paper/70">
-        {isYourTurn ? "Your action is live." : "Waiting for the current seat."} Current bet {currentBet}. Minimum raise {minRaise}.
+        {isYourTurn ? "Your action is live." : "Waiting for the current seat."} Current bet {currentBet}. Minimum raise {minRaise}. Available {availableChips}.
       </div>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <button
@@ -629,17 +648,36 @@ function PokerBettingControls({
         </button>
         <button
           onClick={() => onAction("call")}
-          disabled={disabled || callAmount === 0}
+          disabled={!canCall}
           className="min-w-28 border border-paper/45 bg-paper/10 px-4 py-3 text-xs uppercase tracking-widest text-paper transition hover:bg-paper/15 disabled:opacity-35"
         >
           Call {callAmount}
         </button>
+        <div className="flex min-w-64 items-stretch border border-paper/35 bg-black/70">
+          <input
+            type="number"
+            min={minRaiseTo}
+            max={Math.max(minRaiseTo, maxRaiseTo)}
+            step={minRaise}
+            value={raiseInput}
+            onChange={(event) => setRaiseInput(Number(event.target.value))}
+            disabled={!canRaise}
+            className="min-w-0 flex-1 bg-transparent px-3 text-center text-sm text-paper outline-none disabled:opacity-35"
+          />
+          <button
+            onClick={() => setRaiseInput(maxRaiseTo)}
+            disabled={!canRaise}
+            className="border-l border-paper/25 px-3 text-[10px] uppercase tracking-widest text-paper/65 transition hover:text-paper disabled:opacity-35"
+          >
+            Max
+          </button>
+        </div>
         <button
-          onClick={() => onAction("raise", raiseTo)}
-          disabled={disabled}
+          onClick={() => onAction("raise", normalizedRaise)}
+          disabled={!canRaise}
           className="min-w-32 border border-mint/60 bg-mint/10 px-4 py-3 text-xs uppercase tracking-widest text-mint transition hover:bg-mint/15 disabled:opacity-35"
         >
-          Raise to {raiseTo}
+          Raise to {normalizedRaise}
         </button>
         <button
           onClick={() => onAction("fold")}
