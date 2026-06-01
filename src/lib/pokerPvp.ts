@@ -10,6 +10,7 @@ export type PokerPvPPlayer = {
   serverBalance?: number;
   accountError?: string;
   committed?: number;
+  streetCommitted?: number;
   folded?: boolean;
   acted?: boolean;
   isNormieHolder?: boolean;
@@ -26,6 +27,8 @@ export type PokerPvPState = {
   currentBet: number;
   minRaise: number;
   turnPlayerId?: string;
+  street?: "preflop" | "flop" | "turn" | "river";
+  communityCards: number[];
   handId?: string;
   privateHand?: number[];
   history: Array<{
@@ -45,6 +48,7 @@ export type PokerPvPState = {
       playerId: string;
       playerName: string;
       cards: number[];
+      bestCards: number[];
       handName: string;
       score: number;
       summary: string;
@@ -61,6 +65,7 @@ export const initialPokerPvpState: PokerPvPState = {
   pot: 0,
   currentBet: 0,
   minRaise: 50,
+  communityCards: [],
   history: [],
   message: "Create or join a DNA Poker table."
 };

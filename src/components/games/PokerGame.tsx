@@ -277,6 +277,7 @@ function PokerPvP() {
   const setBalance = useChipStore((store) => store.setBalance);
   const you = state.players.find((player) => player.id === playerId);
   const privateHand = state.privateHand ?? [];
+  const streetLabel = state.street ? state.street.toUpperCase() : "WAITING";
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
   const connectedCount = state.players.filter((player) => player.connected).length;
   const callAmount = Math.max(0, state.currentBet - (you?.committed ?? 0));
@@ -477,7 +478,7 @@ function PokerPvP() {
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
         <div className="pixel-card px-4 py-2 text-sm text-paper">Pot {state.pot} chips</div>
-        {state.phase === "betting" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Current bet {state.currentBet}</div> : null}
+        {state.phase === "betting" ? <div className="pixel-card px-4 py-2 text-sm text-paper">{streetLabel} bet {state.currentBet}</div> : null}
         {typeof you?.serverBalance === "number" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Server chips {you.serverBalance}</div> : null}
         <BetControls bet={ante} setBet={setAnte} disabled={connected} />
       </div>
@@ -489,16 +490,32 @@ function PokerPvP() {
         })}
       </div>
 
+      {state.phase === "dealt" || state.phase === "betting" || state.phase === "showdown" ? (
+        <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/35 bg-black/65 p-4">
+          <div className="text-center">
+            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Community Board</div>
+            <div className="mt-1 text-sm text-paper">
+              {state.communityCards.length ? `${state.communityCards.length} shared Normies revealed.` : "Preflop. Shared Normies are still hidden."}
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-5 gap-3">
+            {Array.from({ length: 5 }, (_, index) => (
+              <PrivatePokerCard key={`${state.handId ?? "board"}-board-${index}`} normieId={state.communityCards[index]} index={index} label={`Board ${index + 1}`} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {state.phase === "dealt" || state.phase === "betting" ? (
         <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/35 bg-black/65 p-4">
           <div className="text-center">
-            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Private Hand</div>
+            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Private Hole Normies</div>
             <div className="mt-1 text-sm text-paper">
-              {privateHand.length ? "Only your client receives these Normie card IDs." : "Waiting for your private hand packet..."}
+              {privateHand.length ? "Only your client receives these two private Normie IDs." : "Waiting for your private hand packet..."}
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {Array.from({ length: 5 }, (_, index) => (
+          <div className="mx-auto mt-4 grid max-w-md grid-cols-2 gap-3">
+            {Array.from({ length: 2 }, (_, index) => (
               <PrivatePokerCard key={`${state.handId ?? "hand"}-${index}`} normieId={privateHand[index]} index={index} />
             ))}
           </div>
@@ -568,8 +585,8 @@ function PokerPvP() {
             ? "Showdown complete. Ante/pot settlement is handled server-side."
             : state.phase === "betting"
             ? isYourTurn
-              ? `Your turn. ${callAmount > 0 ? `Call ${callAmount}, raise, or fold.` : "Check, raise, or fold."}`
-              : "Waiting for the active player to act."
+              ? `${streetLabel}. Your turn. ${callAmount > 0 ? `Call ${callAmount}, raise, or fold.` : "Check, raise, or fold."}`
+              : `${streetLabel}. Waiting for the active player to act.`
             : state.phase === "dealt"
             ? "Private hands are dealt."
             : "Set at least two players ready. Each player antes before the server deals."}
@@ -649,6 +666,7 @@ function PokerSeat({
     ready: boolean;
     handCount: number;
     committed?: number;
+    streetCommitted?: number;
     folded?: boolean;
     acted?: boolean;
     isNormieHolder?: boolean;
@@ -673,7 +691,7 @@ function PokerSeat({
           ? player.folded
             ? "Folded"
             : player.handCount
-            ? `${player.handCount} Cards Dealt`
+            ? `${player.handCount} Hole Cards`
             : player.ready
             ? "Ready"
             : player.connected
@@ -683,6 +701,9 @@ function PokerSeat({
       </div>
       {player && typeof player.committed === "number" && player.committed > 0 ? (
         <div className="mt-2 text-[10px] uppercase tracking-widest text-paper/45">In pot {player.committed}</div>
+      ) : null}
+      {player && typeof player.streetCommitted === "number" && player.streetCommitted > 0 ? (
+        <div className="mt-1 text-[10px] uppercase tracking-widest text-paper/35">Street {player.streetCommitted}</div>
       ) : null}
       {player?.acted && !player.folded ? <div className="mt-1 text-[10px] uppercase tracking-widest text-mint/70">Acted</div> : null}
       {player?.isNormieHolder ? (
@@ -707,6 +728,7 @@ function PokerShowdownPanel({
       playerId: string;
       playerName: string;
       cards: number[];
+      bestCards: number[];
       handName: string;
       score: number;
       summary: string;
@@ -737,13 +759,15 @@ function PokerShowdownPanel({
                   {winner ? "Winner" : "Settled"}
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-5 gap-1">
-                {hand.cards.map((id) => (
+              <div className="terminal-hash mt-3 text-[9px] uppercase tracking-widest text-pixel/55">Best 5</div>
+              <div className="mt-2 grid grid-cols-5 gap-1">
+                {hand.bestCards.map((id) => (
                   <div key={id} className="grid aspect-square place-items-center border border-paper/25 bg-paper">
                     <CenteredNormieImage src={`https://api.normies.art/normie/${id}/image.png`} alt={`Showdown Normie #${id}`} className="h-full w-full" />
                   </div>
                 ))}
               </div>
+              <div className="mt-2 truncate text-[10px] text-paper/40">All available: {hand.cards.map((id) => `#${id}`).join(" / ")}</div>
               <div className="mt-3 font-display text-sm text-paper">{hand.handName}</div>
               <div className="mt-1 text-xs text-paper/55">{hand.summary}</div>
             </div>
@@ -802,7 +826,7 @@ function PokerHandHistory({
   );
 }
 
-function PrivatePokerCard({ normieId, index }: { normieId?: number; index: number }) {
+function PrivatePokerCard({ normieId, index, label }: { normieId?: number; index: number; label?: string }) {
   return (
     <motion.div
       initial={{ rotateY: 90, opacity: 0 }}
@@ -824,7 +848,7 @@ function PrivatePokerCard({ normieId, index }: { normieId?: number; index: numbe
         )}
       </div>
       <div className="mt-2 text-xs text-paper/60">#{normieId ?? "----"}</div>
-      <div className="terminal-hash mt-1 text-[9px] uppercase tracking-widest text-pixel/55">Private Slot {index + 1}</div>
+      <div className="terminal-hash mt-1 text-[9px] uppercase tracking-widest text-pixel/55">{label ?? `Private Slot ${index + 1}`}</div>
     </motion.div>
   );
 }

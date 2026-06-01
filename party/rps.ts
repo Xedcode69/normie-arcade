@@ -62,6 +62,7 @@ type PokerPlayer = {
   serverBalance?: number;
   accountError?: string;
   committed?: number;
+  streetCommitted?: number;
   folded?: boolean;
   acted?: boolean;
   isNormieHolder?: boolean;
@@ -78,6 +79,8 @@ type PokerState = {
   currentBet: number;
   minRaise: number;
   turnPlayerId?: string;
+  street?: "preflop" | "flop" | "turn" | "river";
+  communityCards: number[];
   handId?: string;
   history: Array<{
     round: number;
@@ -116,6 +119,7 @@ type PokerShowdown = {
     playerId: string;
     playerName: string;
     cards: number[];
+    bestCards: number[];
     handName: string;
     score: number;
     summary: string;
@@ -174,6 +178,7 @@ export default class RPSParty {
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
+  private pokerDeck: number[] = [];
   private matchId = this.createMatchId();
   private state: MatchState = {
     phase: "waiting",
@@ -190,6 +195,7 @@ export default class RPSParty {
     pot: 0,
     currentBet: 0,
     minRaise: 50,
+    communityCards: [],
     history: [],
     message: "Waiting for players to sit at the DNA Poker table."
   };
@@ -364,6 +370,7 @@ export default class RPSParty {
         privyToken: data.privyToken,
         reserved: false,
         committed: 0,
+        streetCommitted: 0,
         folded: false,
         acted: false,
         isNormieHolder: data.isNormieHolder,
@@ -432,6 +439,7 @@ export default class RPSParty {
           hand: [],
           reserved: false,
           committed: 0,
+          streetCommitted: 0,
           folded: false,
           acted: false,
           accountError: undefined
@@ -441,6 +449,9 @@ export default class RPSParty {
       this.pokerState.pot = 0;
       this.pokerState.currentBet = 0;
       this.pokerState.turnPlayerId = undefined;
+      this.pokerState.street = undefined;
+      this.pokerState.communityCards = [];
+      this.pokerDeck = [];
       this.pokerState.handId = undefined;
       this.pokerState.showdown = undefined;
       this.pokerState.message = "Disconnected player timed out. Poker hand was voided and reserved antes were refunded.";
@@ -476,21 +487,25 @@ export default class RPSParty {
       return;
     }
 
-    const requiredCards = seatedPlayers.length * 5;
+    const requiredCards = seatedPlayers.length * 2 + 5;
     const deck = this.createNormieDeck(requiredCards);
 
     seatedPlayers.forEach((player, playerIndex) => {
-      player.hand = deck.slice(playerIndex * 5, playerIndex * 5 + 5);
+      player.hand = deck.slice(playerIndex * 2, playerIndex * 2 + 2);
       player.committed = player.ante;
+      player.streetCommitted = 0;
       player.folded = false;
       player.acted = false;
     });
 
+    this.pokerDeck = deck.slice(seatedPlayers.length * 2);
     this.pokerState.phase = "betting";
     this.pokerState.pot = seatedPlayers.reduce((total, player) => total + player.ante, 0);
-    this.pokerState.currentBet = seatedPlayers[0]?.ante ?? 0;
+    this.pokerState.currentBet = 0;
+    this.pokerState.street = "preflop";
+    this.pokerState.communityCards = [];
     this.pokerState.turnPlayerId = this.nextActivePokerPlayerId();
-    this.pokerState.message = "Private hands dealt. Betting round is open.";
+    this.pokerState.message = "Two private Normies dealt. Preflop betting is open.";
     this.broadcastPoker();
   }
 
@@ -523,8 +538,9 @@ export default class RPSParty {
       return;
     }
 
-    const committed = player.committed ?? 0;
-    const callAmount = Math.max(0, this.pokerState.currentBet - committed);
+    const streetCommitted = player.streetCommitted ?? 0;
+    const totalCommitted = player.committed ?? 0;
+    const callAmount = Math.max(0, this.pokerState.currentBet - streetCommitted);
 
     if (data.action === "check") {
       if (callAmount > 0) return;
@@ -541,7 +557,8 @@ export default class RPSParty {
           this.broadcastPoker();
           return;
         }
-        player.committed = committed + callAmount;
+        player.streetCommitted = streetCommitted + callAmount;
+        player.committed = totalCommitted + callAmount;
         this.pokerState.pot += callAmount;
       }
       player.acted = true;
@@ -553,13 +570,14 @@ export default class RPSParty {
     if (data.action === "raise") {
       const raiseTo = data.raiseTo ?? this.pokerState.currentBet + this.pokerState.minRaise;
       if (raiseTo < this.pokerState.currentBet + this.pokerState.minRaise) return;
-      const extra = raiseTo - committed;
+      const extra = raiseTo - streetCommitted;
       const reserved = await this.reservePokerExtraWager(player, extra);
       if (!reserved.ok) {
         this.broadcastPoker();
         return;
       }
-      player.committed = raiseTo;
+      player.streetCommitted = raiseTo;
+      player.committed = totalCommitted + extra;
       player.acted = true;
       this.pokerState.currentBet = raiseTo;
       this.pokerState.pot += extra;
@@ -573,7 +591,7 @@ export default class RPSParty {
 
   private advancePokerTurn(previousPlayerId: string) {
     if (this.isPokerBettingComplete()) {
-      void this.finishPokerShowdown();
+      void this.advancePokerStreetOrShowdown();
       return;
     }
     this.pokerState.turnPlayerId = this.nextActivePokerPlayerId(previousPlayerId);
@@ -582,7 +600,46 @@ export default class RPSParty {
 
   private isPokerBettingComplete() {
     const active = this.activePokerPlayers();
-    return active.length <= 1 || active.every((player) => player.acted && (player.committed ?? 0) >= this.pokerState.currentBet);
+    return active.length <= 1 || active.every((player) => player.acted && (player.streetCommitted ?? 0) >= this.pokerState.currentBet);
+  }
+
+  private resetPokerStreet(street: PokerState["street"], revealCount: number, message: string) {
+    this.pokerState.street = street;
+    this.pokerState.communityCards = [...this.pokerState.communityCards, ...this.pokerDeck.splice(0, revealCount)];
+    this.pokerState.currentBet = 0;
+    this.pokerState.turnPlayerId = this.nextActivePokerPlayerId();
+    this.pokerState.players.forEach((player) => {
+      if (player.connected && !player.folded) {
+        player.acted = false;
+        player.streetCommitted = 0;
+      }
+    });
+    this.pokerState.message = message;
+    this.broadcastPoker();
+  }
+
+  private async advancePokerStreetOrShowdown() {
+    if (this.activePokerPlayers().length <= 1) {
+      await this.finishPokerShowdown();
+      return;
+    }
+
+    if (this.pokerState.street === "preflop") {
+      this.resetPokerStreet("flop", 3, "Flop revealed. Betting is open.");
+      return;
+    }
+
+    if (this.pokerState.street === "flop") {
+      this.resetPokerStreet("turn", 1, "Turn Normie revealed. Betting is open.");
+      return;
+    }
+
+    if (this.pokerState.street === "turn") {
+      this.resetPokerStreet("river", 1, "River Normie revealed. Final betting is open.");
+      return;
+    }
+
+    await this.finishPokerShowdown();
   }
 
   private async finishPokerShowdown() {
@@ -619,6 +676,9 @@ export default class RPSParty {
     this.pokerState.pot = 0;
     this.pokerState.currentBet = 0;
     this.pokerState.turnPlayerId = undefined;
+    this.pokerState.street = undefined;
+    this.pokerState.communityCards = [];
+    this.pokerDeck = [];
     this.pokerState.handId = undefined;
     this.pokerState.showdown = undefined;
     this.pokerState.players = this.pokerState.players
@@ -629,6 +689,7 @@ export default class RPSParty {
         hand: [],
         reserved: false,
         committed: 0,
+        streetCommitted: 0,
         folded: false,
         acted: false,
         accountError: undefined
@@ -727,19 +788,50 @@ export default class RPSParty {
     return { handName: "No DNA Hand", score: 10, summary: "No scoring DNA combination." };
   }
 
+  private fiveCardCombos(cards: number[]) {
+    const combos: number[][] = [];
+    for (let a = 0; a < cards.length - 4; a += 1) {
+      for (let b = a + 1; b < cards.length - 3; b += 1) {
+        for (let c = b + 1; c < cards.length - 2; c += 1) {
+          for (let d = c + 1; d < cards.length - 1; d += 1) {
+            for (let e = d + 1; e < cards.length; e += 1) {
+              combos.push([cards[a], cards[b], cards[c], cards[d], cards[e]]);
+            }
+          }
+        }
+      }
+    }
+    return combos;
+  }
+
+  private async evaluateBestTexasHand(cards: number[]) {
+    const combos = this.fiveCardCombos(cards);
+    const evaluated = await Promise.all(
+      combos.map(async (combo) => {
+        const traits = await Promise.all(combo.map((id) => this.fetchNormieTraits(id)));
+        return {
+          cards: combo,
+          evaluation: this.evaluatePokerHand(traits)
+        };
+      })
+    );
+
+    return evaluated.reduce((best, current) => (current.evaluation.score > best.evaluation.score ? current : best));
+  }
+
   private async evaluatePokerShowdown(players: PokerPlayer[]): Promise<PokerShowdown> {
     const hands = await Promise.all(
       players.map(async (player) => {
-        const cards = player.hand ?? [];
-        const traits = await Promise.all(cards.map((id) => this.fetchNormieTraits(id)));
-        const evaluation = this.evaluatePokerHand(traits);
+        const cards = [...(player.hand ?? []), ...this.pokerState.communityCards];
+        const best = cards.length >= 5 ? await this.evaluateBestTexasHand(cards) : { cards, evaluation: this.evaluatePokerHand([]) };
         return {
           playerId: player.id,
           playerName: player.name,
           cards,
-          handName: evaluation.handName,
-          score: evaluation.score,
-          summary: evaluation.summary
+          bestCards: best.cards,
+          handName: best.evaluation.handName,
+          score: best.evaluation.score,
+          summary: best.evaluation.summary
         };
       })
     );
@@ -995,6 +1087,7 @@ export default class RPSParty {
 
     return {
       ...this.pokerState,
+      pokerDeck: undefined,
       privateHand: privatePlayer?.hand,
       players: this.pokerState.players.map((player) => ({
         ...player,
