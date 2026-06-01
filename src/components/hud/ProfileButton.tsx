@@ -28,15 +28,15 @@ export function ProfileButton() {
 
 function PrivyProfileButton() {
   const { ready, authenticated, user, login, getAccessToken } = usePrivy();
-  const profile = useAccountStore((store) => ({
-    username: store.username,
-    displayName: store.displayName,
-    isNormieHolder: store.isNormieHolder,
-    selectedNormieId: store.selectedNormieId,
-    selectedNormieImage: store.selectedNormieImage,
-    holderVerifiedAt: store.holderVerifiedAt,
-    ownedNormieIds: store.ownedNormieIds
-  }));
+  const profile = {
+    username: useAccountStore((store) => store.username),
+    displayName: useAccountStore((store) => store.displayName),
+    isNormieHolder: useAccountStore((store) => store.isNormieHolder),
+    selectedNormieId: useAccountStore((store) => store.selectedNormieId),
+    selectedNormieImage: useAccountStore((store) => store.selectedNormieImage),
+    holderVerifiedAt: useAccountStore((store) => store.holderVerifiedAt),
+    ownedNormieIds: useAccountStore((store) => store.ownedNormieIds)
+  };
   const setProfile = useAccountStore((store) => store.setProfile);
   const setAvatarUrl = usePlayerStore((store) => store.setAvatarUrl);
   const notify = useArcadeStore((store) => store.notify);

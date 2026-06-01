@@ -209,13 +209,11 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const [joinCode, setJoinCode] = useState(() => (roomCode === "QUICKPLAY" ? "" : roomCode));
   const { connected, connect, clearError, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
   const { ready, authenticated, getAccessToken, login } = usePrivy();
-  const holderProfile = useAccountStore((store) => ({
-    username: store.username,
-    displayName: store.displayName,
-    isNormieHolder: store.isNormieHolder,
-    selectedNormieId: store.selectedNormieId,
-    selectedNormieImage: store.selectedNormieImage
-  }));
+  const username = useAccountStore((store) => store.username);
+  const displayName = useAccountStore((store) => store.displayName);
+  const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
+  const selectedNormieId = useAccountStore((store) => store.selectedNormieId);
+  const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
   const setBalance = useChipStore((store) => store.setBalance);
   const notify = useArcadeStore((store) => store.notify);
   const setActiveGame = useArcadeStore((store) => store.setActiveGame);
@@ -364,17 +362,17 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
         connect({
           privyToken: token,
           bet: typeof parsed.bet === "number" ? parsed.bet : bet,
-          name: holderProfile.displayName || holderProfile.username,
-          isNormieHolder: holderProfile.isNormieHolder,
-          selectedNormieId: holderProfile.selectedNormieId ?? null,
-          avatarUrl: holderProfile.selectedNormieImage ?? null
+          name: displayName || username,
+          isNormieHolder,
+          selectedNormieId: selectedNormieId ?? null,
+          avatarUrl: selectedNormieImage ?? null
         });
         notify({ kind: "info", title: "Reconnected", body: `Rejoining ${storedRoom === "QUICKPLAY" ? "quick match" : `room ${storedRoom}`}.` });
       });
     } catch {
       window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
     }
-  }, [authenticated, bet, connect, connected, getAccessToken, holderProfile, notify, ready, setBet]);
+  }, [authenticated, bet, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, setBet, username]);
 
   useEffect(() => {
     if (error?.toLowerCase().includes("full")) {
@@ -415,10 +413,10 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     connect({
       privyToken: token,
       bet,
-      name: holderProfile.displayName || holderProfile.username,
-      isNormieHolder: holderProfile.isNormieHolder,
-      selectedNormieId: holderProfile.selectedNormieId ?? null,
-      avatarUrl: holderProfile.selectedNormieImage ?? null
+      name: displayName || username,
+      isNormieHolder,
+      selectedNormieId: selectedNormieId ?? null,
+      avatarUrl: selectedNormieImage ?? null
     });
 
     window.sessionStorage.setItem(

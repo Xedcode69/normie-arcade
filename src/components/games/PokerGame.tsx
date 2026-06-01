@@ -1,11 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Dices, RotateCcw } from "lucide-react";
+import { CheckCircle2, Copy, Dices, LogOut, RotateCcw, Search, Users } from "lucide-react";
+import Image from "next/image";
+import { usePrivy } from "@privy-io/react-auth";
 import { useState } from "react";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
 import { playTone } from "@/lib/audio";
+import { createPokerRoomCode, normalizePokerRoomCode } from "@/lib/pokerPvp";
+import { usePokerPvp } from "@/hooks/usePokerPvp";
 import { NormieAPIService } from "@/services/NormieAPIService";
+import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useChipStore } from "@/stores/chipStore";
 import type { Normie } from "@/types/normie";
@@ -16,6 +21,8 @@ type PokerHand = {
   multiplier: number;
   summary: string;
 };
+type PokerMode = "solo" | "pvp";
+type PokerRoomMode = "create" | "join";
 
 const handRanks = {
   none: { name: "No DNA Hand", multiplier: 0 },
@@ -95,6 +102,7 @@ function evaluateHand(cards: Normie[]): PokerHand {
 }
 
 export function PokerGame() {
+  const [mode, setMode] = useState<PokerMode>("solo");
   const [bet, setBet] = useState(100);
   const [cards, setCards] = useState<Array<Normie | null>>(Array.from({ length: 5 }, () => null));
   const [loading, setLoading] = useState(false);
@@ -151,6 +159,22 @@ export function PokerGame() {
         <p className="terminal-hash mx-auto mt-3 max-w-4xl truncate text-xs text-pixel/70">{result}</p>
       </div>
 
+      <div className="mt-6 flex shrink-0 justify-center gap-2">
+        {(["solo", "pvp"] as const).map((value) => (
+          <button
+            key={value}
+            onClick={() => setMode(value)}
+            className={`min-w-28 border px-3 py-2 text-xs uppercase tracking-widest transition ${
+              mode === value ? "border-paper bg-paper/15 text-paper shadow-neon" : "border-paper/25 bg-black/60 text-paper/55 hover:border-paper/70"
+            }`}
+          >
+            {value === "solo" ? "Solo Deal" : "PvP Table"}
+          </button>
+        ))}
+      </div>
+
+      {mode === "pvp" ? <PokerPvP /> : (
+        <>
       <div className="mt-8 flex shrink-0 flex-wrap items-center justify-center gap-2">
         <div className="border border-paper/35 bg-black/70 px-3 py-2 text-xs uppercase tracking-widest text-paper/70">
           Pair 2x
@@ -188,7 +212,269 @@ export function PokerGame() {
         <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Round Result</div>
         <div className="truncate text-sm text-paper">{roundResult}</div>
       </div>
+        </>
+      )}
     </div>
+  );
+}
+
+function PokerPvP() {
+  const [roomCode, setRoomCode] = useState(() => createPokerRoomCode());
+  const [joinCode, setJoinCode] = useState("");
+  const [roomMode, setRoomMode] = useState<PokerRoomMode>("create");
+  const { connected, connect, disconnect, error, playerId, state, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
+  const { authenticated, login } = usePrivy();
+  const username = useAccountStore((store) => store.username);
+  const displayName = useAccountStore((store) => store.displayName);
+  const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
+  const selectedNormieId = useAccountStore((store) => store.selectedNormieId);
+  const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
+  const notify = useArcadeStore((store) => store.notify);
+  const you = state.players.find((player) => player.id === playerId);
+  const privateHand = state.privateHand ?? [];
+  const readyCount = state.players.filter((player) => player.connected && player.ready).length;
+  const connectedCount = state.players.filter((player) => player.connected).length;
+
+  function inviteUrl() {
+    if (typeof window === "undefined") return "";
+    const url = new URL(window.location.href);
+    url.searchParams.set("pokerRoom", roomCode);
+    return url.toString();
+  }
+
+  function createRoom() {
+    if (connected) return;
+    const nextCode = createPokerRoomCode();
+    setRoomMode("create");
+    setRoomCode(nextCode);
+    setJoinCode(nextCode);
+  }
+
+  function useJoinCode() {
+    if (connected) return;
+    const nextCode = normalizePokerRoomCode(joinCode);
+    if (!nextCode) return;
+    setRoomMode("join");
+    setRoomCode(nextCode);
+  }
+
+  function joinTable() {
+    if (!authenticated) {
+      notify({ kind: "info", title: "Login Required", body: "Connect your account before joining the PvP poker table." });
+      login();
+      return;
+    }
+
+    connect({
+      name: displayName || username,
+      isNormieHolder,
+      selectedNormieId: selectedNormieId ?? null,
+      avatarUrl: selectedNormieImage ?? null
+    });
+  }
+
+  async function copyInvite() {
+    await navigator.clipboard?.writeText(inviteUrl());
+    notify({ kind: "info", title: "Poker Invite Copied", body: `Room ${roomCode} link copied.` });
+  }
+
+  return (
+    <div className="mx-auto mt-6 w-full max-w-6xl">
+      <div className="flex flex-wrap justify-center gap-2">
+        <button
+          onClick={createRoom}
+          disabled={connected}
+          className={`min-w-32 border px-4 py-2 text-xs uppercase tracking-widest transition disabled:opacity-50 ${
+            roomMode === "create" ? "border-paper bg-paper/15 text-paper shadow-neon" : "border-paper/30 bg-black/70 text-paper/60"
+          }`}
+        >
+          Create Room
+        </button>
+        <button
+          onClick={() => setRoomMode("join")}
+          disabled={connected}
+          className={`min-w-32 border px-4 py-2 text-xs uppercase tracking-widest transition disabled:opacity-50 ${
+            roomMode === "join" ? "border-paper bg-paper/15 text-paper shadow-neon" : "border-paper/30 bg-black/70 text-paper/60"
+          }`}
+        >
+          Join Room
+        </button>
+      </div>
+
+      <div className="mx-auto mt-3 grid max-w-4xl gap-3 md:grid-cols-[1fr_auto_auto]">
+        <div className="pixel-card flex min-w-0 items-center gap-3 px-3 py-2">
+          <span className="terminal-hash shrink-0 text-[10px] uppercase tracking-[0.22em] text-pixel/60">Room</span>
+          {roomMode === "join" && !connected ? (
+            <input
+              value={joinCode}
+              onChange={(event) => setJoinCode(normalizePokerRoomCode(event.target.value))}
+              placeholder="ENTER CODE"
+              className="min-w-0 flex-1 bg-transparent text-center font-display text-sm uppercase tracking-[0.22em] text-paper outline-none placeholder:text-paper/25"
+            />
+          ) : (
+            <div className="min-w-0 flex-1 truncate text-center font-display text-sm uppercase tracking-[0.22em] text-paper/85">{roomCode}</div>
+          )}
+        </div>
+        {roomMode === "join" && !connected ? (
+          <button
+            onClick={useJoinCode}
+            disabled={!joinCode}
+            className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
+          >
+            Use Code
+          </button>
+        ) : (
+          <button
+            onClick={createRoom}
+            disabled={connected}
+            className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper disabled:opacity-40"
+          >
+            <Users size={15} /> New Room
+          </button>
+        )}
+        <button
+          onClick={copyInvite}
+          className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"
+        >
+          <Copy size={15} /> Copy Invite
+        </button>
+      </div>
+
+      <div className="mx-auto mt-4 flex max-w-4xl items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
+        <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${error ? "text-magenta" : "text-pixel/60"}`}>
+          {error ?? `${state.message} ${state.phase === "dealt" ? `Hand ${state.handId ?? "active"}.` : `${readyCount}/${Math.max(connectedCount, 2)} ready.`}`}
+        </span>
+      </div>
+
+      <div className="mt-6 grid gap-3 md:grid-cols-5">
+        {Array.from({ length: state.maxPlayers }, (_, seat) => {
+          const player = state.players.find((item) => item.seat === seat);
+          return <PokerSeat key={seat} seat={seat} player={player} isYou={player?.id === playerId} />;
+        })}
+      </div>
+
+      {state.phase === "dealt" ? (
+        <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/35 bg-black/65 p-4">
+          <div className="text-center">
+            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Private Hand</div>
+            <div className="mt-1 text-sm text-paper">
+              {privateHand.length ? "Only your client receives these Normie card IDs." : "Waiting for your private hand packet..."}
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {Array.from({ length: 5 }, (_, index) => (
+              <PrivatePokerCard key={`${state.handId ?? "hand"}-${index}`} normieId={privateHand[index]} index={index} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
+        {!connected ? (
+          <button
+            onClick={joinTable}
+            className="inline-flex min-w-36 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
+          >
+            <Search size={16} /> Join Table
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={toggleReady}
+              disabled={state.phase === "dealt"}
+              className={`inline-flex min-w-36 items-center justify-center gap-2 border px-5 py-3 text-xs uppercase tracking-widest transition ${
+                you?.ready ? "border-mint bg-mint/10 text-mint" : "border-paper/70 bg-paper/10 text-paper shadow-neon hover:bg-paper/15"
+              } disabled:opacity-50`}
+            >
+              <CheckCircle2 size={16} /> {state.phase === "dealt" ? "Hand Dealt" : you?.ready ? "Ready" : "Set Ready"}
+            </button>
+            <button
+              onClick={disconnect}
+              className="inline-flex min-w-32 items-center justify-center gap-2 border border-paper/40 bg-black/70 px-5 py-3 text-xs uppercase tracking-widest text-paper/70 transition hover:border-paper hover:text-paper"
+            >
+              <LogOut size={16} /> Leave
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="mx-auto mt-5 w-full max-w-4xl border-t border-paper/20 pt-3 text-center">
+        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Step 1 Foundation</div>
+        <div className="text-sm text-paper">
+          {state.phase === "dealt"
+            ? "Server-side private hands are created. Private card delivery comes next."
+            : "Rooms, seats, and ready states are active. Set at least two players ready to trigger the server deal model."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PokerSeat({
+  seat,
+  player,
+  isYou
+}: {
+  seat: number;
+  player?: {
+    id: string;
+    name: string;
+    connected: boolean;
+    ready: boolean;
+    handCount: number;
+    isNormieHolder?: boolean;
+    selectedNormieId?: number | null;
+    avatarUrl?: string | null;
+  };
+  isYou: boolean;
+}) {
+  return (
+    <div className={`border bg-black/70 p-3 text-center ${isYou ? "border-mint shadow-neon" : "border-paper/35"}`}>
+      <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Seat {seat + 1}</div>
+      <div className="mx-auto mt-3 grid h-20 w-20 place-items-center border border-paper/35 bg-paper">
+        {player?.avatarUrl ? (
+          <Image src={player.avatarUrl} alt={`${player.name} avatar`} width={76} height={76} className="h-[76px] w-[76px] object-contain" unoptimized />
+        ) : (
+          <Dices size={28} className="text-black/60" />
+        )}
+      </div>
+      <div className="mt-3 truncate text-sm text-paper">{player?.name ?? "Open Seat"}</div>
+      <div className={`mt-2 text-[10px] uppercase tracking-widest ${player?.ready ? "text-mint" : "text-paper/45"}`}>
+        {player ? (player.handCount ? `${player.handCount} Cards Dealt` : player.ready ? "Ready" : player.connected ? "Seated" : "Disconnected") : "Waiting"}
+      </div>
+      {player?.isNormieHolder ? (
+        <div className="mx-auto mt-2 w-fit border border-mint/50 px-1.5 py-0.5 text-[9px] text-mint">
+          0xN{player.selectedNormieId !== null && player.selectedNormieId !== undefined ? ` #${player.selectedNormieId}` : ""}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PrivatePokerCard({ normieId, index }: { normieId?: number; index: number }) {
+  return (
+    <motion.div
+      initial={{ rotateY: 90, opacity: 0 }}
+      animate={{ rotateY: 0, opacity: 1 }}
+      transition={{ delay: index * 0.06 }}
+      className="border border-paper/45 bg-black/80 p-2 text-center"
+    >
+      <div className="mx-auto grid h-28 w-28 place-items-center overflow-hidden border border-paper/40 bg-paper">
+        {normieId !== undefined ? (
+          <CenteredNormieImage
+            src={`https://api.normies.art/normie/${normieId}/image.png`}
+            alt={`Private poker Normie #${normieId}`}
+            className="h-full w-full"
+          />
+        ) : (
+          <div className="grid h-full w-full place-items-center bg-black/85">
+            <div className="h-16 w-16 animate-pulse border border-paper/20 bg-paper/10" />
+          </div>
+        )}
+      </div>
+      <div className="mt-2 text-xs text-paper/60">#{normieId ?? "----"}</div>
+      <div className="terminal-hash mt-1 text-[9px] uppercase tracking-widest text-pixel/55">Private Slot {index + 1}</div>
+    </motion.div>
   );
 }
 
