@@ -9,6 +9,8 @@ type ServerMessage =
   | { type: "error"; message: string };
 
 type JoinOptions = {
+  privyToken: string;
+  ante: number;
   name?: string | null;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
@@ -61,6 +63,8 @@ export function usePokerPvp(room = "poker-quickplay") {
         type: "poker_join",
         playerId: nextPlayerId,
         name: options.name || getPlayerName(nextPlayerId),
+        privyToken: options.privyToken,
+        ante: options.ante,
         isNormieHolder: options.isNormieHolder,
         selectedNormieId: options.selectedNormieId,
         avatarUrl: options.avatarUrl

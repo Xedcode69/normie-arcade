@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Copy, Dices, LogOut, RotateCcw, Search, Users } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
 import { playTone } from "@/lib/audio";
 import { createPokerRoomCode, normalizePokerRoomCode } from "@/lib/pokerPvp";
@@ -219,17 +219,19 @@ export function PokerGame() {
 }
 
 function PokerPvP() {
+  const [ante, setAnte] = useState(100);
   const [roomCode, setRoomCode] = useState(() => createPokerRoomCode());
   const [joinCode, setJoinCode] = useState("");
   const [roomMode, setRoomMode] = useState<PokerRoomMode>("create");
   const { connected, connect, disconnect, error, playerId, state, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
-  const { authenticated, login } = usePrivy();
+  const { authenticated, getAccessToken, login } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
   const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
   const selectedNormieId = useAccountStore((store) => store.selectedNormieId);
   const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
   const notify = useArcadeStore((store) => store.notify);
+  const setBalance = useChipStore((store) => store.setBalance);
   const you = state.players.find((player) => player.id === playerId);
   const privateHand = state.privateHand ?? [];
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
@@ -258,20 +260,34 @@ function PokerPvP() {
     setRoomCode(nextCode);
   }
 
-  function joinTable() {
+  async function joinTable() {
     if (!authenticated) {
       notify({ kind: "info", title: "Login Required", body: "Connect your account before joining the PvP poker table." });
       login();
       return;
     }
 
+    const token = await getAccessToken();
+    if (!token) {
+      notify({ kind: "loss", title: "Poker rejected", body: "Could not read your Privy session token." });
+      return;
+    }
+
     connect({
+      privyToken: token,
+      ante,
       name: displayName || username,
       isNormieHolder,
       selectedNormieId: selectedNormieId ?? null,
       avatarUrl: selectedNormieImage ?? null
     });
   }
+
+  useEffect(() => {
+    if (typeof you?.serverBalance === "number") {
+      setBalance(you.serverBalance);
+    }
+  }, [setBalance, you?.serverBalance]);
 
   async function copyInvite() {
     await navigator.clipboard?.writeText(inviteUrl());
@@ -346,6 +362,12 @@ function PokerPvP() {
         </span>
       </div>
 
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+        <div className="pixel-card px-4 py-2 text-sm text-paper">Pot {state.pot} chips</div>
+        {typeof you?.serverBalance === "number" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Server chips {you.serverBalance}</div> : null}
+        <BetControls bet={ante} setBet={setAnte} disabled={connected} />
+      </div>
+
       <div className="mt-6 grid gap-3 md:grid-cols-5">
         {Array.from({ length: state.maxPlayers }, (_, seat) => {
           const player = state.players.find((item) => item.seat === seat);
@@ -369,6 +391,10 @@ function PokerPvP() {
         </div>
       ) : null}
 
+      {state.phase === "showdown" && state.showdown ? (
+        <PokerShowdownPanel showdown={state.showdown} playerId={playerId} />
+      ) : null}
+
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         {!connected ? (
           <button
@@ -381,12 +407,12 @@ function PokerPvP() {
           <>
             <button
               onClick={toggleReady}
-              disabled={state.phase === "dealt"}
+              disabled={state.phase === "dealt" || state.phase === "showdown"}
               className={`inline-flex min-w-36 items-center justify-center gap-2 border px-5 py-3 text-xs uppercase tracking-widest transition ${
                 you?.ready ? "border-mint bg-mint/10 text-mint" : "border-paper/70 bg-paper/10 text-paper shadow-neon hover:bg-paper/15"
               } disabled:opacity-50`}
             >
-              <CheckCircle2 size={16} /> {state.phase === "dealt" ? "Hand Dealt" : you?.ready ? "Ready" : "Set Ready"}
+              <CheckCircle2 size={16} /> {state.phase === "showdown" ? "Showdown" : state.phase === "dealt" ? "Hand Dealt" : you?.ready ? "Ready" : "Set Ready"}
             </button>
             <button
               onClick={disconnect}
@@ -399,11 +425,13 @@ function PokerPvP() {
       </div>
 
       <div className="mx-auto mt-5 w-full max-w-4xl border-t border-paper/20 pt-3 text-center">
-        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Step 1 Foundation</div>
+        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Poker PvP</div>
         <div className="text-sm text-paper">
-          {state.phase === "dealt"
-            ? "Server-side private hands are created. Private card delivery comes next."
-            : "Rooms, seats, and ready states are active. Set at least two players ready to trigger the server deal model."}
+          {state.phase === "showdown"
+            ? "Showdown complete. Ante/pot settlement is handled server-side."
+            : state.phase === "dealt"
+            ? "Private hands are dealt. Server is evaluating the showdown."
+            : "Set at least two players ready. Each player antes before the server deals."}
         </div>
       </div>
     </div>
@@ -447,6 +475,64 @@ function PokerSeat({
           0xN{player.selectedNormieId !== null && player.selectedNormieId !== undefined ? ` #${player.selectedNormieId}` : ""}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function PokerShowdownPanel({
+  showdown,
+  playerId
+}: {
+  showdown: {
+    winners: string[];
+    pot: number;
+    payoutEach: number;
+    hands: Array<{
+      playerId: string;
+      playerName: string;
+      cards: number[];
+      handName: string;
+      score: number;
+      summary: string;
+    }>;
+  };
+  playerId: string | null;
+}) {
+  return (
+    <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/50 bg-black/75 p-4 shadow-neon">
+      <div className="text-center">
+        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Showdown</div>
+        <h3 className="mt-1 font-display text-lg uppercase tracking-[0.22em] text-paper">
+          {showdown.winners.includes(playerId ?? "") ? "You Won The Pot" : "Pot Resolved"}
+        </h3>
+        <div className="mt-2 text-sm text-paper/70">
+          Pot {showdown.pot} chips. {showdown.winners.length > 1 ? `Split payout ${showdown.payoutEach} each.` : `Winner payout ${showdown.payoutEach}.`}
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {showdown.hands.map((hand) => {
+          const winner = showdown.winners.includes(hand.playerId);
+          return (
+            <div key={hand.playerId} className={`border bg-black/70 p-3 ${winner ? "border-mint shadow-neon" : "border-paper/30"}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="truncate text-sm text-paper">{hand.playerName}</div>
+                <div className={`text-[10px] uppercase tracking-widest ${winner ? "text-mint" : "text-paper/45"}`}>
+                  {winner ? "Winner" : "Settled"}
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-5 gap-1">
+                {hand.cards.map((id) => (
+                  <div key={id} className="grid aspect-square place-items-center border border-paper/25 bg-paper">
+                    <CenteredNormieImage src={`https://api.normies.art/normie/${id}/image.png`} alt={`Showdown Normie #${id}`} className="h-full w-full" />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 font-display text-sm text-paper">{hand.handName}</div>
+              <div className="mt-1 text-xs text-paper/55">{hand.summary}</div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
