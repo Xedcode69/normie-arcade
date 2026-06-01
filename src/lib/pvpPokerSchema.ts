@@ -11,6 +11,10 @@ const baseSchema = z.object({
 export const reservePokerAnteSchema = baseSchema;
 export const refundPokerAnteSchema = baseSchema;
 
+export const reservePokerWagerSchema = baseSchema.extend({
+  amount: z.number().int().min(1).max(100000)
+});
+
 export const settlePokerAnteSchema = baseSchema.extend({
   outcome: z.enum(["WIN", "LOSS", "DRAW"]),
   payout: z.number().int().min(0).max(1000000),
@@ -20,4 +24,5 @@ export const settlePokerAnteSchema = baseSchema.extend({
 
 export type ReservePokerAnteInput = z.infer<typeof reservePokerAnteSchema>;
 export type RefundPokerAnteInput = z.infer<typeof refundPokerAnteSchema>;
+export type ReservePokerWagerInput = z.infer<typeof reservePokerWagerSchema>;
 export type SettlePokerAnteInput = z.infer<typeof settlePokerAnteSchema>;

@@ -111,6 +111,14 @@ export function usePokerPvp(room = "poker-quickplay") {
     send({ type: "poker_next_hand", playerId });
   }, [playerId, send]);
 
+  const submitAction = useCallback(
+    (action: "check" | "call" | "raise" | "fold", raiseTo?: number) => {
+      if (!playerId) return;
+      send({ type: "poker_action", playerId, action, raiseTo });
+    },
+    [playerId, send]
+  );
+
   useEffect(() => () => disconnect(), [disconnect]);
 
   return {
@@ -122,6 +130,7 @@ export function usePokerPvp(room = "poker-quickplay") {
     playerId,
     nextHand,
     state,
+    submitAction,
     toggleReady
   };
 }

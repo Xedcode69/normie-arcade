@@ -239,7 +239,7 @@ function PokerPvP() {
     if (typeof window === "undefined") return "create";
     return normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "") ? "join" : "create";
   });
-  const { connected, connect, clearError, disconnect, error, nextHand, playerId, state, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
+  const { connected, connect, clearError, disconnect, error, nextHand, playerId, state, submitAction, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
   const { ready, authenticated, getAccessToken, login } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
@@ -252,6 +252,9 @@ function PokerPvP() {
   const privateHand = state.privateHand ?? [];
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
   const connectedCount = state.players.filter((player) => player.connected).length;
+  const callAmount = Math.max(0, state.currentBet - (you?.committed ?? 0));
+  const raiseTo = state.currentBet + state.minRaise;
+  const isYourTurn = connected && state.phase === "betting" && state.turnPlayerId === playerId;
   const reconnectAttempted = useRef(false);
 
   useEffect(() => {
@@ -438,12 +441,16 @@ function PokerPvP() {
 
       <div className="mx-auto mt-4 flex max-w-4xl items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
         <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${error ? "text-magenta" : "text-pixel/60"}`}>
-          {error ?? `${state.message} ${state.phase === "dealt" ? `Hand ${state.handId ?? "active"}.` : `${readyCount}/${Math.max(connectedCount, 2)} ready.`}`}
+          {error ??
+            `${state.message} ${
+              state.phase === "dealt" || state.phase === "betting" ? `Hand ${state.handId ?? "active"}.` : `${readyCount}/${Math.max(connectedCount, 2)} ready.`
+            }`}
         </span>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
         <div className="pixel-card px-4 py-2 text-sm text-paper">Pot {state.pot} chips</div>
+        {state.phase === "betting" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Current bet {state.currentBet}</div> : null}
         {typeof you?.serverBalance === "number" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Server chips {you.serverBalance}</div> : null}
         <BetControls bet={ante} setBet={setAnte} disabled={connected} />
       </div>
@@ -455,7 +462,7 @@ function PokerPvP() {
         })}
       </div>
 
-      {state.phase === "dealt" ? (
+      {state.phase === "dealt" || state.phase === "betting" ? (
         <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/35 bg-black/65 p-4">
           <div className="text-center">
             <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Private Hand</div>
@@ -469,6 +476,18 @@ function PokerPvP() {
             ))}
           </div>
         </div>
+      ) : null}
+
+      {state.phase === "betting" ? (
+        <PokerBettingControls
+          callAmount={callAmount}
+          currentBet={state.currentBet}
+          disabled={!isYourTurn}
+          isYourTurn={isYourTurn}
+          minRaise={state.minRaise}
+          raiseTo={raiseTo}
+          onAction={submitAction}
+        />
       ) : null}
 
       {state.phase === "showdown" && state.showdown ? (
@@ -489,12 +508,21 @@ function PokerPvP() {
           <>
             <button
               onClick={toggleReady}
-              disabled={state.phase === "dealt" || state.phase === "showdown"}
+              disabled={state.phase === "dealt" || state.phase === "betting" || state.phase === "showdown"}
               className={`inline-flex min-w-36 items-center justify-center gap-2 border px-5 py-3 text-xs uppercase tracking-widest transition ${
                 you?.ready ? "border-mint bg-mint/10 text-mint" : "border-paper/70 bg-paper/10 text-paper shadow-neon hover:bg-paper/15"
               } disabled:opacity-50`}
             >
-              <CheckCircle2 size={16} /> {state.phase === "showdown" ? "Showdown" : state.phase === "dealt" ? "Hand Dealt" : you?.ready ? "Ready" : "Set Ready"}
+              <CheckCircle2 size={16} />{" "}
+              {state.phase === "showdown"
+                ? "Showdown"
+                : state.phase === "betting"
+                ? "Betting"
+                : state.phase === "dealt"
+                ? "Hand Dealt"
+                : you?.ready
+                ? "Ready"
+                : "Set Ready"}
             </button>
             <button
               onClick={leaveTable}
@@ -511,10 +539,71 @@ function PokerPvP() {
         <div className="text-sm text-paper">
           {state.phase === "showdown"
             ? "Showdown complete. Ante/pot settlement is handled server-side."
+            : state.phase === "betting"
+            ? isYourTurn
+              ? `Your turn. ${callAmount > 0 ? `Call ${callAmount}, raise, or fold.` : "Check, raise, or fold."}`
+              : "Waiting for the active player to act."
             : state.phase === "dealt"
-            ? "Private hands are dealt. Server is evaluating the showdown."
+            ? "Private hands are dealt."
             : "Set at least two players ready. Each player antes before the server deals."}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PokerBettingControls({
+  callAmount,
+  currentBet,
+  disabled,
+  isYourTurn,
+  minRaise,
+  raiseTo,
+  onAction
+}: {
+  callAmount: number;
+  currentBet: number;
+  disabled: boolean;
+  isYourTurn: boolean;
+  minRaise: number;
+  raiseTo: number;
+  onAction: (action: "check" | "call" | "raise" | "fold", raiseTo?: number) => void;
+}) {
+  return (
+    <div className="mx-auto mt-5 w-full max-w-5xl border border-paper/35 bg-black/65 p-4 text-center">
+      <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Betting Action</div>
+      <div className="mt-1 text-sm text-paper/70">
+        {isYourTurn ? "Your action is live." : "Waiting for the current seat."} Current bet {currentBet}. Minimum raise {minRaise}.
+      </div>
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <button
+          onClick={() => onAction("check")}
+          disabled={disabled || callAmount > 0}
+          className="min-w-28 border border-paper/45 bg-paper/10 px-4 py-3 text-xs uppercase tracking-widest text-paper transition hover:bg-paper/15 disabled:opacity-35"
+        >
+          Check
+        </button>
+        <button
+          onClick={() => onAction("call")}
+          disabled={disabled || callAmount === 0}
+          className="min-w-28 border border-paper/45 bg-paper/10 px-4 py-3 text-xs uppercase tracking-widest text-paper transition hover:bg-paper/15 disabled:opacity-35"
+        >
+          Call {callAmount}
+        </button>
+        <button
+          onClick={() => onAction("raise", raiseTo)}
+          disabled={disabled}
+          className="min-w-32 border border-mint/60 bg-mint/10 px-4 py-3 text-xs uppercase tracking-widest text-mint transition hover:bg-mint/15 disabled:opacity-35"
+        >
+          Raise to {raiseTo}
+        </button>
+        <button
+          onClick={() => onAction("fold")}
+          disabled={disabled}
+          className="min-w-28 border border-magenta/60 bg-magenta/10 px-4 py-3 text-xs uppercase tracking-widest text-magenta transition hover:bg-magenta/15 disabled:opacity-35"
+        >
+          Fold
+        </button>
       </div>
     </div>
   );
@@ -532,6 +621,9 @@ function PokerSeat({
     connected: boolean;
     ready: boolean;
     handCount: number;
+    committed?: number;
+    folded?: boolean;
+    acted?: boolean;
     isNormieHolder?: boolean;
     selectedNormieId?: number | null;
     avatarUrl?: string | null;
@@ -550,8 +642,22 @@ function PokerSeat({
       </div>
       <div className="mt-3 truncate text-sm text-paper">{player?.name ?? "Open Seat"}</div>
       <div className={`mt-2 text-[10px] uppercase tracking-widest ${player?.ready ? "text-mint" : "text-paper/45"}`}>
-        {player ? (player.handCount ? `${player.handCount} Cards Dealt` : player.ready ? "Ready" : player.connected ? "Seated" : "Disconnected") : "Waiting"}
+        {player
+          ? player.folded
+            ? "Folded"
+            : player.handCount
+            ? `${player.handCount} Cards Dealt`
+            : player.ready
+            ? "Ready"
+            : player.connected
+            ? "Seated"
+            : "Disconnected"
+          : "Waiting"}
       </div>
+      {player && typeof player.committed === "number" && player.committed > 0 ? (
+        <div className="mt-2 text-[10px] uppercase tracking-widest text-paper/45">In pot {player.committed}</div>
+      ) : null}
+      {player?.acted && !player.folded ? <div className="mt-1 text-[10px] uppercase tracking-widest text-mint/70">Acted</div> : null}
       {player?.isNormieHolder ? (
         <div className="mx-auto mt-2 w-fit border border-mint/50 px-1.5 py-0.5 text-[9px] text-mint">
           0xN{player.selectedNormieId !== null && player.selectedNormieId !== undefined ? ` #${player.selectedNormieId}` : ""}

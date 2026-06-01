@@ -9,17 +9,23 @@ export type PokerPvPPlayer = {
   reserved?: boolean;
   serverBalance?: number;
   accountError?: string;
+  committed?: number;
+  folded?: boolean;
+  acted?: boolean;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
 };
 
 export type PokerPvPState = {
-  phase: "waiting" | "ready" | "dealt" | "showdown";
+  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown";
   players: PokerPvPPlayer[];
   maxPlayers: number;
   round: number;
   pot: number;
+  currentBet: number;
+  minRaise: number;
+  turnPlayerId?: string;
   handId?: string;
   privateHand?: number[];
   history: Array<{
@@ -53,6 +59,8 @@ export const initialPokerPvpState: PokerPvPState = {
   maxPlayers: 5,
   round: 1,
   pot: 0,
+  currentBet: 0,
+  minRaise: 50,
   history: [],
   message: "Create or join a DNA Poker table."
 };
