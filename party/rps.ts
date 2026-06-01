@@ -55,15 +55,18 @@ type PokerPlayer = {
   seat: number;
   connected: boolean;
   ready: boolean;
+  hand?: number[];
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
 };
 
 type PokerState = {
-  phase: "waiting" | "ready";
+  phase: "waiting" | "ready" | "dealt";
   players: PokerPlayer[];
   maxPlayers: number;
+  round: number;
+  handId?: string;
   message: string;
 };
 
@@ -109,6 +112,7 @@ function cleanPlayerName(name?: string) {
 export default class RPSParty {
   private connections = new Map<string, string>();
   private pokerConnections = new Map<string, string>();
+  private pokerConnectionObjects = new Map<string, PartyConnection>();
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
   private matchId = this.createMatchId();
@@ -123,6 +127,7 @@ export default class RPSParty {
     phase: "waiting",
     players: [],
     maxPlayers: 5,
+    round: 1,
     message: "Waiting for players to sit at the DNA Poker table."
   };
 
@@ -141,6 +146,7 @@ export default class RPSParty {
     const pokerPlayerId = this.pokerConnections.get(connection.id);
     if (pokerPlayerId) {
       this.pokerConnections.delete(connection.id);
+      this.pokerConnectionObjects.delete(connection.id);
       const pokerPlayer = this.pokerState.players.find((player) => player.id === pokerPlayerId);
       if (pokerPlayer) {
         pokerPlayer.connected = false;
@@ -238,6 +244,7 @@ export default class RPSParty {
       existing.selectedNormieId = data.selectedNormieId;
       existing.avatarUrl = data.avatarUrl;
       this.pokerConnections.set(connection.id, existing.id);
+      this.pokerConnectionObjects.set(connection.id, connection);
     } else {
       this.pokerState.players = this.pokerState.players.filter((player) => player.connected);
       const occupiedSeats = new Set(this.pokerState.players.map((player) => player.seat));
@@ -254,11 +261,13 @@ export default class RPSParty {
         seat,
         connected: true,
         ready: false,
+        hand: [],
         isNormieHolder: data.isNormieHolder,
         selectedNormieId: data.selectedNormieId,
         avatarUrl: data.avatarUrl
       });
       this.pokerConnections.set(connection.id, data.playerId);
+      this.pokerConnectionObjects.set(connection.id, connection);
     }
 
     this.pokerState.players.sort((a, b) => a.seat - b.seat);
@@ -270,6 +279,7 @@ export default class RPSParty {
   private togglePokerReady(playerId: string) {
     const player = this.pokerState.players.find((item) => item.id === playerId && item.connected);
     if (!player) return;
+    if (this.pokerState.phase === "dealt") return;
 
     player.ready = !player.ready;
     this.updatePokerPhase();
@@ -279,8 +289,36 @@ export default class RPSParty {
 
   private updatePokerPhase() {
     const connectedPlayers = this.pokerState.players.filter((player) => player.connected);
-    this.pokerState.phase =
-      connectedPlayers.length >= 2 && connectedPlayers.every((player) => player.ready) ? "ready" : "waiting";
+    if (this.pokerState.phase === "dealt") return;
+
+    const allReady = connectedPlayers.length >= 2 && connectedPlayers.every((player) => player.ready);
+    this.pokerState.phase = allReady ? "ready" : "waiting";
+
+    if (allReady) {
+      this.dealPokerHands();
+    }
+  }
+
+  private dealPokerHands() {
+    const seatedPlayers = this.pokerState.players.filter((player) => player.connected);
+    const requiredCards = seatedPlayers.length * 5;
+    const deck = this.createNormieDeck(requiredCards);
+
+    seatedPlayers.forEach((player, playerIndex) => {
+      player.hand = deck.slice(playerIndex * 5, playerIndex * 5 + 5);
+    });
+
+    this.pokerState.phase = "dealt";
+    this.pokerState.handId = `poker-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    this.pokerState.message = `Server dealt 5 private Normie cards to ${seatedPlayers.length} players. Private reveal arrives in Step 3.`;
+  }
+
+  private createNormieDeck(count: number) {
+    const ids = new Set<number>();
+    while (ids.size < count) {
+      ids.add(Math.floor(Math.random() * 10_000));
+    }
+    return [...ids];
   }
 
   private parseMessage(message: string): ClientMessage | null {
@@ -522,10 +560,17 @@ export default class RPSParty {
     };
   }
 
-  private publicPokerState() {
+  private publicPokerState(playerId?: string) {
+    const privatePlayer = playerId ? this.pokerState.players.find((player) => player.id === playerId) : undefined;
+
     return {
       ...this.pokerState,
-      players: this.pokerState.players.map((player) => ({ ...player }))
+      privateHand: privatePlayer?.hand,
+      players: this.pokerState.players.map((player) => ({
+        ...player,
+        hand: undefined,
+        handCount: player.hand?.length ?? 0
+      }))
     };
   }
 
@@ -535,6 +580,11 @@ export default class RPSParty {
 
   private broadcastPoker() {
     this.room.broadcast(JSON.stringify({ type: "poker_state", state: this.publicPokerState() }));
+    this.pokerConnectionObjects.forEach((connection, connectionId) => {
+      const playerId = this.pokerConnections.get(connectionId);
+      if (!playerId) return;
+      connection.send(JSON.stringify({ type: "poker_state", state: this.publicPokerState(playerId) }));
+    });
   }
 
   private isPokerRoom() {

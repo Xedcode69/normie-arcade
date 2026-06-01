@@ -4,15 +4,19 @@ export type PokerPvPPlayer = {
   seat: number;
   connected: boolean;
   ready: boolean;
+  handCount: number;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
 };
 
 export type PokerPvPState = {
-  phase: "waiting" | "ready";
+  phase: "waiting" | "ready" | "dealt";
   players: PokerPvPPlayer[];
   maxPlayers: number;
+  round: number;
+  handId?: string;
+  privateHand?: number[];
   message: string;
 };
 
@@ -20,6 +24,7 @@ export const initialPokerPvpState: PokerPvPState = {
   phase: "waiting",
   players: [],
   maxPlayers: 5,
+  round: 1,
   message: "Create or join a DNA Poker table."
 };
 

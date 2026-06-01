@@ -224,15 +224,14 @@ function PokerPvP() {
   const [roomMode, setRoomMode] = useState<PokerRoomMode>("create");
   const { connected, connect, disconnect, error, playerId, state, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
   const { authenticated, login } = usePrivy();
-  const holderProfile = useAccountStore((store) => ({
-    username: store.username,
-    displayName: store.displayName,
-    isNormieHolder: store.isNormieHolder,
-    selectedNormieId: store.selectedNormieId,
-    selectedNormieImage: store.selectedNormieImage
-  }));
+  const username = useAccountStore((store) => store.username);
+  const displayName = useAccountStore((store) => store.displayName);
+  const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
+  const selectedNormieId = useAccountStore((store) => store.selectedNormieId);
+  const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
   const notify = useArcadeStore((store) => store.notify);
   const you = state.players.find((player) => player.id === playerId);
+  const privateHand = state.privateHand ?? [];
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
   const connectedCount = state.players.filter((player) => player.connected).length;
 
@@ -267,10 +266,10 @@ function PokerPvP() {
     }
 
     connect({
-      name: holderProfile.displayName || holderProfile.username,
-      isNormieHolder: holderProfile.isNormieHolder,
-      selectedNormieId: holderProfile.selectedNormieId ?? null,
-      avatarUrl: holderProfile.selectedNormieImage ?? null
+      name: displayName || username,
+      isNormieHolder,
+      selectedNormieId: selectedNormieId ?? null,
+      avatarUrl: selectedNormieImage ?? null
     });
   }
 
@@ -343,7 +342,7 @@ function PokerPvP() {
 
       <div className="mx-auto mt-4 flex max-w-4xl items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
         <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${error ? "text-magenta" : "text-pixel/60"}`}>
-          {error ?? `${state.message} ${readyCount}/${Math.max(connectedCount, 2)} ready.`}
+          {error ?? `${state.message} ${state.phase === "dealt" ? `Hand ${state.handId ?? "active"}.` : `${readyCount}/${Math.max(connectedCount, 2)} ready.`}`}
         </span>
       </div>
 
@@ -353,6 +352,22 @@ function PokerPvP() {
           return <PokerSeat key={seat} seat={seat} player={player} isYou={player?.id === playerId} />;
         })}
       </div>
+
+      {state.phase === "dealt" ? (
+        <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/35 bg-black/65 p-4">
+          <div className="text-center">
+            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Private Hand</div>
+            <div className="mt-1 text-sm text-paper">
+              {privateHand.length ? "Only your client receives these Normie card IDs." : "Waiting for your private hand packet..."}
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {Array.from({ length: 5 }, (_, index) => (
+              <PrivatePokerCard key={`${state.handId ?? "hand"}-${index}`} normieId={privateHand[index]} index={index} />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         {!connected ? (
@@ -366,11 +381,12 @@ function PokerPvP() {
           <>
             <button
               onClick={toggleReady}
+              disabled={state.phase === "dealt"}
               className={`inline-flex min-w-36 items-center justify-center gap-2 border px-5 py-3 text-xs uppercase tracking-widest transition ${
                 you?.ready ? "border-mint bg-mint/10 text-mint" : "border-paper/70 bg-paper/10 text-paper shadow-neon hover:bg-paper/15"
-              }`}
+              } disabled:opacity-50`}
             >
-              <CheckCircle2 size={16} /> {you?.ready ? "Ready" : "Set Ready"}
+              <CheckCircle2 size={16} /> {state.phase === "dealt" ? "Hand Dealt" : you?.ready ? "Ready" : "Set Ready"}
             </button>
             <button
               onClick={disconnect}
@@ -384,7 +400,11 @@ function PokerPvP() {
 
       <div className="mx-auto mt-5 w-full max-w-4xl border-t border-paper/20 pt-3 text-center">
         <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Step 1 Foundation</div>
-        <div className="text-sm text-paper">Rooms, seats, and ready states are active. Dealing/scoring comes next after verification.</div>
+        <div className="text-sm text-paper">
+          {state.phase === "dealt"
+            ? "Server-side private hands are created. Private card delivery comes next."
+            : "Rooms, seats, and ready states are active. Set at least two players ready to trigger the server deal model."}
+        </div>
       </div>
     </div>
   );
@@ -401,6 +421,7 @@ function PokerSeat({
     name: string;
     connected: boolean;
     ready: boolean;
+    handCount: number;
     isNormieHolder?: boolean;
     selectedNormieId?: number | null;
     avatarUrl?: string | null;
@@ -419,7 +440,7 @@ function PokerSeat({
       </div>
       <div className="mt-3 truncate text-sm text-paper">{player?.name ?? "Open Seat"}</div>
       <div className={`mt-2 text-[10px] uppercase tracking-widest ${player?.ready ? "text-mint" : "text-paper/45"}`}>
-        {player ? (player.ready ? "Ready" : player.connected ? "Seated" : "Disconnected") : "Waiting"}
+        {player ? (player.handCount ? `${player.handCount} Cards Dealt` : player.ready ? "Ready" : player.connected ? "Seated" : "Disconnected") : "Waiting"}
       </div>
       {player?.isNormieHolder ? (
         <div className="mx-auto mt-2 w-fit border border-mint/50 px-1.5 py-0.5 text-[9px] text-mint">
@@ -427,6 +448,33 @@ function PokerSeat({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function PrivatePokerCard({ normieId, index }: { normieId?: number; index: number }) {
+  return (
+    <motion.div
+      initial={{ rotateY: 90, opacity: 0 }}
+      animate={{ rotateY: 0, opacity: 1 }}
+      transition={{ delay: index * 0.06 }}
+      className="border border-paper/45 bg-black/80 p-2 text-center"
+    >
+      <div className="mx-auto grid h-28 w-28 place-items-center overflow-hidden border border-paper/40 bg-paper">
+        {normieId !== undefined ? (
+          <CenteredNormieImage
+            src={`https://api.normies.art/normie/${normieId}/image.png`}
+            alt={`Private poker Normie #${normieId}`}
+            className="h-full w-full"
+          />
+        ) : (
+          <div className="grid h-full w-full place-items-center bg-black/85">
+            <div className="h-16 w-16 animate-pulse border border-paper/20 bg-paper/10" />
+          </div>
+        )}
+      </div>
+      <div className="mt-2 text-xs text-paper/60">#{normieId ?? "----"}</div>
+      <div className="terminal-hash mt-1 text-[9px] uppercase tracking-widest text-pixel/55">Private Slot {index + 1}</div>
+    </motion.div>
   );
 }
 
