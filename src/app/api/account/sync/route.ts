@@ -27,8 +27,8 @@ export async function POST(request: Request) {
     },
     update: {
       email: email ?? null,
-      ...(username ? { username } : {}),
-      displayName: displayName ?? null
+      ...(username !== undefined ? { username } : {}),
+      ...(displayName !== undefined ? { displayName } : {})
     },
     include: {
       chipAccount: true,
@@ -56,7 +56,10 @@ export async function POST(request: Request) {
     where: { id: user.id },
     include: {
       chipAccount: true,
-      wallets: true
+      wallets: true,
+      ownedNormies: {
+        orderBy: { normieId: "asc" }
+      }
     }
   });
 

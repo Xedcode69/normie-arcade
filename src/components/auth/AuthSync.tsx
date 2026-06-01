@@ -54,6 +54,20 @@ export function AuthSync() {
         };
       };
 
+      const selectedNormie =
+        account.account?.selectedNormieId !== null && account.account?.selectedNormieId !== undefined
+          ? account.account?.ownedNormies?.find((normie) => normie.normieId === account.account?.selectedNormieId)
+          : undefined;
+      setProfile({
+        username: account.account?.username ?? null,
+        displayName: account.account?.displayName ?? null,
+        isNormieHolder: account.account?.isNormieHolder ?? false,
+        selectedNormieId: account.account?.selectedNormieId ?? null,
+        selectedNormieImage: selectedNormie?.imageUrl ?? null,
+        holderVerifiedAt: account.account?.holderVerifiedAt ?? null,
+        ownedNormieIds: account.account?.ownedNormies?.map((normie) => normie.normieId) ?? []
+      });
+
       const walletAddress = user.wallet?.address;
       if (walletAddress) {
         const token = await getAccessToken();

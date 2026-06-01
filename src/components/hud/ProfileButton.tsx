@@ -126,6 +126,12 @@ function ProfilePanel({
   }, [displayName, username]);
 
   useEffect(() => {
+    setUsername(profile.username ?? "");
+    setDisplayName(profile.displayName ?? "");
+    setSelectedNormieId(profile.selectedNormieId ?? null);
+  }, [profile.displayName, profile.selectedNormieId, profile.username]);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };

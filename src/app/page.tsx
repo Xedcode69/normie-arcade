@@ -1,35 +1,5 @@
-"use client";
-
-import dynamic from "next/dynamic";
-import { Suspense } from "react";
-import { HUD } from "@/components/hud/HUD";
-import { NotificationSystem } from "@/components/hud/NotificationSystem";
-import { GameDock } from "@/components/games/GameDock";
-import { Leaderboard } from "@/components/hud/Leaderboard";
-import { AudioBoot } from "@/components/audio/AudioBoot";
-import { LobbyControls } from "@/components/hud/LobbyControls";
-import { PlayerControls } from "@/components/hud/PlayerControls";
-import { LobbyHotkeys } from "@/components/hud/LobbyHotkeys";
-
-const ArcadeLobby = dynamic(() => import("@/components/arcade/ArcadeLobby").then((mod) => mod.ArcadeLobby), {
-  ssr: false,
-  loading: () => <div className="grid h-screen place-items-center bg-void text-paper terminal-hash">Booting bitmap floor...</div>
-});
+import { OnboardingScreen } from "@/components/onboarding/OnboardingScreen";
 
 export default function Home() {
-  return (
-    <main className="bitmap-bg relative h-screen overflow-hidden bg-void text-paper">
-      <Suspense fallback={<div className="grid h-screen place-items-center">Loading arcade...</div>}>
-        <ArcadeLobby />
-      </Suspense>
-      <HUD />
-      <Leaderboard />
-      <LobbyControls />
-      <PlayerControls />
-      <GameDock />
-      <NotificationSystem />
-      <AudioBoot />
-      <LobbyHotkeys />
-    </main>
-  );
+  return <OnboardingScreen />;
 }
