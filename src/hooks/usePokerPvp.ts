@@ -97,6 +97,10 @@ export function usePokerPvp(room = "poker-quickplay") {
     setState(initialPokerPvpState);
   }, []);
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   const toggleReady = useCallback(() => {
     if (!playerId) return;
     send({ type: "poker_ready", playerId });
@@ -107,6 +111,7 @@ export function usePokerPvp(room = "poker-quickplay") {
   return {
     connected,
     connect,
+    clearError,
     disconnect,
     error,
     playerId,

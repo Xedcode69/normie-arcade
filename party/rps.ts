@@ -150,6 +150,7 @@ export default class RPSParty {
   private pokerConnections = new Map<string, string>();
   private pokerConnectionObjects = new Map<string, PartyConnection>();
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
   private matchId = this.createMatchId();
   private state: MatchState = {
@@ -190,6 +191,7 @@ export default class RPSParty {
         pokerPlayer.ready = false;
         this.updatePokerPhase();
         this.pokerState.message = `${pokerPlayer.name} disconnected. Their seat is waiting.`;
+        this.schedulePokerStaleCleanup(pokerPlayer.id);
         this.broadcastPoker();
       }
       return;
@@ -281,6 +283,7 @@ export default class RPSParty {
     const existing = this.pokerState.players.find((player) => player.id === data.playerId);
 
     if (existing) {
+      this.clearPokerStaleCleanup(existing.id);
       existing.connected = true;
       existing.name = cleanPlayerName(data.name);
       existing.privyToken = data.privyToken;
@@ -345,6 +348,55 @@ export default class RPSParty {
     if (allReady) {
       void this.startPokerShowdown();
     }
+  }
+
+  private schedulePokerStaleCleanup(playerId: string) {
+    this.clearPokerStaleCleanup(playerId);
+    const timer = setTimeout(() => {
+      void this.cleanupStalePokerPlayer(playerId);
+    }, 60_000);
+    this.pokerStaleTimers.set(playerId, timer);
+  }
+
+  private clearPokerStaleCleanup(playerId: string) {
+    const timer = this.pokerStaleTimers.get(playerId);
+    if (timer) clearTimeout(timer);
+    this.pokerStaleTimers.delete(playerId);
+  }
+
+  private async cleanupStalePokerPlayer(playerId: string) {
+    const stalePlayer = this.pokerState.players.find((player) => player.id === playerId);
+    if (!stalePlayer || stalePlayer.connected) return;
+
+    const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt";
+    if (activeRound) {
+      await Promise.all(this.pokerState.players.filter((player) => player.reserved).map((player) => this.refundPokerAnte(player)));
+      this.pokerState.players = this.pokerState.players
+        .filter((player) => player.connected)
+        .map((player) => ({
+          ...player,
+          ready: false,
+          hand: [],
+          reserved: false,
+          accountError: undefined
+        }));
+      this.pokerState.phase = "waiting";
+      this.pokerState.round += 1;
+      this.pokerState.pot = 0;
+      this.pokerState.handId = undefined;
+      this.pokerState.showdown = undefined;
+      this.pokerState.message = "Disconnected player timed out. Poker hand was voided and reserved antes were refunded.";
+    } else {
+      if (stalePlayer.reserved) {
+        await this.refundPokerAnte(stalePlayer);
+      }
+      this.pokerState.players = this.pokerState.players.filter((player) => player.connected);
+      this.pokerState.message = "Disconnected poker player timed out. Seat reopened.";
+      this.updatePokerPhase();
+    }
+
+    this.clearPokerStaleCleanup(playerId);
+    this.broadcastPoker();
   }
 
   private async startPokerShowdown() {
@@ -790,6 +842,38 @@ export default class RPSParty {
     } catch {
       player.accountError = "Poker ante service unavailable.";
       return { ok: false as const, error: player.accountError };
+    }
+  }
+
+  private async refundPokerAnte(player: PokerPlayer) {
+    if (!player.reserved) return;
+
+    try {
+      const response = await fetch(`${this.apiBaseUrl()}/api/pvp/poker/refund`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partykit-secret": this.internalSecret()
+        },
+        body: JSON.stringify({
+          matchId: this.pokerState.handId ?? "poker-hand",
+          roomId: this.room.id ?? "poker-room",
+          playerId: player.id,
+          privyToken: player.privyToken,
+          ante: player.ante
+        })
+      });
+      const data = (await response.json()) as { ok?: boolean; balance?: number; error?: string };
+      if (!response.ok || !data.ok) {
+        player.accountError = data.error ?? "Could not refund poker ante.";
+        return;
+      }
+
+      player.serverBalance = data.balance;
+      player.reserved = false;
+      player.accountError = undefined;
+    } catch {
+      player.accountError = "Poker refund service unavailable.";
     }
   }
 

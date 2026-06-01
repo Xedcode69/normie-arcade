@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Copy, Dices, LogOut, RotateCcw, Search, Users } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
 import { playTone } from "@/lib/audio";
 import { createPokerRoomCode, normalizePokerRoomCode } from "@/lib/pokerPvp";
@@ -23,6 +23,7 @@ type PokerHand = {
 };
 type PokerMode = "solo" | "pvp";
 type PokerRoomMode = "create" | "join";
+const POKER_RECONNECT_KEY = "normie-poker-active-room";
 
 const handRanks = {
   none: { name: "No DNA Hand", multiplier: 0 },
@@ -220,11 +221,26 @@ export function PokerGame() {
 
 function PokerPvP() {
   const [ante, setAnte] = useState(100);
-  const [roomCode, setRoomCode] = useState(() => createPokerRoomCode());
+  const [roomCode, setRoomCode] = useState(() => {
+    if (typeof window === "undefined") return createPokerRoomCode();
+    const urlRoom = normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "");
+    if (urlRoom) return urlRoom;
+    const stored = window.sessionStorage.getItem(POKER_RECONNECT_KEY);
+    if (!stored) return createPokerRoomCode();
+    try {
+      const parsed = JSON.parse(stored) as { roomCode?: string };
+      return normalizePokerRoomCode(parsed.roomCode ?? "") || createPokerRoomCode();
+    } catch {
+      return createPokerRoomCode();
+    }
+  });
   const [joinCode, setJoinCode] = useState("");
-  const [roomMode, setRoomMode] = useState<PokerRoomMode>("create");
-  const { connected, connect, disconnect, error, playerId, state, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
-  const { authenticated, getAccessToken, login } = usePrivy();
+  const [roomMode, setRoomMode] = useState<PokerRoomMode>(() => {
+    if (typeof window === "undefined") return "create";
+    return normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "") ? "join" : "create";
+  });
+  const { connected, connect, clearError, disconnect, error, playerId, state, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
+  const { ready, authenticated, getAccessToken, login } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
   const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
@@ -236,6 +252,48 @@ function PokerPvP() {
   const privateHand = state.privateHand ?? [];
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
   const connectedCount = state.players.filter((player) => player.connected).length;
+  const reconnectAttempted = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || reconnectAttempted.current || connected || !ready || !authenticated) return;
+    const stored = window.sessionStorage.getItem(POKER_RECONNECT_KEY);
+    if (!stored) return;
+
+    reconnectAttempted.current = true;
+    try {
+      const parsed = JSON.parse(stored) as { roomCode?: string; ante?: number; roomMode?: PokerRoomMode };
+      const storedRoom = normalizePokerRoomCode(parsed.roomCode ?? "");
+      if (!storedRoom) return;
+
+      setRoomCode(storedRoom);
+      setJoinCode(storedRoom);
+      setRoomMode(parsed.roomMode ?? "join");
+      if (typeof parsed.ante === "number") {
+        setAnte(parsed.ante);
+      }
+
+      getAccessToken().then((token) => {
+        if (!token) return;
+        connect({
+          privyToken: token,
+          ante: typeof parsed.ante === "number" ? parsed.ante : ante,
+          name: displayName || username,
+          isNormieHolder,
+          selectedNormieId: selectedNormieId ?? null,
+          avatarUrl: selectedNormieImage ?? null
+        });
+        notify({ kind: "info", title: "Poker Reconnected", body: `Rejoining room ${storedRoom}.` });
+      });
+    } catch {
+      window.sessionStorage.removeItem(POKER_RECONNECT_KEY);
+    }
+  }, [ante, authenticated, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, username]);
+
+  useEffect(() => {
+    if (error?.toLowerCase().includes("full")) {
+      window.sessionStorage.removeItem(POKER_RECONNECT_KEY);
+    }
+  }, [error]);
 
   function inviteUrl() {
     if (typeof window === "undefined") return "";
@@ -246,6 +304,7 @@ function PokerPvP() {
 
   function createRoom() {
     if (connected) return;
+    clearError();
     const nextCode = createPokerRoomCode();
     setRoomMode("create");
     setRoomCode(nextCode);
@@ -254,6 +313,7 @@ function PokerPvP() {
 
   function useJoinCode() {
     if (connected) return;
+    clearError();
     const nextCode = normalizePokerRoomCode(joinCode);
     if (!nextCode) return;
     setRoomMode("join");
@@ -281,6 +341,20 @@ function PokerPvP() {
       selectedNormieId: selectedNormieId ?? null,
       avatarUrl: selectedNormieImage ?? null
     });
+
+    window.sessionStorage.setItem(
+      POKER_RECONNECT_KEY,
+      JSON.stringify({
+        roomCode,
+        roomMode,
+        ante
+      })
+    );
+  }
+
+  function leaveTable() {
+    window.sessionStorage.removeItem(POKER_RECONNECT_KEY);
+    disconnect();
   }
 
   useEffect(() => {
@@ -307,7 +381,10 @@ function PokerPvP() {
           Create Room
         </button>
         <button
-          onClick={() => setRoomMode("join")}
+          onClick={() => {
+            clearError();
+            setRoomMode("join");
+          }}
           disabled={connected}
           className={`min-w-32 border px-4 py-2 text-xs uppercase tracking-widest transition disabled:opacity-50 ${
             roomMode === "join" ? "border-paper bg-paper/15 text-paper shadow-neon" : "border-paper/30 bg-black/70 text-paper/60"
@@ -323,7 +400,10 @@ function PokerPvP() {
           {roomMode === "join" && !connected ? (
             <input
               value={joinCode}
-              onChange={(event) => setJoinCode(normalizePokerRoomCode(event.target.value))}
+              onChange={(event) => {
+                clearError();
+                setJoinCode(normalizePokerRoomCode(event.target.value));
+              }}
               placeholder="ENTER CODE"
               className="min-w-0 flex-1 bg-transparent text-center font-display text-sm uppercase tracking-[0.22em] text-paper outline-none placeholder:text-paper/25"
             />
@@ -415,7 +495,7 @@ function PokerPvP() {
               <CheckCircle2 size={16} /> {state.phase === "showdown" ? "Showdown" : state.phase === "dealt" ? "Hand Dealt" : you?.ready ? "Ready" : "Set Ready"}
             </button>
             <button
-              onClick={disconnect}
+              onClick={leaveTable}
               className="inline-flex min-w-32 items-center justify-center gap-2 border border-paper/40 bg-black/70 px-5 py-3 text-xs uppercase tracking-widest text-paper/70 transition hover:border-paper hover:text-paper"
             >
               <LogOut size={16} /> Leave
