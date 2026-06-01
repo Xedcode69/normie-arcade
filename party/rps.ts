@@ -73,6 +73,15 @@ type PokerState = {
   round: number;
   pot: number;
   handId?: string;
+  history: Array<{
+    round: number;
+    handId: string;
+    winners: string[];
+    winnerNames: string[];
+    pot: number;
+    payoutEach: number;
+    summary: string;
+  }>;
   showdown?: PokerShowdown;
   message: string;
 };
@@ -130,6 +139,9 @@ type PokerClientMessage =
       avatarUrl?: string | null;
     }
   | { type: "poker_ready"; playerId: string };
+// Keep poker messages small and explicit; later action phases can extend this union.
+type PokerNextHandMessage = { type: "poker_next_hand"; playerId: string };
+type PokerAnyClientMessage = PokerClientMessage | PokerNextHandMessage;
 
 const picks: RPSType[] = ["Human", "Cat", "Alien"];
 
@@ -166,6 +178,7 @@ export default class RPSParty {
     maxPlayers: 5,
     round: 1,
     pot: 0,
+    history: [],
     message: "Waiting for players to sit at the DNA Poker table."
   };
 
@@ -244,7 +257,7 @@ export default class RPSParty {
     }
   }
 
-  private parsePokerMessage(message: string): PokerClientMessage | null {
+  private parsePokerMessage(message: string): PokerAnyClientMessage | null {
     try {
       const data = JSON.parse(message) as PokerClientMessage;
       if (
@@ -262,13 +275,17 @@ export default class RPSParty {
         };
       }
       if (data.type === "poker_ready" && typeof data.playerId === "string") return data;
+      const maybeNextHand = data as unknown as PokerNextHandMessage;
+      if (maybeNextHand.type === "poker_next_hand" && typeof maybeNextHand.playerId === "string") {
+        return maybeNextHand;
+      }
       return null;
     } catch {
       return null;
     }
   }
 
-  private handlePokerMessage(data: PokerClientMessage, connection: PartyConnection) {
+  private handlePokerMessage(data: PokerAnyClientMessage, connection: PartyConnection) {
     if (data.type === "poker_join") {
       this.joinPoker(data, connection);
       return;
@@ -276,6 +293,11 @@ export default class RPSParty {
 
     if (data.type === "poker_ready") {
       this.togglePokerReady(data.playerId);
+      return;
+    }
+
+    if ((data as PokerNextHandMessage).type === "poker_next_hand") {
+      this.nextPokerHand((data as PokerNextHandMessage).playerId);
     }
   }
 
@@ -433,12 +455,53 @@ export default class RPSParty {
     const showdown = await this.evaluatePokerShowdown(seatedPlayers);
     this.pokerState.phase = "showdown";
     this.pokerState.showdown = showdown;
+    this.pokerState.history = [
+      {
+        round: this.pokerState.round,
+        handId: this.pokerState.handId ?? "poker-hand",
+        winners: showdown.winners,
+        winnerNames: showdown.hands.filter((hand) => showdown.winners.includes(hand.playerId)).map((hand) => hand.playerName),
+        pot: showdown.pot,
+        payoutEach: showdown.payoutEach,
+        summary: this.pokerHistorySummary(showdown)
+      },
+      ...this.pokerState.history
+    ].slice(0, 8);
     this.pokerState.message =
       showdown.winners.length === 1
         ? `${showdown.hands.find((hand) => hand.playerId === showdown.winners[0])?.playerName ?? "Winner"} wins ${showdown.pot} chips.`
         : `Split pot: ${showdown.winners.length} players receive ${showdown.payoutEach} chips.`;
     this.broadcastPoker();
     void this.settlePokerShowdown(showdown);
+  }
+
+  private nextPokerHand(playerId: string) {
+    if (this.pokerState.phase !== "showdown") return;
+    if (!this.pokerState.players.some((player) => player.id === playerId && player.connected)) return;
+
+    this.pokerState.round += 1;
+    this.pokerState.phase = "waiting";
+    this.pokerState.pot = 0;
+    this.pokerState.handId = undefined;
+    this.pokerState.showdown = undefined;
+    this.pokerState.players = this.pokerState.players
+      .filter((player) => player.connected)
+      .map((player) => ({
+        ...player,
+        ready: false,
+        hand: [],
+        reserved: false,
+        accountError: undefined
+      }));
+    this.pokerState.message = "Next hand ready. Players can adjust ante and ready up.";
+    this.broadcastPoker();
+  }
+
+  private pokerHistorySummary(showdown: PokerShowdown) {
+    const winningHands = showdown.hands.filter((hand) => showdown.winners.includes(hand.playerId));
+    const handName = winningHands[0]?.handName ?? "Unknown Hand";
+    const names = winningHands.map((hand) => hand.playerName).join(" / ");
+    return `${names} won with ${handName}.`;
   }
 
   private createNormieDeck(count: number) {

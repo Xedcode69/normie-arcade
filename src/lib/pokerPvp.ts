@@ -22,6 +22,15 @@ export type PokerPvPState = {
   pot: number;
   handId?: string;
   privateHand?: number[];
+  history: Array<{
+    round: number;
+    handId: string;
+    winners: string[];
+    winnerNames: string[];
+    pot: number;
+    payoutEach: number;
+    summary: string;
+  }>;
   showdown?: {
     winners: string[];
     pot: number;
@@ -44,6 +53,7 @@ export const initialPokerPvpState: PokerPvPState = {
   maxPlayers: 5,
   round: 1,
   pot: 0,
+  history: [],
   message: "Create or join a DNA Poker table."
 };
 

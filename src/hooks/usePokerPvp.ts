@@ -106,6 +106,11 @@ export function usePokerPvp(room = "poker-quickplay") {
     send({ type: "poker_ready", playerId });
   }, [playerId, send]);
 
+  const nextHand = useCallback(() => {
+    if (!playerId) return;
+    send({ type: "poker_next_hand", playerId });
+  }, [playerId, send]);
+
   useEffect(() => () => disconnect(), [disconnect]);
 
   return {
@@ -115,6 +120,7 @@ export function usePokerPvp(room = "poker-quickplay") {
     disconnect,
     error,
     playerId,
+    nextHand,
     state,
     toggleReady
   };

@@ -239,7 +239,7 @@ function PokerPvP() {
     if (typeof window === "undefined") return "create";
     return normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "") ? "join" : "create";
   });
-  const { connected, connect, clearError, disconnect, error, playerId, state, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
+  const { connected, connect, clearError, disconnect, error, nextHand, playerId, state, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
   const { ready, authenticated, getAccessToken, login } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
@@ -472,8 +472,10 @@ function PokerPvP() {
       ) : null}
 
       {state.phase === "showdown" && state.showdown ? (
-        <PokerShowdownPanel showdown={state.showdown} playerId={playerId} />
+        <PokerShowdownPanel showdown={state.showdown} playerId={playerId} onNextHand={nextHand} />
       ) : null}
+
+      <PokerHandHistory history={state.history} playerId={playerId} />
 
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         {!connected ? (
@@ -561,7 +563,8 @@ function PokerSeat({
 
 function PokerShowdownPanel({
   showdown,
-  playerId
+  playerId,
+  onNextHand
 }: {
   showdown: {
     winners: string[];
@@ -577,6 +580,7 @@ function PokerShowdownPanel({
     }>;
   };
   playerId: string | null;
+  onNextHand: () => void;
 }) {
   return (
     <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/50 bg-black/75 p-4 shadow-neon">
@@ -609,6 +613,54 @@ function PokerShowdownPanel({
               </div>
               <div className="mt-3 font-display text-sm text-paper">{hand.handName}</div>
               <div className="mt-1 text-xs text-paper/55">{hand.summary}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-4 flex justify-center">
+        <button
+          onClick={onNextHand}
+          className="inline-flex min-w-36 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
+        >
+          <RotateCcw size={16} /> Next Hand
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PokerHandHistory({
+  history,
+  playerId
+}: {
+  history: Array<{
+    round: number;
+    handId: string;
+    winners: string[];
+    winnerNames: string[];
+    pot: number;
+    payoutEach: number;
+    summary: string;
+  }>;
+  playerId: string | null;
+}) {
+  if (!history.length) return null;
+
+  return (
+    <div className="mx-auto mt-5 w-full max-w-5xl border border-paper/25 bg-black/55 p-3">
+      <div className="terminal-hash text-center text-[10px] uppercase tracking-[0.22em] text-pixel/60">Hand History</div>
+      <div className="mt-3 grid gap-2">
+        {history.map((entry) => {
+          const youWon = entry.winners.includes(playerId ?? "");
+          return (
+            <div
+              key={entry.handId}
+              className="grid gap-2 border border-paper/20 bg-black/60 px-3 py-2 text-xs text-paper/70 md:grid-cols-[5rem_1fr_8rem_6rem]"
+            >
+              <span className="terminal-hash uppercase tracking-widest text-pixel/55">Round {entry.round}</span>
+              <span className="truncate">{entry.summary}</span>
+              <span className="text-paper/55">Pot {entry.pot}</span>
+              <span className={`text-right uppercase ${youWon ? "text-mint" : "text-paper/45"}`}>{youWon ? "You won" : "Settled"}</span>
             </div>
           );
         })}
