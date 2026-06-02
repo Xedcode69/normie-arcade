@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Copy, Dices, LogOut, RotateCcw, Search, Users } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
 import { playTone } from "@/lib/audio";
 import { createPokerRoomCode, normalizePokerRoomCode } from "@/lib/pokerPvp";
@@ -13,7 +13,7 @@ import { NormieAPIService } from "@/services/NormieAPIService";
 import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useChipStore } from "@/stores/chipStore";
-import type { Normie } from "@/types/normie";
+import type { Normie, NormieTraits } from "@/types/normie";
 import { BetControls } from "./BetControls";
 
 type PokerHand = {
@@ -40,7 +40,8 @@ function wait(ms: number) {
 
 function countValues(values: Array<string | undefined>) {
   return values.reduce<Record<string, number>>((counts, value) => {
-    const key = value ?? "Unknown";
+    if (!value || value === "Unknown") return counts;
+    const key = value;
     counts[key] = (counts[key] ?? 0) + 1;
     return counts;
   }, {});
@@ -51,21 +52,20 @@ function hasCount(counts: Record<string, number>, target: number) {
 }
 
 function matchingValue(counts: Record<string, number>, target: number) {
-  return Object.entries(counts).find(([, count]) => count >= target)?.[0] ?? "Unknown";
+  return Object.entries(counts).find(([, count]) => count >= target)?.[0] ?? "";
 }
 
 function allSame(values: Array<string | undefined>) {
-  const known = values.map((value) => value ?? "Unknown");
-  return known.every((value) => value === known[0]);
+  return values.length > 0 && values.every((value) => Boolean(value) && value !== "Unknown" && value === values[0]);
 }
 
-function evaluateHand(cards: Normie[]): PokerHand {
-  const expressions = cards.map((card) => card.traits.Expression);
-  const eyes = cards.map((card) => card.traits.Eyes);
-  const accessories = cards.map((card) => card.traits.Accessory);
-  const facialFeatures = cards.map((card) => card.traits["Facial Feature"]);
-  const genders = cards.map((card) => card.traits.Gender);
-  const ages = cards.map((card) => card.traits.Age);
+function evaluateTraitsCombo(traits: NormieTraits[], minFlushCards = 5): PokerHand {
+  const expressions = traits.map((trait) => trait.Expression);
+  const eyes = traits.map((trait) => trait.Eyes);
+  const accessories = traits.map((trait) => trait.Accessory);
+  const facialFeatures = traits.map((trait) => trait["Facial Feature"]);
+  const genders = traits.map((trait) => trait.Gender);
+  const ages = traits.map((trait) => trait.Age);
   const expressionCounts = countValues(expressions);
   const eyeCounts = countValues(eyes);
   const accessoryCounts = countValues(accessories);
@@ -76,8 +76,8 @@ function evaluateHand(cards: Normie[]): PokerHand {
   const accessoryTriple = hasCount(accessoryCounts, 3);
   const eyeTriple = hasCount(eyeCounts, 3);
   const expressionPair = hasCount(expressionCounts, 2);
-  const genderFlush = allSame(genders);
-  const ageFlush = allSame(ages);
+  const genderFlush = traits.length >= minFlushCards && allSame(genders);
+  const ageFlush = traits.length >= minFlushCards && allSame(ages);
 
   if (eyePerfect || accessoryPerfect || facialFeaturePerfect) {
     return {
@@ -124,6 +124,34 @@ function evaluateHand(cards: Normie[]): PokerHand {
     ...handRanks.none,
     summary: `No scoring DNA combination. Expressions: ${expressions.join(" / ")}.`
   };
+}
+
+function evaluateHand(cards: Normie[]): PokerHand {
+  return evaluateTraitsCombo(cards.map((card) => card.traits));
+}
+
+function fiveCardCombos<T>(items: T[]) {
+  const combos: T[][] = [];
+  for (let a = 0; a < items.length - 4; a += 1) {
+    for (let b = a + 1; b < items.length - 3; b += 1) {
+      for (let c = b + 1; c < items.length - 2; c += 1) {
+        for (let d = c + 1; d < items.length - 1; d += 1) {
+          for (let e = d + 1; e < items.length; e += 1) {
+            combos.push([items[a], items[b], items[c], items[d], items[e]]);
+          }
+        }
+      }
+    }
+  }
+  return combos;
+}
+
+function evaluateBestVisibleCombo(traits: NormieTraits[]) {
+  if (traits.length <= 5) return evaluateTraitsCombo(traits, 5);
+
+  return fiveCardCombos(traits)
+    .map((combo) => evaluateTraitsCombo(combo, 5))
+    .reduce((best, current) => (current.multiplier > best.multiplier ? current : best));
 }
 
 export function PokerGame() {
@@ -247,7 +275,6 @@ export function PokerGame() {
 }
 
 function PokerPvP() {
-  const [ante, setAnte] = useState(100);
   const [roomCode, setRoomCode] = useState(() => {
     if (typeof window === "undefined") return createPokerRoomCode();
     const urlRoom = normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "");
@@ -262,6 +289,7 @@ function PokerPvP() {
     }
   });
   const [joinCode, setJoinCode] = useState("");
+  const [roomNotice, setRoomNotice] = useState<{ kind: "info" | "error"; message: string } | null>(null);
   const [roomMode, setRoomMode] = useState<PokerRoomMode>(() => {
     if (typeof window === "undefined") return "create";
     return normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "") ? "join" : "create";
@@ -281,10 +309,13 @@ function PokerPvP() {
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
   const connectedCount = state.players.filter((player) => player.connected).length;
   const streetCommitted = you?.streetCommitted ?? 0;
-  const serverBalance = you?.serverBalance ?? 0;
+  const tableStack = you?.stack ?? 0;
   const callAmount = Math.max(0, state.currentBet - streetCommitted);
   const minRaiseTo = state.currentBet + state.minRaise;
-  const maxRaiseTo = streetCommitted + serverBalance;
+  const activeRaiseCaps = state.players
+    .filter((player) => player.connected && !player.folded)
+    .map((player) => (player.streetCommitted ?? 0) + (player.stack ?? 0));
+  const maxRaiseTo = Math.min(streetCommitted + tableStack, activeRaiseCaps.length ? Math.min(...activeRaiseCaps) : streetCommitted + tableStack);
   const isYourTurn = connected && state.phase === "betting" && state.turnPlayerId === playerId;
   const reconnectAttempted = useRef(false);
 
@@ -295,22 +326,19 @@ function PokerPvP() {
 
     reconnectAttempted.current = true;
     try {
-      const parsed = JSON.parse(stored) as { roomCode?: string; ante?: number; roomMode?: PokerRoomMode };
+      const parsed = JSON.parse(stored) as { roomCode?: string; roomMode?: PokerRoomMode };
       const storedRoom = normalizePokerRoomCode(parsed.roomCode ?? "");
       if (!storedRoom) return;
 
       setRoomCode(storedRoom);
       setJoinCode(storedRoom);
       setRoomMode(parsed.roomMode ?? "join");
-      if (typeof parsed.ante === "number") {
-        setAnte(parsed.ante);
-      }
 
       getAccessToken().then((token) => {
         if (!token) return;
         connect({
           privyToken: token,
-          ante: typeof parsed.ante === "number" ? parsed.ante : ante,
+          ante: state.buyIn,
           name: displayName || username,
           isNormieHolder,
           selectedNormieId: selectedNormieId ?? null,
@@ -321,11 +349,14 @@ function PokerPvP() {
     } catch {
       window.sessionStorage.removeItem(POKER_RECONNECT_KEY);
     }
-  }, [ante, authenticated, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, username]);
+  }, [authenticated, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, state.buyIn, username]);
 
   useEffect(() => {
     if (error?.toLowerCase().includes("full")) {
       window.sessionStorage.removeItem(POKER_RECONNECT_KEY);
+    }
+    if (error) {
+      setRoomNotice({ kind: "error", message: error });
     }
   }, [error]);
 
@@ -343,15 +374,20 @@ function PokerPvP() {
     setRoomMode("create");
     setRoomCode(nextCode);
     setJoinCode(nextCode);
+    setRoomNotice({ kind: "info", message: `Room ${nextCode} created. Join the table when ready.` });
   }
 
   function useJoinCode() {
     if (connected) return;
     clearError();
     const nextCode = normalizePokerRoomCode(joinCode);
-    if (!nextCode) return;
+    if (!nextCode) {
+      setRoomNotice({ kind: "error", message: "Enter a valid room code before using it." });
+      return;
+    }
     setRoomMode("join");
     setRoomCode(nextCode);
+    setRoomNotice({ kind: "info", message: `Room ${nextCode} selected. Join the table when ready.` });
   }
 
   async function joinTable() {
@@ -369,7 +405,7 @@ function PokerPvP() {
 
     connect({
       privyToken: token,
-      ante,
+      ante: state.buyIn,
       name: displayName || username,
       isNormieHolder,
       selectedNormieId: selectedNormieId ?? null,
@@ -380,8 +416,7 @@ function PokerPvP() {
       POKER_RECONNECT_KEY,
       JSON.stringify({
         roomCode,
-        roomMode,
-        ante
+        roomMode
       })
     );
   }
@@ -436,6 +471,7 @@ function PokerPvP() {
               value={joinCode}
               onChange={(event) => {
                 clearError();
+                setRoomNotice(null);
                 setJoinCode(normalizePokerRoomCode(event.target.value));
               }}
               placeholder="ENTER CODE"
@@ -470,6 +506,16 @@ function PokerPvP() {
         </button>
       </div>
 
+      {roomNotice ? (
+        <div
+          className={`mx-auto mt-3 max-w-4xl border px-4 py-2 text-center text-xs ${
+            roomNotice.kind === "error" ? "border-magenta/50 bg-magenta/10 text-magenta" : "border-mint/40 bg-mint/10 text-mint"
+          }`}
+        >
+          {roomNotice.message}
+        </div>
+      ) : null}
+
       <div className="mx-auto mt-4 flex max-w-4xl items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
         <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${error ? "text-magenta" : "text-pixel/60"}`}>
           {error ??
@@ -482,9 +528,11 @@ function PokerPvP() {
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
         <div className="pixel-card px-4 py-2 text-sm text-paper">Pot {state.pot} chips</div>
+        <div className="pixel-card px-4 py-2 text-sm text-paper">Buy-in {state.buyIn}</div>
+        <div className="pixel-card px-4 py-2 text-sm text-paper">Ante {state.ante}</div>
         {state.phase === "betting" ? <div className="pixel-card px-4 py-2 text-sm text-paper">{streetLabel} bet {state.currentBet}</div> : null}
-        {typeof you?.serverBalance === "number" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Server chips {you.serverBalance}</div> : null}
-        <BetControls bet={ante} setBet={setAnte} disabled={connected} />
+        {typeof you?.stack === "number" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Table stack {you.stack}</div> : null}
+        {typeof you?.serverBalance === "number" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Account chips {you.serverBalance}</div> : null}
       </div>
 
       <div className="mt-6 grid gap-3 md:grid-cols-5">
@@ -526,9 +574,13 @@ function PokerPvP() {
         </div>
       ) : null}
 
+      {state.phase === "dealt" || state.phase === "betting" ? (
+        <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} />
+      ) : null}
+
       {state.phase === "betting" ? (
         <PokerBettingControls
-          availableChips={serverBalance}
+          availableChips={tableStack}
           callAmount={callAmount}
           currentBet={state.currentBet}
           disabled={!isYourTurn}
@@ -595,7 +647,7 @@ function PokerPvP() {
               : `${streetLabel}. Waiting for the active player to act.`
             : state.phase === "dealt"
             ? "Private hands are dealt."
-            : "Set at least two players ready. Each player antes before the server deals."}
+            : `Set at least two players ready. Each player reserves ${state.buyIn} and antes ${state.ante} from their table stack.`}
         </div>
       </div>
     </div>
@@ -703,6 +755,8 @@ function PokerSeat({
     connected: boolean;
     ready: boolean;
     handCount: number;
+    buyIn?: number;
+    stack?: number;
     committed?: number;
     streetCommitted?: number;
     folded?: boolean;
@@ -740,6 +794,9 @@ function PokerSeat({
       {player && typeof player.committed === "number" && player.committed > 0 ? (
         <div className="mt-2 text-[10px] uppercase tracking-widest text-paper/45">In pot {player.committed}</div>
       ) : null}
+      {player && typeof player.stack === "number" ? (
+        <div className="mt-2 text-[10px] uppercase tracking-widest text-mint/70">Stack {player.stack}</div>
+      ) : null}
       {player && typeof player.streetCommitted === "number" && player.streetCommitted > 0 ? (
         <div className="mt-1 text-[10px] uppercase tracking-widest text-paper/35">Street {player.streetCommitted}</div>
       ) : null}
@@ -767,6 +824,10 @@ function PokerShowdownPanel({
       playerName: string;
       cards: number[];
       bestCards: number[];
+      cardTraits: Array<{
+        id: number;
+        traits: NormieTraits;
+      }>;
       handName: string;
       score: number;
       summary: string;
@@ -799,11 +860,10 @@ function PokerShowdownPanel({
               </div>
               <div className="terminal-hash mt-3 text-[9px] uppercase tracking-widest text-pixel/55">Best 5</div>
               <div className="mt-2 grid grid-cols-5 gap-1">
-                {hand.bestCards.map((id) => (
-                  <div key={id} className="grid aspect-square place-items-center border border-paper/25 bg-paper">
-                    <CenteredNormieImage src={`https://api.normies.art/normie/${id}/image.png`} alt={`Showdown Normie #${id}`} className="h-full w-full" />
-                  </div>
-                ))}
+                {hand.bestCards.map((id) => {
+                  const traits = hand.cardTraits.find((card) => card.id === id)?.traits;
+                  return <ShowdownTraitCard key={id} id={id} traits={traits} />;
+                })}
               </div>
               <div className="mt-2 truncate text-[10px] text-paper/40">All available: {hand.cards.map((id) => `#${id}`).join(" / ")}</div>
               <div className="mt-3 font-display text-sm text-paper">{hand.handName}</div>
@@ -864,7 +924,112 @@ function PokerHandHistory({
   );
 }
 
+function LivePokerHints({ privateIds, communityIds }: { privateIds: number[]; communityIds: number[] }) {
+  const [traitsById, setTraitsById] = useState<Record<number, NormieTraits>>({});
+  const visibleKey = [...privateIds, ...communityIds].filter((id) => typeof id === "number").join("-");
+  const visibleIds = useMemo(() => (visibleKey ? visibleKey.split("-").map((id) => Number(id)) : []), [visibleKey]);
+
+  useEffect(() => {
+    let active = true;
+    if (!visibleIds.length) {
+      setTraitsById({});
+      return;
+    }
+
+    Promise.all(
+      visibleIds.map(async (id) => ({
+        id,
+        traits: await NormieAPIService.fetchNormieTraits(id)
+      }))
+    ).then((entries) => {
+      if (!active) return;
+      setTraitsById(
+        entries.reduce<Record<number, NormieTraits>>((next, entry) => {
+          next[entry.id] = entry.traits;
+          return next;
+        }, {})
+      );
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [visibleIds, visibleKey]);
+
+  const yourTraits = visibleIds.map((id) => traitsById[id]).filter((traits): traits is NormieTraits => Boolean(traits));
+  const boardTraits = communityIds.map((id) => traitsById[id]).filter((traits): traits is NormieTraits => Boolean(traits));
+  const yourBest = yourTraits.length ? evaluateBestVisibleCombo(yourTraits) : null;
+  const boardBest = boardTraits.length ? evaluateBestVisibleCombo(boardTraits) : null;
+
+  return (
+    <div className="mx-auto mt-5 grid w-full max-w-5xl gap-3 md:grid-cols-2">
+      <div className="border border-mint/35 bg-mint/10 p-4 text-center">
+        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint/75">Your Current Best</div>
+        <div className="mt-2 font-display text-base uppercase tracking-[0.16em] text-paper">{yourBest?.name ?? "Loading Traits"}</div>
+        <div className="mt-1 text-xs text-paper/60">{yourBest?.summary ?? "Reading visible Normie traits..."}</div>
+      </div>
+      <div className="border border-paper/30 bg-black/60 p-4 text-center">
+        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Board Combo</div>
+        <div className="mt-2 font-display text-base uppercase tracking-[0.16em] text-paper">
+          {communityIds.length ? boardBest?.name ?? "Loading Traits" : "No Board Yet"}
+        </div>
+        <div className="mt-1 text-xs text-paper/60">
+          {communityIds.length ? boardBest?.summary ?? "Reading shared Normie traits..." : "Community cards reveal after preflop betting."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TraitSummary({ traits }: { traits?: NormieTraits | null }) {
+  const rows = [
+    ["Exp", traits?.Expression],
+    ["Eyes", traits?.Eyes],
+    ["Acc", traits?.Accessory],
+    ["Age", traits?.Age],
+    ["Gen", traits?.Gender]
+  ];
+
+  return (
+    <div className="mt-2 space-y-0.5 text-left text-[9px] leading-3 text-paper/45">
+      {rows.map(([label, value]) => (
+        <div key={label} className="truncate">
+          <span className="text-paper/65">{label}:</span> {value ?? "--"}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ShowdownTraitCard({ id, traits }: { id: number; traits?: NormieTraits }) {
+  return (
+    <div className="min-w-0 border border-paper/20 bg-black/55 p-1 text-center">
+      <div className="grid aspect-square place-items-center border border-paper/25 bg-paper">
+        <CenteredNormieImage src={`https://api.normies.art/normie/${id}/image.png`} alt={`Showdown Normie #${id}`} className="h-full w-full" />
+      </div>
+      <div className="mt-1 text-[10px] text-paper/60">#{id}</div>
+      <TraitSummary traits={traits} />
+    </div>
+  );
+}
+
 function PrivatePokerCard({ normieId, index, label }: { normieId?: number; index: number; label?: string }) {
+  const [traits, setTraits] = useState<NormieTraits | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setTraits(null);
+    if (normieId === undefined) return;
+
+    NormieAPIService.fetchNormieTraits(normieId).then((nextTraits) => {
+      if (active) setTraits(nextTraits);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [normieId]);
+
   return (
     <motion.div
       initial={{ rotateY: 90, opacity: 0 }}
@@ -887,6 +1052,7 @@ function PrivatePokerCard({ normieId, index, label }: { normieId?: number; index
       </div>
       <div className="mt-2 text-xs text-paper/60">#{normieId ?? "----"}</div>
       <div className="terminal-hash mt-1 text-[9px] uppercase tracking-widest text-pixel/55">{label ?? `Private Slot ${index + 1}`}</div>
+      {normieId !== undefined ? <TraitSummary traits={traits} /> : null}
     </motion.div>
   );
 }

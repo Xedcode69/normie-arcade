@@ -1,3 +1,5 @@
+import type { NormieTraits } from "@/types/normie";
+
 export type PokerPvPPlayer = {
   id: string;
   name: string;
@@ -6,6 +8,8 @@ export type PokerPvPPlayer = {
   ready: boolean;
   handCount: number;
   ante?: number;
+  buyIn?: number;
+  stack?: number;
   reserved?: boolean;
   serverBalance?: number;
   accountError?: string;
@@ -23,6 +27,8 @@ export type PokerPvPState = {
   players: PokerPvPPlayer[];
   maxPlayers: number;
   round: number;
+  buyIn: number;
+  ante: number;
   pot: number;
   currentBet: number;
   minRaise: number;
@@ -49,6 +55,10 @@ export type PokerPvPState = {
       playerName: string;
       cards: number[];
       bestCards: number[];
+      cardTraits: Array<{
+        id: number;
+        traits: NormieTraits;
+      }>;
       handName: string;
       score: number;
       summary: string;
@@ -62,6 +72,8 @@ export const initialPokerPvpState: PokerPvPState = {
   players: [],
   maxPlayers: 5,
   round: 1,
+  buyIn: 1000,
+  ante: 100,
   pot: 0,
   currentBet: 0,
   minRaise: 50,

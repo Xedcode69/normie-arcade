@@ -57,6 +57,9 @@ type PokerPlayer = {
   ready: boolean;
   hand?: number[];
   ante: number;
+  buyIn: number;
+  stack: number;
+  buyInSessionId?: string;
   privyToken: string;
   reserved: boolean;
   serverBalance?: number;
@@ -75,6 +78,8 @@ type PokerState = {
   players: PokerPlayer[];
   maxPlayers: number;
   round: number;
+  buyIn: number;
+  ante: number;
   pot: number;
   currentBet: number;
   minRaise: number;
@@ -120,6 +125,7 @@ type PokerShowdown = {
     playerName: string;
     cards: number[];
     bestCards: number[];
+    cardTraits: Array<{ id: number; traits: NormieTraits }>;
     handName: string;
     score: number;
     summary: string;
@@ -158,6 +164,8 @@ type PokerActionMessage = { type: "poker_action"; playerId: string; action: "che
 type PokerAnyClientMessage = PokerClientMessage | PokerNextHandMessage | PokerActionMessage;
 
 const picks: RPSType[] = ["Human", "Cat", "Alien"];
+const pokerTableBuyIn = 1000;
+const pokerHandAnte = 100;
 
 function rpsWinner(a: RPSType, b: RPSType) {
   if (a === b) return "draw";
@@ -192,6 +200,8 @@ export default class RPSParty {
     players: [],
     maxPlayers: 5,
     round: 1,
+    buyIn: pokerTableBuyIn,
+    ante: pokerHandAnte,
     pot: 0,
     currentBet: 0,
     minRaise: 50,
@@ -218,11 +228,19 @@ export default class RPSParty {
       this.pokerConnectionObjects.delete(connection.id);
       const pokerPlayer = this.pokerState.players.find((player) => player.id === pokerPlayerId);
       if (pokerPlayer) {
-        pokerPlayer.connected = false;
-        pokerPlayer.ready = false;
-        this.updatePokerPhase();
-        this.pokerState.message = `${pokerPlayer.name} disconnected. Their seat is waiting.`;
-        this.schedulePokerStaleCleanup(pokerPlayer.id);
+        const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting";
+        if (!activeRound) {
+          await this.cashOutPokerStack(pokerPlayer);
+          this.pokerState.players = this.pokerState.players.filter((player) => player.id !== pokerPlayer.id);
+          this.updatePokerPhase();
+          this.pokerState.message = `${pokerPlayer.name} left the table. Their remaining stack was cashed out.`;
+        } else {
+          pokerPlayer.connected = false;
+          pokerPlayer.ready = false;
+          this.updatePokerPhase();
+          this.pokerState.message = `${pokerPlayer.name} disconnected. Their seat is waiting.`;
+          this.schedulePokerStaleCleanup(pokerPlayer.id);
+        }
         this.broadcastPoker();
       }
       return;
@@ -253,7 +271,7 @@ export default class RPSParty {
   async onMessage(message: string, connection: PartyConnection) {
     const pokerData = this.parsePokerMessage(message);
     if (pokerData) {
-      this.handlePokerMessage(pokerData, connection);
+      await this.handlePokerMessage(pokerData, connection);
       return;
     }
 
@@ -314,9 +332,9 @@ export default class RPSParty {
     }
   }
 
-  private handlePokerMessage(data: PokerAnyClientMessage, connection: PartyConnection) {
+  private async handlePokerMessage(data: PokerAnyClientMessage, connection: PartyConnection) {
     if (data.type === "poker_join") {
-      this.joinPoker(data, connection);
+      await this.joinPoker(data, connection);
       return;
     }
 
@@ -335,7 +353,7 @@ export default class RPSParty {
     }
   }
 
-  private joinPoker(data: Extract<PokerClientMessage, { type: "poker_join" }>, connection: PartyConnection) {
+  private async joinPoker(data: Extract<PokerClientMessage, { type: "poker_join" }>, connection: PartyConnection) {
     const existing = this.pokerState.players.find((player) => player.id === data.playerId);
 
     if (existing) {
@@ -343,7 +361,9 @@ export default class RPSParty {
       existing.connected = true;
       existing.name = cleanPlayerName(data.name);
       existing.privyToken = data.privyToken;
-      existing.ante = data.ante;
+      existing.ante = this.pokerState.ante;
+      existing.buyIn = this.pokerState.buyIn;
+      existing.stack = typeof existing.stack === "number" ? existing.stack : this.pokerState.buyIn;
       existing.isNormieHolder = data.isNormieHolder;
       existing.selectedNormieId = data.selectedNormieId;
       existing.avatarUrl = data.avatarUrl;
@@ -359,14 +379,16 @@ export default class RPSParty {
         return;
       }
 
-      this.pokerState.players.push({
+      const player: PokerPlayer = {
         id: data.playerId,
         name: cleanPlayerName(data.name),
         seat,
         connected: true,
         ready: false,
         hand: [],
-        ante: data.ante,
+        ante: this.pokerState.ante,
+        buyIn: this.pokerState.buyIn,
+        stack: 0,
         privyToken: data.privyToken,
         reserved: false,
         committed: 0,
@@ -376,7 +398,13 @@ export default class RPSParty {
         isNormieHolder: data.isNormieHolder,
         selectedNormieId: data.selectedNormieId,
         avatarUrl: data.avatarUrl
-      });
+      };
+      const reserved = await this.reservePokerBuyIn(player);
+      if (!reserved.ok) {
+        connection.send(JSON.stringify({ type: "full", message: reserved.error ?? "Could not reserve poker buy-in." }));
+        return;
+      }
+      this.pokerState.players.push(player);
       this.pokerConnections.set(connection.id, data.playerId);
       this.pokerConnectionObjects.set(connection.id, connection);
     }
@@ -430,7 +458,12 @@ export default class RPSParty {
 
     const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting";
     if (activeRound) {
-      await Promise.all(this.pokerState.players.filter((player) => player.reserved).map((player) => this.refundPokerAnte(player)));
+      this.pokerState.players.forEach((player) => {
+        if (player.reserved && (player.committed ?? 0) > 0) {
+          player.stack += player.committed ?? 0;
+        }
+      });
+      await this.cashOutPokerStack(stalePlayer);
       this.pokerState.players = this.pokerState.players
         .filter((player) => player.connected)
         .map((player) => ({
@@ -454,10 +487,10 @@ export default class RPSParty {
       this.pokerDeck = [];
       this.pokerState.handId = undefined;
       this.pokerState.showdown = undefined;
-      this.pokerState.message = "Disconnected player timed out. Poker hand was voided and reserved antes were refunded.";
+      this.pokerState.message = "Disconnected player timed out. Poker hand was voided and active commitments returned to table stacks.";
     } else {
       if (stalePlayer.reserved) {
-        await this.refundPokerAnte(stalePlayer);
+        await this.cashOutPokerStack(stalePlayer);
       }
       this.pokerState.players = this.pokerState.players.filter((player) => player.connected);
       this.pokerState.message = "Disconnected poker player timed out. Seat reopened.";
@@ -473,16 +506,19 @@ export default class RPSParty {
     const seatedPlayers = this.pokerState.players.filter((player) => player.connected);
     this.pokerState.phase = "ready";
     this.pokerState.handId = this.createPokerMatchId();
-    this.pokerState.message = "Reserving antes...";
+    this.pokerState.message = "Collecting table antes...";
     this.broadcastPoker();
 
-    const reserved = await Promise.all(seatedPlayers.map((player) => this.reservePokerAnte(player)));
-    if (reserved.some((result) => !result.ok)) {
+    const blockedPlayers = seatedPlayers.filter((player) => player.stack < this.pokerState.ante);
+    if (blockedPlayers.length) {
       this.pokerState.players.forEach((player) => {
-        if (player.accountError) player.ready = false;
+        if (blockedPlayers.some((blocked) => blocked.id === player.id)) {
+          player.ready = false;
+          player.accountError = "Not enough table stack for the next ante.";
+        }
       });
       this.pokerState.phase = "waiting";
-      this.pokerState.message = "Poker table rejected one or more antes. Check chip balances.";
+      this.pokerState.message = "One or more players need more table stack for the ante.";
       this.broadcastPoker();
       return;
     }
@@ -492,7 +528,9 @@ export default class RPSParty {
 
     seatedPlayers.forEach((player, playerIndex) => {
       player.hand = deck.slice(playerIndex * 2, playerIndex * 2 + 2);
-      player.committed = player.ante;
+      player.stack -= this.pokerState.ante;
+      player.ante = this.pokerState.ante;
+      player.committed = this.pokerState.ante;
       player.streetCommitted = 0;
       player.folded = false;
       player.acted = false;
@@ -570,6 +608,11 @@ export default class RPSParty {
     if (data.action === "raise") {
       const raiseTo = data.raiseTo ?? this.pokerState.currentBet + this.pokerState.minRaise;
       if (raiseTo < this.pokerState.currentBet + this.pokerState.minRaise) return;
+      if (raiseTo > this.maxPokerRaiseTo()) {
+        player.accountError = "Raise exceeds the table stack cap for active players.";
+        this.broadcastPoker();
+        return;
+      }
       const extra = raiseTo - streetCommitted;
       const reserved = await this.reservePokerExtraWager(player, extra);
       if (!reserved.ok) {
@@ -601,6 +644,12 @@ export default class RPSParty {
   private isPokerBettingComplete() {
     const active = this.activePokerPlayers();
     return active.length <= 1 || active.every((player) => player.acted && (player.streetCommitted ?? 0) >= this.pokerState.currentBet);
+  }
+
+  private maxPokerRaiseTo() {
+    const active = this.activePokerPlayers();
+    if (!active.length) return 0;
+    return Math.min(...active.map((player) => (player.streetCommitted ?? 0) + player.stack));
   }
 
   private resetPokerStreet(street: PokerState["street"], revealCount: number, message: string) {
@@ -644,6 +693,10 @@ export default class RPSParty {
 
   private async finishPokerShowdown() {
     const showdown = await this.evaluatePokerShowdown(this.activePokerPlayers());
+    showdown.winners.forEach((winnerId) => {
+      const winner = this.pokerState.players.find((player) => player.id === winnerId);
+      if (winner) winner.stack += showdown.payoutEach;
+    });
     this.pokerState.phase = "showdown";
     this.pokerState.turnPlayerId = undefined;
     this.pokerState.showdown = showdown;
@@ -664,7 +717,6 @@ export default class RPSParty {
         ? `${showdown.hands.find((hand) => hand.playerId === showdown.winners[0])?.playerName ?? "Winner"} wins ${showdown.pot} chips.`
         : `Split pot: ${showdown.winners.length} players receive ${showdown.payoutEach} chips.`;
     this.broadcastPoker();
-    void this.settlePokerShowdown(showdown);
   }
 
   private nextPokerHand(playerId: string) {
@@ -694,7 +746,7 @@ export default class RPSParty {
         acted: false,
         accountError: undefined
       }));
-    this.pokerState.message = "Next hand ready. Players can adjust ante and ready up.";
+    this.pokerState.message = "Next hand ready. Players can ready up with the fixed table ante.";
     this.broadcastPoker();
   }
 
@@ -727,7 +779,8 @@ export default class RPSParty {
 
   private countValues(values: Array<string | undefined>) {
     return values.reduce<Record<string, number>>((counts, value) => {
-      const key = value ?? "Unknown";
+      if (!value || value === "Unknown") return counts;
+      const key = value;
       counts[key] = (counts[key] ?? 0) + 1;
       return counts;
     }, {});
@@ -738,12 +791,11 @@ export default class RPSParty {
   }
 
   private matchingValue(counts: Record<string, number>, target: number) {
-    return Object.entries(counts).find(([, count]) => count >= target)?.[0] ?? "Unknown";
+    return Object.entries(counts).find(([, count]) => count >= target)?.[0] ?? "";
   }
 
   private allSame(values: Array<string | undefined>) {
-    const known = values.map((value) => value ?? "Unknown");
-    return known.every((value) => value === known[0]);
+    return values.length > 0 && values.every((value) => Boolean(value) && value !== "Unknown" && value === values[0]);
   }
 
   private evaluatePokerHand(traits: NormieTraits[]): PokerEvaluation {
@@ -823,12 +875,14 @@ export default class RPSParty {
     const hands = await Promise.all(
       players.map(async (player) => {
         const cards = [...(player.hand ?? []), ...this.pokerState.communityCards];
+        const cardTraits = await Promise.all(cards.map(async (id) => ({ id, traits: await this.fetchNormieTraits(id) })));
         const best = cards.length >= 5 ? await this.evaluateBestTexasHand(cards) : { cards, evaluation: this.evaluatePokerHand([]) };
         return {
           playerId: player.id,
           playerName: player.name,
           cards,
           bestCards: best.cards,
+          cardTraits,
           handName: best.evaluation.handName,
           score: best.evaluation.score,
           summary: best.evaluation.summary
@@ -1133,7 +1187,8 @@ export default class RPSParty {
     return typeof value === "string" ? value : "dev-internal-secret";
   }
 
-  private async reservePokerAnte(player: PokerPlayer) {
+  private async reservePokerBuyIn(player: PokerPlayer) {
+    player.buyInSessionId = player.buyInSessionId ?? this.createPokerMatchId();
     try {
       const response = await fetch(`${this.apiBaseUrl()}/api/pvp/poker/reserve`, {
         method: "POST",
@@ -1142,26 +1197,27 @@ export default class RPSParty {
           "x-partykit-secret": this.internalSecret()
         },
         body: JSON.stringify({
-          matchId: this.pokerState.handId ?? this.createPokerMatchId(),
+          matchId: player.buyInSessionId,
           roomId: this.room.id ?? "poker-room",
           playerId: player.id,
           privyToken: player.privyToken,
-          ante: player.ante
+          ante: player.buyIn
         })
       });
       const data = (await response.json()) as { ok?: boolean; error?: string; balance?: number };
 
       if (!response.ok || !data.ok) {
-        player.accountError = data.error ?? "Could not reserve poker ante.";
+        player.accountError = data.error ?? "Could not reserve poker buy-in.";
         return { ok: false as const, error: player.accountError };
       }
 
       player.reserved = true;
+      player.stack = player.buyIn;
       player.serverBalance = data.balance;
       player.accountError = undefined;
       return { ok: true as const };
     } catch {
-      player.accountError = "Poker ante service unavailable.";
+      player.accountError = "Poker buy-in service unavailable.";
       return { ok: false as const, error: player.accountError };
     }
   }
@@ -1169,40 +1225,19 @@ export default class RPSParty {
   private async reservePokerExtraWager(player: PokerPlayer, amount: number) {
     if (amount <= 0) return { ok: true as const };
 
-    try {
-      const response = await fetch(`${this.apiBaseUrl()}/api/pvp/poker/wager`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-partykit-secret": this.internalSecret()
-        },
-        body: JSON.stringify({
-          matchId: this.pokerState.handId ?? "poker-hand",
-          roomId: this.room.id ?? "poker-room",
-          playerId: player.id,
-          privyToken: player.privyToken,
-          ante: player.ante,
-          amount
-        })
-      });
-      const data = (await response.json()) as { ok?: boolean; error?: string; balance?: number };
-
-      if (!response.ok || !data.ok) {
-        player.accountError = data.error ?? "Could not reserve poker wager.";
-        return { ok: false as const, error: player.accountError };
-      }
-
-      player.serverBalance = data.balance;
-      player.accountError = undefined;
-      return { ok: true as const };
-    } catch {
-      player.accountError = "Poker wager service unavailable.";
+    if (player.stack < amount) {
+      player.accountError = "Not enough table stack for that wager.";
       return { ok: false as const, error: player.accountError };
     }
+
+    player.stack -= amount;
+    player.accountError = undefined;
+    return { ok: true as const };
   }
 
-  private async refundPokerAnte(player: PokerPlayer) {
+  private async cashOutPokerStack(player: PokerPlayer) {
     if (!player.reserved) return;
+    const amount = Math.max(0, Math.floor(player.stack));
 
     try {
       const response = await fetch(`${this.apiBaseUrl()}/api/pvp/poker/refund`, {
@@ -1212,24 +1247,27 @@ export default class RPSParty {
           "x-partykit-secret": this.internalSecret()
         },
         body: JSON.stringify({
-          matchId: this.pokerState.handId ?? "poker-hand",
+          matchId: player.buyInSessionId ?? this.pokerState.handId ?? "poker-hand",
           roomId: this.room.id ?? "poker-room",
           playerId: player.id,
           privyToken: player.privyToken,
-          ante: player.ante
+          ante: player.buyIn,
+          amount
         })
       });
       const data = (await response.json()) as { ok?: boolean; balance?: number; error?: string };
       if (!response.ok || !data.ok) {
-        player.accountError = data.error ?? "Could not refund poker ante.";
+        player.accountError = data.error ?? "Could not cash out poker stack.";
         return;
       }
 
       player.serverBalance = data.balance;
+      player.stack = 0;
       player.reserved = false;
+      player.buyInSessionId = undefined;
       player.accountError = undefined;
     } catch {
-      player.accountError = "Poker refund service unavailable.";
+      player.accountError = "Poker cash-out service unavailable.";
     }
   }
 
