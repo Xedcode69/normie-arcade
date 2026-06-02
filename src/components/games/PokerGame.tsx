@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { CheckCircle2, Copy, Dices, LogOut, RotateCcw, Search, Users } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
@@ -177,7 +176,7 @@ function PokerPvP() {
     if (typeof window === "undefined") return "create";
     return normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "") ? "join" : "create";
   });
-  const { connected, connect, clearError, disconnect, error, nextHand, playerId, state, submitAction, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
+  const { connected, connect, clearError, disconnect, error, errorMeta, nextHand, playerId, state, submitAction, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
   const { ready, authenticated, getAccessToken, login } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
@@ -200,6 +199,10 @@ function PokerPvP() {
     .map((player) => (player.streetCommitted ?? 0) + (player.stack ?? 0));
   const maxRaiseTo = Math.min(streetCommitted + tableStack, activeRaiseCaps.length ? Math.min(...activeRaiseCaps) : streetCommitted + tableStack);
   const isYourTurn = connected && state.phase === "betting" && state.turnPlayerId === playerId;
+  const pokerErrorMessage =
+    error === "Insufficient chips"
+      ? `Insufficient chips for poker buy-in. Required ${errorMeta?.buyIn ?? state.buyIn}, server balance ${errorMeta?.balance ?? "unknown"}.`
+      : error;
   const reconnectAttempted = useRef(false);
 
   useEffect(() => {
@@ -239,9 +242,9 @@ function PokerPvP() {
       window.sessionStorage.removeItem(POKER_RECONNECT_KEY);
     }
     if (error) {
-      setRoomNotice({ kind: "error", message: error });
+      setRoomNotice({ kind: "error", message: pokerErrorMessage ?? error });
     }
-  }, [error]);
+  }, [error, pokerErrorMessage]);
 
   function inviteUrl() {
     if (typeof window === "undefined") return "";
@@ -400,9 +403,8 @@ function PokerPvP() {
       ) : null}
 
       <div className="mx-auto mt-4 flex max-w-4xl items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
-        <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${error ? "text-magenta" : "text-pixel/60"}`}>
-          {error ??
-            you?.accountError ??
+        <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${you?.accountError ? "text-magenta" : "text-pixel/60"}`}>
+          {you?.accountError ??
             `${state.message} ${
               state.phase === "dealt" || state.phase === "betting" ? `Hand ${state.handId ?? "active"}.` : `${readyCount}/${Math.max(connectedCount, 2)} ready.`
             }`}
@@ -418,44 +420,18 @@ function PokerPvP() {
         {typeof you?.serverBalance === "number" ? <div className="pixel-card px-4 py-2 text-sm text-paper">Account chips {you.serverBalance}</div> : null}
       </div>
 
-      <div className="mt-6 grid gap-3 md:grid-cols-5">
-        {Array.from({ length: state.maxPlayers }, (_, seat) => {
-          const player = state.players.find((item) => item.seat === seat);
-          return <PokerSeat key={seat} seat={seat} player={player} isYou={player?.id === playerId} />;
-        })}
-      </div>
-
-      {state.phase === "dealt" || state.phase === "betting" || state.phase === "showdown" ? (
-        <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/35 bg-black/65 p-4">
-          <div className="text-center">
-            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Community Board</div>
-            <div className="mt-1 text-sm text-paper">
-              {state.communityCards.length ? `${state.communityCards.length} shared Normies revealed.` : "Preflop. Shared Normies are still hidden."}
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-5 gap-3">
-            {Array.from({ length: 5 }, (_, index) => (
-              <PrivatePokerCard key={`${state.handId ?? "board"}-board-${index}`} normieId={state.communityCards[index]} index={index} label={`Board ${index + 1}`} />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {state.phase === "dealt" || state.phase === "betting" ? (
-        <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/35 bg-black/65 p-4">
-          <div className="text-center">
-            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Private Hole Normies</div>
-            <div className="mt-1 text-sm text-paper">
-              {privateHand.length ? "Only your client receives these two private Normie IDs." : "Waiting for your private hand packet..."}
-            </div>
-          </div>
-          <div className="mx-auto mt-4 grid max-w-md grid-cols-2 gap-3">
-            {Array.from({ length: 2 }, (_, index) => (
-              <PrivatePokerCard key={`${state.handId ?? "hand"}-${index}`} normieId={privateHand[index]} index={index} />
-            ))}
-          </div>
-        </div>
-      ) : null}
+      <PokerTable
+        communityIds={state.communityCards}
+        currentBet={state.currentBet}
+        maxPlayers={state.maxPlayers}
+        phase={state.phase}
+        playerId={playerId}
+        players={state.players}
+        pot={state.pot}
+        privateIds={privateHand}
+        streetLabel={streetLabel}
+        turnPlayerId={state.turnPlayerId}
+      />
 
       {state.phase === "dealt" || state.phase === "betting" ? (
         <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} />
@@ -626,69 +602,175 @@ function PokerBettingControls({
   );
 }
 
-function PokerSeat({
-  seat,
-  player,
-  isYou
-}: {
+type PokerSeatPlayer = {
+  id: string;
+  name: string;
   seat: number;
-  player?: {
-    id: string;
-    name: string;
-    connected: boolean;
-    ready: boolean;
-    handCount: number;
-    buyIn?: number;
-    stack?: number;
-    committed?: number;
-    streetCommitted?: number;
-    folded?: boolean;
-    acted?: boolean;
-    isNormieHolder?: boolean;
-    selectedNormieId?: number | null;
-    avatarUrl?: string | null;
-  };
-  isYou: boolean;
+  connected: boolean;
+  ready: boolean;
+  handCount: number;
+  buyIn?: number;
+  stack?: number;
+  committed?: number;
+  streetCommitted?: number;
+  folded?: boolean;
+  acted?: boolean;
+  lastAction?: string;
+  isNormieHolder?: boolean;
+  selectedNormieId?: number | null;
+  avatarUrl?: string | null;
+};
+
+function PokerTable({
+  communityIds,
+  currentBet,
+  maxPlayers,
+  phase,
+  playerId,
+  players,
+  pot,
+  privateIds,
+  streetLabel,
+  turnPlayerId
+}: {
+  communityIds: number[];
+  currentBet: number;
+  maxPlayers: number;
+  phase: string;
+  playerId: string | null;
+  players: PokerSeatPlayer[];
+  pot: number;
+  privateIds: number[];
+  streetLabel: string;
+  turnPlayerId?: string;
 }) {
+  const seatPositions = [
+    "left-1/2 top-3 -translate-x-1/2",
+    "right-4 top-16",
+    "right-10 bottom-10",
+    "left-10 bottom-10",
+    "left-4 top-16"
+  ];
+
   return (
-    <div className={`border bg-black/70 p-3 text-center ${isYou ? "border-mint shadow-neon" : "border-paper/35"}`}>
-      <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Seat {seat + 1}</div>
-      <div className="mx-auto mt-3 grid h-20 w-20 place-items-center border border-paper/35 bg-paper">
-        {player?.avatarUrl ? (
-          <Image src={player.avatarUrl} alt={`${player.name} avatar`} width={76} height={76} className="h-[76px] w-[76px] object-contain" unoptimized />
+    <div className="mx-auto mt-6 w-full max-w-6xl">
+      <div className="relative min-h-[34rem] overflow-hidden border border-paper/45 bg-black/70 p-4 shadow-neon">
+        <div className="absolute inset-x-10 top-20 bottom-20 rounded-[50%] border-[10px] border-paper/20 bg-[radial-gradient(ellipse_at_center,rgba(18,96,70,0.9),rgba(4,18,14,0.96)_62%,rgba(0,0,0,0.96))] shadow-[inset_0_0_60px_rgba(255,255,255,0.08)]" />
+        <div className="absolute inset-x-24 top-32 bottom-32 rounded-[50%] border border-mint/20" />
+
+        <div className="absolute left-1/2 top-1/2 z-10 w-full max-w-xl -translate-x-1/2 -translate-y-1/2 px-6 text-center">
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint/65">
+            {streetLabel} | Pot {pot} | Bet {currentBet}
+          </div>
+          <div className="mt-4 grid grid-cols-5 gap-2">
+            {Array.from({ length: 5 }, (_, index) => (
+              <TableNormieCard key={`${index}-${communityIds[index] ?? "hidden"}`} normieId={communityIds[index]} label={`B${index + 1}`} compact />
+            ))}
+          </div>
+        </div>
+
+        {Array.from({ length: maxPlayers }, (_, seat) => {
+          const player = players.find((item) => item.seat === seat);
+          return (
+            <div key={seat} className={`absolute z-20 ${seatPositions[seat] ?? seatPositions[0]}`}>
+              <PokerTableSeat
+                isTurn={Boolean(player && turnPlayerId === player.id)}
+                isYou={player?.id === playerId}
+                phase={phase}
+                player={player}
+                privateIds={player?.id === playerId ? privateIds : []}
+                seat={seat}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PokerTableSeat({
+  isTurn,
+  isYou,
+  phase,
+  player,
+  privateIds,
+  seat
+}: {
+  isTurn: boolean;
+  isYou: boolean;
+  phase: string;
+  player?: PokerSeatPlayer;
+  privateIds: number[];
+  seat: number;
+}) {
+  const activeHand = phase === "dealt" || phase === "betting" || phase === "showdown";
+  const status = player
+    ? player.folded
+      ? "FOLD"
+      : player.lastAction ?? (isTurn ? "TURN" : player.ready ? "READY" : player.connected ? "SEATED" : "OFFLINE")
+    : "OPEN";
+
+  return (
+    <div className={`w-56 border bg-black/85 p-3 text-center ${isTurn ? "border-mint shadow-neon" : isYou ? "border-cyan" : "border-paper/35"}`}>
+      <div className="flex items-center gap-2">
+        <div className="grid h-12 w-12 shrink-0 place-items-center border border-paper/35 bg-paper">
+          {player?.avatarUrl ? (
+            <Image src={player.avatarUrl} alt={`${player.name} avatar`} width={44} height={44} className="h-11 w-11 object-contain" unoptimized />
+          ) : (
+            <Dices size={20} className="text-black/60" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 text-left">
+          <div className="truncate text-sm text-paper">{player?.name ?? `Seat ${seat + 1}`}</div>
+          <div className="text-[10px] uppercase tracking-widest text-paper/45">Stack {player?.stack ?? "--"}</div>
+        </div>
+        <div className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${status === "FOLD" ? "border-magenta/50 text-magenta" : "border-mint/45 text-mint"}`}>
+          {status}
+        </div>
+      </div>
+
+      <div className="mt-3 flex justify-center gap-2">
+        {activeHand ? (
+          Array.from({ length: 2 }, (_, index) =>
+            isYou ? (
+              <TableNormieCard key={index} normieId={privateIds[index]} label={`H${index + 1}`} compact />
+            ) : (
+              <CardBack key={index} />
+            )
+          )
         ) : (
-          <Dices size={28} className="text-black/60" />
+          <div className="terminal-hash py-4 text-[10px] uppercase tracking-widest text-paper/35">{player ? "Waiting" : "Open Seat"}</div>
         )}
       </div>
-      <div className="mt-3 truncate text-sm text-paper">{player?.name ?? "Open Seat"}</div>
-      <div className={`mt-2 text-[10px] uppercase tracking-widest ${player?.ready ? "text-mint" : "text-paper/45"}`}>
-        {player
-          ? player.folded
-            ? "Folded"
-            : player.handCount
-            ? `${player.handCount} Hole Cards`
-            : player.ready
-            ? "Ready"
-            : player.connected
-            ? "Seated"
-            : "Disconnected"
-          : "Waiting"}
+
+      <div className="mt-2 flex justify-center gap-2 text-[10px] uppercase tracking-widest text-paper/45">
+        <span>Pot {player?.committed ?? 0}</span>
+        <span>Street {player?.streetCommitted ?? 0}</span>
       </div>
-      {player && typeof player.committed === "number" && player.committed > 0 ? (
-        <div className="mt-2 text-[10px] uppercase tracking-widest text-paper/45">In pot {player.committed}</div>
-      ) : null}
-      {player && typeof player.stack === "number" ? (
-        <div className="mt-2 text-[10px] uppercase tracking-widest text-mint/70">Stack {player.stack}</div>
-      ) : null}
-      {player && typeof player.streetCommitted === "number" && player.streetCommitted > 0 ? (
-        <div className="mt-1 text-[10px] uppercase tracking-widest text-paper/35">Street {player.streetCommitted}</div>
-      ) : null}
-      {player?.acted && !player.folded ? <div className="mt-1 text-[10px] uppercase tracking-widest text-mint/70">Acted</div> : null}
-      {player?.isNormieHolder ? (
-        <div className="mx-auto mt-2 w-fit border border-mint/50 px-1.5 py-0.5 text-[9px] text-mint">
-          0xN{player.selectedNormieId !== null && player.selectedNormieId !== undefined ? ` #${player.selectedNormieId}` : ""}
-        </div>
-      ) : null}
+    </div>
+  );
+}
+
+function CardBack() {
+  return (
+    <div className="grid h-20 w-14 place-items-center border border-paper/35 bg-black text-[9px] uppercase tracking-widest text-paper/35">
+      0xN
+    </div>
+  );
+}
+
+function TableNormieCard({ normieId, label, compact }: { normieId?: number; label: string; compact?: boolean }) {
+  return (
+    <div className={`border border-paper/35 bg-black/80 p-1 text-center ${compact ? "w-16" : "w-24"}`}>
+      <div className={`grid place-items-center border border-paper/25 bg-paper ${compact ? "h-16 w-14" : "h-24 w-20"}`}>
+        {normieId !== undefined ? (
+          <CenteredNormieImage src={`https://api.normies.art/normie/${normieId}/image.png`} alt={`Normie poker card #${normieId}`} className="h-full w-full" />
+        ) : (
+          <div className="grid h-full w-full place-items-center bg-black/90 text-[9px] text-paper/35">0xN</div>
+        )}
+      </div>
+      <div className="mt-1 truncate text-[9px] text-paper/50">{normieId !== undefined ? `#${normieId}` : label}</div>
     </div>
   );
 }
@@ -893,49 +975,5 @@ function ShowdownTraitCard({ id, traits }: { id: number; traits?: NormieTraits }
       <div className="mt-1 text-[10px] text-paper/60">#{id}</div>
       <TraitSummary traits={traits} />
     </div>
-  );
-}
-
-function PrivatePokerCard({ normieId, index, label }: { normieId?: number; index: number; label?: string }) {
-  const [traits, setTraits] = useState<NormieTraits | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    setTraits(null);
-    if (normieId === undefined) return;
-
-    NormieAPIService.fetchNormieTraits(normieId).then((nextTraits) => {
-      if (active) setTraits(nextTraits);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [normieId]);
-
-  return (
-    <motion.div
-      initial={{ rotateY: 90, opacity: 0 }}
-      animate={{ rotateY: 0, opacity: 1 }}
-      transition={{ delay: index * 0.06 }}
-      className="border border-paper/45 bg-black/80 p-2 text-center"
-    >
-      <div className="mx-auto grid h-28 w-28 place-items-center overflow-hidden border border-paper/40 bg-paper">
-        {normieId !== undefined ? (
-          <CenteredNormieImage
-            src={`https://api.normies.art/normie/${normieId}/image.png`}
-            alt={`Private poker Normie #${normieId}`}
-            className="h-full w-full"
-          />
-        ) : (
-          <div className="grid h-full w-full place-items-center bg-black/85">
-            <div className="h-16 w-16 animate-pulse border border-paper/20 bg-paper/10" />
-          </div>
-        )}
-      </div>
-      <div className="mt-2 text-xs text-paper/60">#{normieId ?? "----"}</div>
-      <div className="terminal-hash mt-1 text-[9px] uppercase tracking-widest text-pixel/55">{label ?? `Private Slot ${index + 1}`}</div>
-      {normieId !== undefined ? <TraitSummary traits={traits} /> : null}
-    </motion.div>
   );
 }
