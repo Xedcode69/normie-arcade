@@ -6,22 +6,19 @@ import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
-import { playTone } from "@/lib/audio";
 import { createPokerRoomCode, normalizePokerRoomCode } from "@/lib/pokerPvp";
 import { usePokerPvp } from "@/hooks/usePokerPvp";
 import { NormieAPIService } from "@/services/NormieAPIService";
 import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useChipStore } from "@/stores/chipStore";
-import type { Normie, NormieTraits } from "@/types/normie";
-import { BetControls } from "./BetControls";
+import type { NormieTraits } from "@/types/normie";
 
 type PokerHand = {
   name: string;
   multiplier: number;
   summary: string;
 };
-type PokerMode = "solo" | "pvp";
 type PokerRoomMode = "create" | "join";
 const POKER_RECONNECT_KEY = "normie-poker-active-room";
 
@@ -33,10 +30,6 @@ const handRanks = {
   accessoryFullHouse: { name: "Accessory Full House", multiplier: 12 },
   perfectDna: { name: "Perfect DNA", multiplier: 20 }
 } as const;
-
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
 
 function countValues(values: Array<string | undefined>) {
   return values.reduce<Record<string, number>>((counts, value) => {
@@ -126,10 +119,6 @@ function evaluateTraitsCombo(traits: NormieTraits[], minFlushCards = 5): PokerHa
   };
 }
 
-function evaluateHand(cards: Normie[]): PokerHand {
-  return evaluateTraitsCombo(cards.map((card) => card.traits));
-}
-
 function fiveCardCombos<T>(items: T[]) {
   const combos: T[][] = [];
   for (let a = 0; a < items.length - 4; a += 1) {
@@ -155,121 +144,15 @@ function evaluateBestVisibleCombo(traits: NormieTraits[]) {
 }
 
 export function PokerGame() {
-  const [mode, setMode] = useState<PokerMode>("solo");
-  const [bet, setBet] = useState(100);
-  const [cards, setCards] = useState<Array<Normie | null>>(Array.from({ length: 5 }, () => null));
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("Deal five API Normies and score trait combinations.");
-  const [roundResult, setRoundResult] = useState("Ready for a DNA Poker hand.");
-  const wager = useChipStore((state) => state.wager);
-  const win = useChipStore((state) => state.win);
-  const lose = useChipStore((state) => state.lose);
-  const notify = useArcadeStore((state) => state.notify);
-  const hasCards = cards.some(Boolean);
-
-  async function deal() {
-    if (!wager(bet)) {
-      notify({ kind: "loss", title: "Not enough chips", body: "Lower the DNA Poker bet." });
-      return;
-    }
-
-    setLoading(true);
-    setCards(Array.from({ length: 5 }, () => null));
-    setResult("Shuffling on-chain DNA traits...");
-    setRoundResult("Dealing five Normies...");
-    playTone(340, 0.12, "sawtooth");
-
-    const hand = await NormieAPIService.getRandomNormies(5);
-
-    for (let index = 0; index < hand.length; index += 1) {
-      await wait(220);
-      setCards((current) => current.map((card, cardIndex) => (cardIndex === index ? hand[index] : card)));
-      playTone(420 + index * 42, 0.08, "triangle");
-    }
-
-    const evaluated = evaluateHand(hand);
-
-    if (evaluated.multiplier > 0) {
-      const payout = bet * evaluated.multiplier;
-      win(payout);
-      setResult(`${evaluated.name}. Paid ${payout} chips.`);
-      setRoundResult(`WIN - ${evaluated.name} (${evaluated.multiplier}x). ${evaluated.summary}`);
-      playTone(720, 0.22, "triangle");
-    } else {
-      lose();
-      setResult("No scoring DNA hand.");
-      setRoundResult(`LOSE - ${evaluated.summary}`);
-      playTone(180, 0.2, "square");
-    }
-
-    setLoading(false);
-  }
-
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4">
       <div className="shrink-0 text-center">
         <h2 className="font-display text-lg uppercase tracking-[0.24em] text-paper">Normie DNA Poker</h2>
-        <p className="terminal-hash mx-auto mt-3 max-w-4xl truncate text-xs text-pixel/70">{result}</p>
+        <p className="terminal-hash mx-auto mt-3 max-w-4xl truncate text-xs text-pixel/70">
+          0xNORMIE // Texas-style PvP table with private Normies and shared board cards.
+        </p>
       </div>
-
-      <div className="mt-6 flex shrink-0 justify-center gap-2">
-        {(["solo", "pvp"] as const).map((value) => (
-          <button
-            key={value}
-            onClick={() => setMode(value)}
-            className={`min-w-28 border px-3 py-2 text-xs uppercase tracking-widest transition ${
-              mode === value ? "border-paper bg-paper/15 text-paper shadow-neon" : "border-paper/25 bg-black/60 text-paper/55 hover:border-paper/70"
-            }`}
-          >
-            {value === "solo" ? "Solo Deal" : "PvP Table"}
-          </button>
-        ))}
-      </div>
-
-      {mode === "pvp" ? <PokerPvP /> : (
-        <>
-      <div className="mt-8 flex shrink-0 flex-wrap items-center justify-center gap-2">
-        <div className="border border-paper/35 bg-black/70 px-3 py-2 text-xs uppercase tracking-widest text-paper/70">
-          Pair 2x
-        </div>
-        <div className="border border-paper/35 bg-black/70 px-3 py-2 text-xs uppercase tracking-widest text-paper/70">
-          Eye Trips 4x
-        </div>
-        <div className="border border-paper/35 bg-black/70 px-3 py-2 text-xs uppercase tracking-widest text-paper/70">
-          Age/Gender Flush 7x
-        </div>
-        <div className="border border-paper/35 bg-black/70 px-3 py-2 text-xs uppercase tracking-widest text-paper/70">
-          Accessory Full House 12x
-        </div>
-        <div className="border border-paper/60 bg-paper/10 px-3 py-2 text-xs uppercase tracking-widest text-paper shadow-neon">
-          Perfect DNA 20x
-        </div>
-        <BetControls bet={bet} setBet={setBet} />
-      </div>
-
-      <div className="mt-6 grid shrink-0 grid-cols-1 justify-center gap-3 overflow-hidden sm:grid-cols-5">
-        {cards.map((card, index) => (
-          <PokerCard key={card ? card.id : `poker-slot-${index}`} normie={card} index={index} loading={loading && !card} />
-        ))}
-      </div>
-
-      <div className="mt-5 flex shrink-0 justify-center">
-        <button
-          onClick={deal}
-          disabled={loading}
-          className="inline-flex min-w-36 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15 disabled:opacity-50"
-        >
-          {hasCards ? <RotateCcw size={16} /> : <Dices size={16} />}
-          {hasCards ? "Redeal" : "Deal"}
-        </button>
-      </div>
-
-      <div className="mx-auto mt-4 w-full max-w-5xl shrink-0 border-t border-paper/20 pt-3 text-center">
-        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Round Result</div>
-        <div className="truncate text-sm text-paper">{roundResult}</div>
-      </div>
-        </>
-      )}
+      <PokerPvP />
     </div>
   );
 }
@@ -1053,38 +936,6 @@ function PrivatePokerCard({ normieId, index, label }: { normieId?: number; index
       <div className="mt-2 text-xs text-paper/60">#{normieId ?? "----"}</div>
       <div className="terminal-hash mt-1 text-[9px] uppercase tracking-widest text-pixel/55">{label ?? `Private Slot ${index + 1}`}</div>
       {normieId !== undefined ? <TraitSummary traits={traits} /> : null}
-    </motion.div>
-  );
-}
-
-function PokerCard({ normie, index, loading }: { normie: Normie | null; index: number; loading: boolean }) {
-  return (
-    <motion.div
-      initial={{ rotateY: 90, opacity: 0 }}
-      animate={{ rotateY: 0, opacity: 1 }}
-      transition={{ delay: index * 0.06 }}
-      className="pixel-card mx-auto grid h-72 w-full max-w-52 grid-rows-[8.5rem_1rem_1.25rem_4rem] overflow-hidden p-2 text-center"
-    >
-      <div className="relative mx-auto grid h-32 w-32 place-items-center overflow-hidden border border-paper/40 bg-paper">
-        {normie ? (
-          <CenteredNormieImage src={normie.image} alt={`Poker Normie ${normie.id}`} className="h-full w-full" />
-        ) : (
-          <div className="grid h-full w-full place-items-center bg-black/80">
-            <motion.div
-              animate={{ opacity: loading ? [0.25, 0.8, 0.25] : 0.25 }}
-              transition={{ duration: 0.8, repeat: loading ? Infinity : 0 }}
-              className="h-20 w-20 border border-paper/20 bg-paper/10"
-            />
-          </div>
-        )}
-      </div>
-      <div className="text-xs leading-4 text-white/60">#{normie ? normie.id : "----"}</div>
-      <div className="truncate text-sm leading-5 text-paper">{normie ? normie.traits.Expression ?? "Unknown" : loading ? "Dealing" : "Waiting"}</div>
-      <div className="space-y-1 text-[10px] leading-3 text-white/45">
-        <div>Type: {normie?.traits.Type ?? "----"}</div>
-        <div>Gender: {normie?.traits.Gender ?? "----"}</div>
-        <div>Age: {normie?.traits.Age ?? "----"}</div>
-      </div>
     </motion.div>
   );
 }
