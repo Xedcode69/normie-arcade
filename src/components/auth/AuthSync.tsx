@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
+import { useChipStore } from "@/stores/chipStore";
 import { usePlayerStore } from "@/stores/playerStore";
 
 export function AuthSync() {
@@ -11,15 +12,18 @@ export function AuthSync() {
   const lastSyncedUser = useRef<string | null>(null);
   const setProfile = useAccountStore((state) => state.setProfile);
   const resetProfile = useAccountStore((state) => state.resetProfile);
+  const hydrateChips = useChipStore((state) => state.hydrate);
+  const resetChips = useChipStore((state) => state.reset);
   const setAvatarUrl = usePlayerStore((state) => state.setAvatarUrl);
 
   useEffect(() => {
     if (ready && !authenticated) {
       resetProfile();
+      resetChips();
       setAvatarUrl(null);
       lastSyncedUser.current = null;
     }
-  }, [authenticated, ready, resetProfile, setAvatarUrl]);
+  }, [authenticated, ready, resetChips, resetProfile, setAvatarUrl]);
 
   useEffect(() => {
     if (!ready || !authenticated || !user?.id || lastSyncedUser.current === user.id) {
@@ -51,6 +55,11 @@ export function AuthSync() {
           selectedNormieId?: number | null;
           ownedNormies?: Array<{ normieId: number; imageUrl: string }>;
           holderVerifiedAt?: string | null;
+          chipAccount?: {
+            balance: number;
+            streak: number;
+            multiplier: number;
+          } | null;
         };
       };
 
@@ -67,6 +76,9 @@ export function AuthSync() {
         holderVerifiedAt: account.account?.holderVerifiedAt ?? null,
         ownedNormieIds: account.account?.ownedNormies?.map((normie) => normie.normieId) ?? []
       });
+      if (account.account?.chipAccount) {
+        hydrateChips(account.account.chipAccount);
+      }
 
       const walletAddress = user.wallet?.address;
       if (walletAddress) {
@@ -120,7 +132,7 @@ export function AuthSync() {
         kind: "info"
       });
     });
-  }, [authenticated, getAccessToken, ready, resetProfile, setAvatarUrl, setProfile, user]);
+  }, [authenticated, getAccessToken, hydrateChips, ready, resetChips, resetProfile, setAvatarUrl, setProfile, user]);
 
   return null;
 }
