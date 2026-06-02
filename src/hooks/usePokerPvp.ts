@@ -9,6 +9,8 @@ type ServerMessage =
   | { type: "error"; message: string };
 
 type JoinOptions = {
+  privyToken: string;
+  ante: number;
   name?: string | null;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
@@ -61,6 +63,8 @@ export function usePokerPvp(room = "poker-quickplay") {
         type: "poker_join",
         playerId: nextPlayerId,
         name: options.name || getPlayerName(nextPlayerId),
+        privyToken: options.privyToken,
+        ante: options.ante,
         isNormieHolder: options.isNormieHolder,
         selectedNormieId: options.selectedNormieId,
         avatarUrl: options.avatarUrl
@@ -93,20 +97,40 @@ export function usePokerPvp(room = "poker-quickplay") {
     setState(initialPokerPvpState);
   }, []);
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   const toggleReady = useCallback(() => {
     if (!playerId) return;
     send({ type: "poker_ready", playerId });
   }, [playerId, send]);
+
+  const nextHand = useCallback(() => {
+    if (!playerId) return;
+    send({ type: "poker_next_hand", playerId });
+  }, [playerId, send]);
+
+  const submitAction = useCallback(
+    (action: "check" | "call" | "raise" | "fold", raiseTo?: number) => {
+      if (!playerId) return;
+      send({ type: "poker_action", playerId, action, raiseTo });
+    },
+    [playerId, send]
+  );
 
   useEffect(() => () => disconnect(), [disconnect]);
 
   return {
     connected,
     connect,
+    clearError,
     disconnect,
     error,
     playerId,
+    nextHand,
     state,
+    submitAction,
     toggleReady
   };
 }

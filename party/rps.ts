@@ -56,18 +56,80 @@ type PokerPlayer = {
   connected: boolean;
   ready: boolean;
   hand?: number[];
+  ante: number;
+  buyIn: number;
+  stack: number;
+  buyInSessionId?: string;
+  privyToken: string;
+  reserved: boolean;
+  serverBalance?: number;
+  accountError?: string;
+  committed?: number;
+  streetCommitted?: number;
+  folded?: boolean;
+  acted?: boolean;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
 };
 
 type PokerState = {
-  phase: "waiting" | "ready" | "dealt";
+  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown";
   players: PokerPlayer[];
   maxPlayers: number;
   round: number;
+  buyIn: number;
+  ante: number;
+  pot: number;
+  currentBet: number;
+  minRaise: number;
+  turnPlayerId?: string;
+  street?: "preflop" | "flop" | "turn" | "river";
+  communityCards: number[];
   handId?: string;
+  history: Array<{
+    round: number;
+    handId: string;
+    winners: string[];
+    winnerNames: string[];
+    pot: number;
+    payoutEach: number;
+    summary: string;
+  }>;
+  showdown?: PokerShowdown;
   message: string;
+};
+
+type NormieTraits = {
+  Type?: string;
+  Gender?: string;
+  Age?: string;
+  Expression?: string;
+  Eyes?: string;
+  Accessory?: string;
+  "Facial Feature"?: string;
+};
+
+type PokerEvaluation = {
+  handName: string;
+  score: number;
+  summary: string;
+};
+
+type PokerShowdown = {
+  winners: string[];
+  pot: number;
+  payoutEach: number;
+  hands: Array<{
+    playerId: string;
+    playerName: string;
+    cards: number[];
+    bestCards: number[];
+    cardTraits: Array<{ id: number; traits: NormieTraits }>;
+    handName: string;
+    score: number;
+    summary: string;
+  }>;
 };
 
 type ClientMessage =
@@ -89,13 +151,21 @@ type PokerClientMessage =
       type: "poker_join";
       playerId: string;
       name?: string;
+      privyToken: string;
+      ante: number;
       isNormieHolder?: boolean;
       selectedNormieId?: number | null;
       avatarUrl?: string | null;
     }
   | { type: "poker_ready"; playerId: string };
+// Keep poker messages small and explicit; later action phases can extend this union.
+type PokerNextHandMessage = { type: "poker_next_hand"; playerId: string };
+type PokerActionMessage = { type: "poker_action"; playerId: string; action: "check" | "call" | "raise" | "fold"; raiseTo?: number };
+type PokerAnyClientMessage = PokerClientMessage | PokerNextHandMessage | PokerActionMessage;
 
 const picks: RPSType[] = ["Human", "Cat", "Alien"];
+const pokerTableBuyIn = 1000;
+const pokerHandAnte = 100;
 
 function rpsWinner(a: RPSType, b: RPSType) {
   if (a === b) return "draw";
@@ -114,7 +184,9 @@ export default class RPSParty {
   private pokerConnections = new Map<string, string>();
   private pokerConnectionObjects = new Map<string, PartyConnection>();
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
+  private pokerDeck: number[] = [];
   private matchId = this.createMatchId();
   private state: MatchState = {
     phase: "waiting",
@@ -128,6 +200,13 @@ export default class RPSParty {
     players: [],
     maxPlayers: 5,
     round: 1,
+    buyIn: pokerTableBuyIn,
+    ante: pokerHandAnte,
+    pot: 0,
+    currentBet: 0,
+    minRaise: 50,
+    communityCards: [],
+    history: [],
     message: "Waiting for players to sit at the DNA Poker table."
   };
 
@@ -149,10 +228,19 @@ export default class RPSParty {
       this.pokerConnectionObjects.delete(connection.id);
       const pokerPlayer = this.pokerState.players.find((player) => player.id === pokerPlayerId);
       if (pokerPlayer) {
-        pokerPlayer.connected = false;
-        pokerPlayer.ready = false;
-        this.updatePokerPhase();
-        this.pokerState.message = `${pokerPlayer.name} disconnected. Their seat is waiting.`;
+        const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting";
+        if (!activeRound) {
+          await this.cashOutPokerStack(pokerPlayer);
+          this.pokerState.players = this.pokerState.players.filter((player) => player.id !== pokerPlayer.id);
+          this.updatePokerPhase();
+          this.pokerState.message = `${pokerPlayer.name} left the table. Their remaining stack was cashed out.`;
+        } else {
+          pokerPlayer.connected = false;
+          pokerPlayer.ready = false;
+          this.updatePokerPhase();
+          this.pokerState.message = `${pokerPlayer.name} disconnected. Their seat is waiting.`;
+          this.schedulePokerStaleCleanup(pokerPlayer.id);
+        }
         this.broadcastPoker();
       }
       return;
@@ -183,7 +271,7 @@ export default class RPSParty {
   async onMessage(message: string, connection: PartyConnection) {
     const pokerData = this.parsePokerMessage(message);
     if (pokerData) {
-      this.handlePokerMessage(pokerData, connection);
+      await this.handlePokerMessage(pokerData, connection);
       return;
     }
 
@@ -205,41 +293,77 @@ export default class RPSParty {
     }
   }
 
-  private parsePokerMessage(message: string): PokerClientMessage | null {
+  private parsePokerMessage(message: string): PokerAnyClientMessage | null {
     try {
       const data = JSON.parse(message) as PokerClientMessage;
-      if (data.type === "poker_join" && typeof data.playerId === "string") {
+      if (
+        data.type === "poker_join" &&
+        typeof data.playerId === "string" &&
+        typeof data.privyToken === "string" &&
+        typeof data.ante === "number"
+      ) {
         return {
           ...data,
+          ante: Math.max(1, Math.round(data.ante)),
           isNormieHolder: Boolean(data.isNormieHolder),
           selectedNormieId: typeof data.selectedNormieId === "number" ? data.selectedNormieId : null,
           avatarUrl: typeof data.avatarUrl === "string" ? data.avatarUrl.slice(0, 240) : null
         };
       }
       if (data.type === "poker_ready" && typeof data.playerId === "string") return data;
+      const maybeNextHand = data as unknown as PokerNextHandMessage;
+      if (maybeNextHand.type === "poker_next_hand" && typeof maybeNextHand.playerId === "string") {
+        return maybeNextHand;
+      }
+      const maybeAction = data as unknown as PokerActionMessage;
+      if (
+        maybeAction.type === "poker_action" &&
+        typeof maybeAction.playerId === "string" &&
+        ["check", "call", "raise", "fold"].includes(maybeAction.action)
+      ) {
+        return {
+          ...maybeAction,
+          raiseTo: typeof maybeAction.raiseTo === "number" ? Math.max(0, Math.round(maybeAction.raiseTo)) : undefined
+        };
+      }
       return null;
     } catch {
       return null;
     }
   }
 
-  private handlePokerMessage(data: PokerClientMessage, connection: PartyConnection) {
+  private async handlePokerMessage(data: PokerAnyClientMessage, connection: PartyConnection) {
     if (data.type === "poker_join") {
-      this.joinPoker(data, connection);
+      await this.joinPoker(data, connection);
       return;
     }
 
     if (data.type === "poker_ready") {
       this.togglePokerReady(data.playerId);
+      return;
+    }
+
+    if ((data as PokerNextHandMessage).type === "poker_next_hand") {
+      this.nextPokerHand((data as PokerNextHandMessage).playerId);
+      return;
+    }
+
+    if ((data as PokerActionMessage).type === "poker_action") {
+      void this.handlePokerAction(data as PokerActionMessage);
     }
   }
 
-  private joinPoker(data: Extract<PokerClientMessage, { type: "poker_join" }>, connection: PartyConnection) {
+  private async joinPoker(data: Extract<PokerClientMessage, { type: "poker_join" }>, connection: PartyConnection) {
     const existing = this.pokerState.players.find((player) => player.id === data.playerId);
 
     if (existing) {
+      this.clearPokerStaleCleanup(existing.id);
       existing.connected = true;
       existing.name = cleanPlayerName(data.name);
+      existing.privyToken = data.privyToken;
+      existing.ante = this.pokerState.ante;
+      existing.buyIn = this.pokerState.buyIn;
+      existing.stack = typeof existing.stack === "number" ? existing.stack : this.pokerState.buyIn;
       existing.isNormieHolder = data.isNormieHolder;
       existing.selectedNormieId = data.selectedNormieId;
       existing.avatarUrl = data.avatarUrl;
@@ -255,17 +379,32 @@ export default class RPSParty {
         return;
       }
 
-      this.pokerState.players.push({
+      const player: PokerPlayer = {
         id: data.playerId,
         name: cleanPlayerName(data.name),
         seat,
         connected: true,
         ready: false,
         hand: [],
+        ante: this.pokerState.ante,
+        buyIn: this.pokerState.buyIn,
+        stack: 0,
+        privyToken: data.privyToken,
+        reserved: false,
+        committed: 0,
+        streetCommitted: 0,
+        folded: false,
+        acted: false,
         isNormieHolder: data.isNormieHolder,
         selectedNormieId: data.selectedNormieId,
         avatarUrl: data.avatarUrl
-      });
+      };
+      const reserved = await this.reservePokerBuyIn(player);
+      if (!reserved.ok) {
+        connection.send(JSON.stringify({ type: "full", message: reserved.error ?? "Could not reserve poker buy-in." }));
+        return;
+      }
+      this.pokerState.players.push(player);
       this.pokerConnections.set(connection.id, data.playerId);
       this.pokerConnectionObjects.set(connection.id, connection);
     }
@@ -279,7 +418,7 @@ export default class RPSParty {
   private togglePokerReady(playerId: string) {
     const player = this.pokerState.players.find((item) => item.id === playerId && item.connected);
     if (!player) return;
-    if (this.pokerState.phase === "dealt") return;
+    if (this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown") return;
 
     player.ready = !player.ready;
     this.updatePokerPhase();
@@ -289,28 +428,333 @@ export default class RPSParty {
 
   private updatePokerPhase() {
     const connectedPlayers = this.pokerState.players.filter((player) => player.connected);
-    if (this.pokerState.phase === "dealt") return;
+    if (this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown") return;
 
     const allReady = connectedPlayers.length >= 2 && connectedPlayers.every((player) => player.ready);
     this.pokerState.phase = allReady ? "ready" : "waiting";
 
     if (allReady) {
-      this.dealPokerHands();
+      void this.startPokerShowdown();
     }
   }
 
-  private dealPokerHands() {
+  private schedulePokerStaleCleanup(playerId: string) {
+    this.clearPokerStaleCleanup(playerId);
+    const timer = setTimeout(() => {
+      void this.cleanupStalePokerPlayer(playerId);
+    }, 60_000);
+    this.pokerStaleTimers.set(playerId, timer);
+  }
+
+  private clearPokerStaleCleanup(playerId: string) {
+    const timer = this.pokerStaleTimers.get(playerId);
+    if (timer) clearTimeout(timer);
+    this.pokerStaleTimers.delete(playerId);
+  }
+
+  private async cleanupStalePokerPlayer(playerId: string) {
+    const stalePlayer = this.pokerState.players.find((player) => player.id === playerId);
+    if (!stalePlayer || stalePlayer.connected) return;
+
+    const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting";
+    if (activeRound) {
+      this.pokerState.players.forEach((player) => {
+        if (player.reserved && (player.committed ?? 0) > 0) {
+          player.stack += player.committed ?? 0;
+        }
+      });
+      await this.cashOutPokerStack(stalePlayer);
+      this.pokerState.players = this.pokerState.players
+        .filter((player) => player.connected)
+        .map((player) => ({
+          ...player,
+          ready: false,
+          hand: [],
+          reserved: false,
+          committed: 0,
+          streetCommitted: 0,
+          folded: false,
+          acted: false,
+          accountError: undefined
+        }));
+      this.pokerState.phase = "waiting";
+      this.pokerState.round += 1;
+      this.pokerState.pot = 0;
+      this.pokerState.currentBet = 0;
+      this.pokerState.turnPlayerId = undefined;
+      this.pokerState.street = undefined;
+      this.pokerState.communityCards = [];
+      this.pokerDeck = [];
+      this.pokerState.handId = undefined;
+      this.pokerState.showdown = undefined;
+      this.pokerState.message = "Disconnected player timed out. Poker hand was voided and active commitments returned to table stacks.";
+    } else {
+      if (stalePlayer.reserved) {
+        await this.cashOutPokerStack(stalePlayer);
+      }
+      this.pokerState.players = this.pokerState.players.filter((player) => player.connected);
+      this.pokerState.message = "Disconnected poker player timed out. Seat reopened.";
+      this.updatePokerPhase();
+    }
+
+    this.clearPokerStaleCleanup(playerId);
+    this.broadcastPoker();
+  }
+
+  private async startPokerShowdown() {
+    if (this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown") return;
     const seatedPlayers = this.pokerState.players.filter((player) => player.connected);
-    const requiredCards = seatedPlayers.length * 5;
+    this.pokerState.phase = "ready";
+    this.pokerState.handId = this.createPokerMatchId();
+    this.pokerState.message = "Collecting table antes...";
+    this.broadcastPoker();
+
+    const blockedPlayers = seatedPlayers.filter((player) => player.stack < this.pokerState.ante);
+    if (blockedPlayers.length) {
+      this.pokerState.players.forEach((player) => {
+        if (blockedPlayers.some((blocked) => blocked.id === player.id)) {
+          player.ready = false;
+          player.accountError = "Not enough table stack for the next ante.";
+        }
+      });
+      this.pokerState.phase = "waiting";
+      this.pokerState.message = "One or more players need more table stack for the ante.";
+      this.broadcastPoker();
+      return;
+    }
+
+    const requiredCards = seatedPlayers.length * 2 + 5;
     const deck = this.createNormieDeck(requiredCards);
 
     seatedPlayers.forEach((player, playerIndex) => {
-      player.hand = deck.slice(playerIndex * 5, playerIndex * 5 + 5);
+      player.hand = deck.slice(playerIndex * 2, playerIndex * 2 + 2);
+      player.stack -= this.pokerState.ante;
+      player.ante = this.pokerState.ante;
+      player.committed = this.pokerState.ante;
+      player.streetCommitted = 0;
+      player.folded = false;
+      player.acted = false;
     });
 
-    this.pokerState.phase = "dealt";
-    this.pokerState.handId = `poker-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    this.pokerState.message = `Server dealt 5 private Normie cards to ${seatedPlayers.length} players. Private reveal arrives in Step 3.`;
+    this.pokerDeck = deck.slice(seatedPlayers.length * 2);
+    this.pokerState.phase = "betting";
+    this.pokerState.pot = seatedPlayers.reduce((total, player) => total + player.ante, 0);
+    this.pokerState.currentBet = 0;
+    this.pokerState.street = "preflop";
+    this.pokerState.communityCards = [];
+    this.pokerState.turnPlayerId = this.nextActivePokerPlayerId();
+    this.pokerState.message = "Two private Normies dealt. Preflop betting is open.";
+    this.broadcastPoker();
+  }
+
+  private activePokerPlayers() {
+    return this.pokerState.players.filter((player) => player.connected && !player.folded);
+  }
+
+  private nextActivePokerPlayerId(afterPlayerId?: string) {
+    const active = this.activePokerPlayers().sort((a, b) => a.seat - b.seat);
+    if (!active.length) return undefined;
+    if (!afterPlayerId) return active[0]?.id;
+    const currentIndex = active.findIndex((player) => player.id === afterPlayerId);
+    return active[(currentIndex + 1) % active.length]?.id;
+  }
+
+  private async handlePokerAction(data: PokerActionMessage) {
+    if (this.pokerState.phase !== "betting" || this.pokerState.turnPlayerId !== data.playerId) return;
+    const player = this.pokerState.players.find((item) => item.id === data.playerId && item.connected && !item.folded);
+    if (!player) return;
+
+    if (data.action === "fold") {
+      player.folded = true;
+      player.acted = true;
+      this.pokerState.message = `${player.name} folded.`;
+      if (this.activePokerPlayers().length === 1) {
+        await this.finishPokerShowdown();
+        return;
+      }
+      this.advancePokerTurn(player.id);
+      return;
+    }
+
+    const streetCommitted = player.streetCommitted ?? 0;
+    const totalCommitted = player.committed ?? 0;
+    const callAmount = Math.max(0, this.pokerState.currentBet - streetCommitted);
+
+    if (data.action === "check") {
+      if (callAmount > 0) return;
+      player.acted = true;
+      this.pokerState.message = `${player.name} checked.`;
+      this.advancePokerTurn(player.id);
+      return;
+    }
+
+    if (data.action === "call") {
+      if (callAmount > 0) {
+        const reserved = await this.reservePokerExtraWager(player, callAmount);
+        if (!reserved.ok) {
+          this.broadcastPoker();
+          return;
+        }
+        player.streetCommitted = streetCommitted + callAmount;
+        player.committed = totalCommitted + callAmount;
+        this.pokerState.pot += callAmount;
+      }
+      player.acted = true;
+      this.pokerState.message = `${player.name} called.`;
+      this.advancePokerTurn(player.id);
+      return;
+    }
+
+    if (data.action === "raise") {
+      const raiseTo = data.raiseTo ?? this.pokerState.currentBet + this.pokerState.minRaise;
+      if (raiseTo < this.pokerState.currentBet + this.pokerState.minRaise) return;
+      if (raiseTo > this.maxPokerRaiseTo()) {
+        player.accountError = "Raise exceeds the table stack cap for active players.";
+        this.broadcastPoker();
+        return;
+      }
+      const extra = raiseTo - streetCommitted;
+      const reserved = await this.reservePokerExtraWager(player, extra);
+      if (!reserved.ok) {
+        this.broadcastPoker();
+        return;
+      }
+      player.streetCommitted = raiseTo;
+      player.committed = totalCommitted + extra;
+      player.acted = true;
+      this.pokerState.currentBet = raiseTo;
+      this.pokerState.pot += extra;
+      this.pokerState.players.forEach((item) => {
+        if (item.id !== player.id && item.connected && !item.folded) item.acted = false;
+      });
+      this.pokerState.message = `${player.name} raised to ${raiseTo}.`;
+      this.advancePokerTurn(player.id);
+    }
+  }
+
+  private advancePokerTurn(previousPlayerId: string) {
+    if (this.isPokerBettingComplete()) {
+      void this.advancePokerStreetOrShowdown();
+      return;
+    }
+    this.pokerState.turnPlayerId = this.nextActivePokerPlayerId(previousPlayerId);
+    this.broadcastPoker();
+  }
+
+  private isPokerBettingComplete() {
+    const active = this.activePokerPlayers();
+    return active.length <= 1 || active.every((player) => player.acted && (player.streetCommitted ?? 0) >= this.pokerState.currentBet);
+  }
+
+  private maxPokerRaiseTo() {
+    const active = this.activePokerPlayers();
+    if (!active.length) return 0;
+    return Math.min(...active.map((player) => (player.streetCommitted ?? 0) + player.stack));
+  }
+
+  private resetPokerStreet(street: PokerState["street"], revealCount: number, message: string) {
+    this.pokerState.street = street;
+    this.pokerState.communityCards = [...this.pokerState.communityCards, ...this.pokerDeck.splice(0, revealCount)];
+    this.pokerState.currentBet = 0;
+    this.pokerState.turnPlayerId = this.nextActivePokerPlayerId();
+    this.pokerState.players.forEach((player) => {
+      if (player.connected && !player.folded) {
+        player.acted = false;
+        player.streetCommitted = 0;
+      }
+    });
+    this.pokerState.message = message;
+    this.broadcastPoker();
+  }
+
+  private async advancePokerStreetOrShowdown() {
+    if (this.activePokerPlayers().length <= 1) {
+      await this.finishPokerShowdown();
+      return;
+    }
+
+    if (this.pokerState.street === "preflop") {
+      this.resetPokerStreet("flop", 3, "Flop revealed. Betting is open.");
+      return;
+    }
+
+    if (this.pokerState.street === "flop") {
+      this.resetPokerStreet("turn", 1, "Turn Normie revealed. Betting is open.");
+      return;
+    }
+
+    if (this.pokerState.street === "turn") {
+      this.resetPokerStreet("river", 1, "River Normie revealed. Final betting is open.");
+      return;
+    }
+
+    await this.finishPokerShowdown();
+  }
+
+  private async finishPokerShowdown() {
+    const showdown = await this.evaluatePokerShowdown(this.activePokerPlayers());
+    showdown.winners.forEach((winnerId) => {
+      const winner = this.pokerState.players.find((player) => player.id === winnerId);
+      if (winner) winner.stack += showdown.payoutEach;
+    });
+    this.pokerState.phase = "showdown";
+    this.pokerState.turnPlayerId = undefined;
+    this.pokerState.showdown = showdown;
+    this.pokerState.history = [
+      {
+        round: this.pokerState.round,
+        handId: this.pokerState.handId ?? "poker-hand",
+        winners: showdown.winners,
+        winnerNames: showdown.hands.filter((hand) => showdown.winners.includes(hand.playerId)).map((hand) => hand.playerName),
+        pot: showdown.pot,
+        payoutEach: showdown.payoutEach,
+        summary: this.pokerHistorySummary(showdown)
+      },
+      ...this.pokerState.history
+    ].slice(0, 8);
+    this.pokerState.message =
+      showdown.winners.length === 1
+        ? `${showdown.hands.find((hand) => hand.playerId === showdown.winners[0])?.playerName ?? "Winner"} wins ${showdown.pot} chips.`
+        : `Split pot: ${showdown.winners.length} players receive ${showdown.payoutEach} chips.`;
+    this.broadcastPoker();
+  }
+
+  private nextPokerHand(playerId: string) {
+    if (this.pokerState.phase !== "showdown") return;
+    if (!this.pokerState.players.some((player) => player.id === playerId && player.connected)) return;
+
+    this.pokerState.round += 1;
+    this.pokerState.phase = "waiting";
+    this.pokerState.pot = 0;
+    this.pokerState.currentBet = 0;
+    this.pokerState.turnPlayerId = undefined;
+    this.pokerState.street = undefined;
+    this.pokerState.communityCards = [];
+    this.pokerDeck = [];
+    this.pokerState.handId = undefined;
+    this.pokerState.showdown = undefined;
+    this.pokerState.players = this.pokerState.players
+      .filter((player) => player.connected)
+      .map((player) => ({
+        ...player,
+        ready: false,
+        hand: [],
+        reserved: false,
+        committed: 0,
+        streetCommitted: 0,
+        folded: false,
+        acted: false,
+        accountError: undefined
+      }));
+    this.pokerState.message = "Next hand ready. Players can ready up with the fixed table ante.";
+    this.broadcastPoker();
+  }
+
+  private pokerHistorySummary(showdown: PokerShowdown) {
+    const winningHands = showdown.hands.filter((hand) => showdown.winners.includes(hand.playerId));
+    const handName = winningHands[0]?.handName ?? "Unknown Hand";
+    const names = winningHands.map((hand) => hand.playerName).join(" / ");
+    return `${names} won with ${handName}.`;
   }
 
   private createNormieDeck(count: number) {
@@ -319,6 +763,138 @@ export default class RPSParty {
       ids.add(Math.floor(Math.random() * 10_000));
     }
     return [...ids];
+  }
+
+  private async fetchNormieTraits(id: number): Promise<NormieTraits> {
+    try {
+      const response = await fetch(`https://api.normies.art/normie/${id}/traits`, {
+        headers: { accept: "application/json" }
+      });
+      if (!response.ok) return {};
+      return (await response.json()) as NormieTraits;
+    } catch {
+      return {};
+    }
+  }
+
+  private countValues(values: Array<string | undefined>) {
+    return values.reduce<Record<string, number>>((counts, value) => {
+      if (!value || value === "Unknown") return counts;
+      const key = value;
+      counts[key] = (counts[key] ?? 0) + 1;
+      return counts;
+    }, {});
+  }
+
+  private hasCount(counts: Record<string, number>, target: number) {
+    return Object.values(counts).some((count) => count >= target);
+  }
+
+  private matchingValue(counts: Record<string, number>, target: number) {
+    return Object.entries(counts).find(([, count]) => count >= target)?.[0] ?? "";
+  }
+
+  private allSame(values: Array<string | undefined>) {
+    return values.length > 0 && values.every((value) => Boolean(value) && value !== "Unknown" && value === values[0]);
+  }
+
+  private evaluatePokerHand(traits: NormieTraits[]): PokerEvaluation {
+    const expressions = traits.map((trait) => trait.Expression);
+    const eyes = traits.map((trait) => trait.Eyes);
+    const accessories = traits.map((trait) => trait.Accessory);
+    const facialFeatures = traits.map((trait) => trait["Facial Feature"]);
+    const genders = traits.map((trait) => trait.Gender);
+    const ages = traits.map((trait) => trait.Age);
+    const expressionCounts = this.countValues(expressions);
+    const eyeCounts = this.countValues(eyes);
+    const accessoryCounts = this.countValues(accessories);
+    const facialFeatureCounts = this.countValues(facialFeatures);
+    const eyePerfect = this.hasCount(eyeCounts, 4);
+    const accessoryPerfect = this.hasCount(accessoryCounts, 4);
+    const facialFeaturePerfect = this.hasCount(facialFeatureCounts, 4);
+    const accessoryTriple = this.hasCount(accessoryCounts, 3);
+    const eyeTriple = this.hasCount(eyeCounts, 3);
+    const expressionPair = this.hasCount(expressionCounts, 2);
+    const genderFlush = this.allSame(genders);
+    const ageFlush = this.allSame(ages);
+
+    if (eyePerfect || accessoryPerfect || facialFeaturePerfect) {
+      return {
+        handName: "Perfect DNA",
+        score: 60,
+        summary: `Four or more cards match ${
+          eyePerfect
+            ? `Eyes ${this.matchingValue(eyeCounts, 4)}`
+            : accessoryPerfect
+            ? `Accessory ${this.matchingValue(accessoryCounts, 4)}`
+            : `Facial Feature ${this.matchingValue(facialFeatureCounts, 4)}`
+        }.`
+      };
+    }
+    if (expressionPair && accessoryTriple) {
+      return { handName: "Accessory Full House", score: 50, summary: "Expression pair plus Accessory triple." };
+    }
+    if (genderFlush || ageFlush) return { handName: "Age/Gender Flush", score: 40, summary: `All cards share ${genderFlush ? "Gender" : "Age"}.` };
+    if (eyeTriple) return { handName: "Eye Trips", score: 30, summary: `Three or more cards share Eyes ${this.matchingValue(eyeCounts, 3)}.` };
+    if (expressionPair) return { handName: "Expression Pair", score: 20, summary: "Two or more cards share an Expression." };
+    return { handName: "No DNA Hand", score: 10, summary: "No scoring DNA combination." };
+  }
+
+  private fiveCardCombos(cards: number[]) {
+    const combos: number[][] = [];
+    for (let a = 0; a < cards.length - 4; a += 1) {
+      for (let b = a + 1; b < cards.length - 3; b += 1) {
+        for (let c = b + 1; c < cards.length - 2; c += 1) {
+          for (let d = c + 1; d < cards.length - 1; d += 1) {
+            for (let e = d + 1; e < cards.length; e += 1) {
+              combos.push([cards[a], cards[b], cards[c], cards[d], cards[e]]);
+            }
+          }
+        }
+      }
+    }
+    return combos;
+  }
+
+  private async evaluateBestTexasHand(cards: number[]) {
+    const combos = this.fiveCardCombos(cards);
+    const evaluated = await Promise.all(
+      combos.map(async (combo) => {
+        const traits = await Promise.all(combo.map((id) => this.fetchNormieTraits(id)));
+        return {
+          cards: combo,
+          evaluation: this.evaluatePokerHand(traits)
+        };
+      })
+    );
+
+    return evaluated.reduce((best, current) => (current.evaluation.score > best.evaluation.score ? current : best));
+  }
+
+  private async evaluatePokerShowdown(players: PokerPlayer[]): Promise<PokerShowdown> {
+    const hands = await Promise.all(
+      players.map(async (player) => {
+        const cards = [...(player.hand ?? []), ...this.pokerState.communityCards];
+        const cardTraits = await Promise.all(cards.map(async (id) => ({ id, traits: await this.fetchNormieTraits(id) })));
+        const best = cards.length >= 5 ? await this.evaluateBestTexasHand(cards) : { cards, evaluation: this.evaluatePokerHand([]) };
+        return {
+          playerId: player.id,
+          playerName: player.name,
+          cards,
+          bestCards: best.cards,
+          cardTraits,
+          handName: best.evaluation.handName,
+          score: best.evaluation.score,
+          summary: best.evaluation.summary
+        };
+      })
+    );
+    const bestScore = Math.max(...hands.map((hand) => hand.score));
+    const winners = hands.filter((hand) => hand.score === bestScore).map((hand) => hand.playerId);
+    const pot = this.pokerState.pot || players.reduce((total, player) => total + (player.committed ?? player.ante), 0);
+    const payoutEach = Math.floor(pot / Math.max(1, winners.length));
+
+    return { winners, pot, payoutEach, hands };
   }
 
   private parseMessage(message: string): ClientMessage | null {
@@ -565,9 +1141,11 @@ export default class RPSParty {
 
     return {
       ...this.pokerState,
+      pokerDeck: undefined,
       privateHand: privatePlayer?.hand,
       players: this.pokerState.players.map((player) => ({
         ...player,
+        privyToken: undefined,
         hand: undefined,
         handCount: player.hand?.length ?? 0
       }))
@@ -595,6 +1173,10 @@ export default class RPSParty {
     return `rps-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
+  private createPokerMatchId() {
+    return `poker-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
   private apiBaseUrl() {
     const value = this.room.env?.PARTYKIT_API_BASE_URL;
     return typeof value === "string" ? value : "http://localhost:3000";
@@ -603,6 +1185,135 @@ export default class RPSParty {
   private internalSecret() {
     const value = this.room.env?.PARTYKIT_INTERNAL_SECRET;
     return typeof value === "string" ? value : "dev-internal-secret";
+  }
+
+  private async reservePokerBuyIn(player: PokerPlayer) {
+    player.buyInSessionId = player.buyInSessionId ?? this.createPokerMatchId();
+    try {
+      const response = await fetch(`${this.apiBaseUrl()}/api/pvp/poker/reserve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partykit-secret": this.internalSecret()
+        },
+        body: JSON.stringify({
+          matchId: player.buyInSessionId,
+          roomId: this.room.id ?? "poker-room",
+          playerId: player.id,
+          privyToken: player.privyToken,
+          ante: player.buyIn
+        })
+      });
+      const data = (await response.json()) as { ok?: boolean; error?: string; balance?: number };
+
+      if (!response.ok || !data.ok) {
+        player.accountError = data.error ?? "Could not reserve poker buy-in.";
+        return { ok: false as const, error: player.accountError };
+      }
+
+      player.reserved = true;
+      player.stack = player.buyIn;
+      player.serverBalance = data.balance;
+      player.accountError = undefined;
+      return { ok: true as const };
+    } catch {
+      player.accountError = "Poker buy-in service unavailable.";
+      return { ok: false as const, error: player.accountError };
+    }
+  }
+
+  private async reservePokerExtraWager(player: PokerPlayer, amount: number) {
+    if (amount <= 0) return { ok: true as const };
+
+    if (player.stack < amount) {
+      player.accountError = "Not enough table stack for that wager.";
+      return { ok: false as const, error: player.accountError };
+    }
+
+    player.stack -= amount;
+    player.accountError = undefined;
+    return { ok: true as const };
+  }
+
+  private async cashOutPokerStack(player: PokerPlayer) {
+    if (!player.reserved) return;
+    const amount = Math.max(0, Math.floor(player.stack));
+
+    try {
+      const response = await fetch(`${this.apiBaseUrl()}/api/pvp/poker/refund`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partykit-secret": this.internalSecret()
+        },
+        body: JSON.stringify({
+          matchId: player.buyInSessionId ?? this.pokerState.handId ?? "poker-hand",
+          roomId: this.room.id ?? "poker-room",
+          playerId: player.id,
+          privyToken: player.privyToken,
+          ante: player.buyIn,
+          amount
+        })
+      });
+      const data = (await response.json()) as { ok?: boolean; balance?: number; error?: string };
+      if (!response.ok || !data.ok) {
+        player.accountError = data.error ?? "Could not cash out poker stack.";
+        return;
+      }
+
+      player.serverBalance = data.balance;
+      player.stack = 0;
+      player.reserved = false;
+      player.buyInSessionId = undefined;
+      player.accountError = undefined;
+    } catch {
+      player.accountError = "Poker cash-out service unavailable.";
+    }
+  }
+
+  private async settlePokerShowdown(showdown: PokerShowdown) {
+    await Promise.all(
+      this.pokerState.players.map(async (player) => {
+        if (!player.reserved) return;
+
+        const hand = showdown.hands.find((item) => item.playerId === player.id);
+        const won = showdown.winners.includes(player.id);
+        const payout = won ? showdown.payoutEach : 0;
+        const outcome = won ? (showdown.winners.length > 1 ? "DRAW" : "WIN") : "LOSS";
+
+        try {
+          const response = await fetch(`${this.apiBaseUrl()}/api/pvp/poker/settle`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-partykit-secret": this.internalSecret()
+            },
+            body: JSON.stringify({
+              matchId: this.pokerState.handId ?? "poker-hand",
+              roomId: this.room.id ?? "poker-room",
+              playerId: player.id,
+              privyToken: player.privyToken,
+              ante: player.ante,
+              outcome,
+              payout,
+              handName: hand?.handName ?? "Unknown Hand",
+              score: `${hand?.score ?? 0}`
+            })
+          });
+          const data = (await response.json()) as { ok?: boolean; balance?: number; error?: string };
+          if (!response.ok || !data.ok) {
+            player.accountError = data.error ?? "Could not settle poker pot.";
+            return;
+          }
+          player.serverBalance = data.balance;
+          player.accountError = undefined;
+        } catch {
+          player.accountError = "Poker settle service unavailable.";
+        }
+      })
+    );
+
+    this.broadcastPoker();
   }
 
   private async reserveWager(player: Player) {

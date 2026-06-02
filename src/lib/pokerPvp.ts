@@ -1,3 +1,5 @@
+import type { NormieTraits } from "@/types/normie";
+
 export type PokerPvPPlayer = {
   id: string;
   name: string;
@@ -5,18 +7,63 @@ export type PokerPvPPlayer = {
   connected: boolean;
   ready: boolean;
   handCount: number;
+  ante?: number;
+  buyIn?: number;
+  stack?: number;
+  reserved?: boolean;
+  serverBalance?: number;
+  accountError?: string;
+  committed?: number;
+  streetCommitted?: number;
+  folded?: boolean;
+  acted?: boolean;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
 };
 
 export type PokerPvPState = {
-  phase: "waiting" | "ready" | "dealt";
+  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown";
   players: PokerPvPPlayer[];
   maxPlayers: number;
   round: number;
+  buyIn: number;
+  ante: number;
+  pot: number;
+  currentBet: number;
+  minRaise: number;
+  turnPlayerId?: string;
+  street?: "preflop" | "flop" | "turn" | "river";
+  communityCards: number[];
   handId?: string;
   privateHand?: number[];
+  history: Array<{
+    round: number;
+    handId: string;
+    winners: string[];
+    winnerNames: string[];
+    pot: number;
+    payoutEach: number;
+    summary: string;
+  }>;
+  showdown?: {
+    winners: string[];
+    pot: number;
+    payoutEach: number;
+    hands: Array<{
+      playerId: string;
+      playerName: string;
+      cards: number[];
+      bestCards: number[];
+      cardTraits: Array<{
+        id: number;
+        traits: NormieTraits;
+      }>;
+      handName: string;
+      score: number;
+      summary: string;
+    }>;
+  };
   message: string;
 };
 
@@ -25,6 +72,13 @@ export const initialPokerPvpState: PokerPvPState = {
   players: [],
   maxPlayers: 5,
   round: 1,
+  buyIn: 1000,
+  ante: 100,
+  pot: 0,
+  currentBet: 0,
+  minRaise: 50,
+  communityCards: [],
+  history: [],
   message: "Create or join a DNA Poker table."
 };
 
