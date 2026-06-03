@@ -97,6 +97,15 @@ type PokerState = {
     payoutEach: number;
     summary: string;
   }>;
+  actionLog: Array<{
+    id: string;
+    round: number;
+    street?: string;
+    playerName?: string;
+    action: string;
+    amount?: number;
+    message: string;
+  }>;
   showdown?: PokerShowdown;
   message: string;
 };
@@ -215,6 +224,7 @@ export default class RPSParty {
     minRaise: 50,
     communityCards: [],
     history: [],
+    actionLog: [],
     message: "Waiting for players to sit at the DNA Poker table."
   };
 
@@ -524,6 +534,11 @@ export default class RPSParty {
     this.pokerState.phase = "ready";
     this.pokerState.handId = this.createPokerMatchId();
     this.pokerState.message = "Collecting table antes...";
+    this.pokerState.actionLog = [];
+    this.appendPokerActionLog({
+      action: "HAND",
+      message: `Round ${this.pokerState.round} started. Collecting ${this.pokerState.ante} ante from each player.`
+    });
     this.broadcastPoker();
 
     const blockedPlayers = seatedPlayers.filter((player) => player.stack < this.pokerState.ante);
@@ -561,7 +576,33 @@ export default class RPSParty {
     this.pokerState.communityCards = [];
     this.pokerState.turnPlayerId = this.nextActivePokerPlayerId();
     this.pokerState.message = "Two private Normies dealt. Preflop betting is open.";
+    this.appendPokerActionLog({
+      action: "ANTE",
+      amount: this.pokerState.pot,
+      message: `${seatedPlayers.length} players anted. Pot is ${this.pokerState.pot}.`
+    });
+    this.appendPokerActionLog({
+      action: "DEAL",
+      message: "Private Normies dealt. Preflop betting opened."
+    });
     this.broadcastPoker();
+  }
+
+  private appendPokerActionLog(entry: {
+    playerName?: string;
+    action: string;
+    amount?: number;
+    message: string;
+  }) {
+    this.pokerState.actionLog = [
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        round: this.pokerState.round,
+        street: this.pokerState.street,
+        ...entry
+      },
+      ...this.pokerState.actionLog
+    ].slice(0, 12);
   }
 
   private activePokerPlayers() {
@@ -586,6 +627,11 @@ export default class RPSParty {
       player.acted = true;
       player.lastAction = "FOLD";
       this.pokerState.message = `${player.name} folded.`;
+      this.appendPokerActionLog({
+        playerName: player.name,
+        action: "FOLD",
+        message: `${player.name} folded.`
+      });
       if (this.activePokerPlayers().length === 1) {
         await this.finishPokerShowdown();
         return;
@@ -603,6 +649,11 @@ export default class RPSParty {
       player.acted = true;
       player.lastAction = "CHECK";
       this.pokerState.message = `${player.name} checked.`;
+      this.appendPokerActionLog({
+        playerName: player.name,
+        action: "CHECK",
+        message: `${player.name} checked.`
+      });
       this.advancePokerTurn(player.id);
       return;
     }
@@ -621,6 +672,12 @@ export default class RPSParty {
       player.acted = true;
       player.lastAction = callAmount > 0 ? `CALL ${callAmount}` : "CALL";
       this.pokerState.message = `${player.name} called.`;
+      this.appendPokerActionLog({
+        playerName: player.name,
+        action: "CALL",
+        amount: callAmount,
+        message: callAmount > 0 ? `${player.name} called ${callAmount}.` : `${player.name} called.`
+      });
       this.advancePokerTurn(player.id);
       return;
     }
@@ -649,6 +706,12 @@ export default class RPSParty {
         if (item.id !== player.id && item.connected && !item.folded) item.acted = false;
       });
       this.pokerState.message = `${player.name} raised to ${raiseTo}.`;
+      this.appendPokerActionLog({
+        playerName: player.name,
+        action: "RAISE",
+        amount: raiseTo,
+        message: `${player.name} raised to ${raiseTo}.`
+      });
       this.advancePokerTurn(player.id);
     }
   }
@@ -686,6 +749,10 @@ export default class RPSParty {
       }
     });
     this.pokerState.message = message;
+    this.appendPokerActionLog({
+      action: street?.toUpperCase() ?? "STREET",
+      message
+    });
     this.broadcastPoker();
   }
 
@@ -738,6 +805,11 @@ export default class RPSParty {
       showdown.winners.length === 1
         ? `${showdown.hands.find((hand) => hand.playerId === showdown.winners[0])?.playerName ?? "Winner"} wins ${showdown.pot} chips.`
         : `Split pot: ${showdown.winners.length} players receive ${showdown.payoutEach} chips.`;
+    this.appendPokerActionLog({
+      action: "SHOWDOWN",
+      amount: showdown.pot,
+      message: this.pokerState.message
+    });
     this.broadcastPoker();
   }
 
@@ -755,6 +827,7 @@ export default class RPSParty {
     this.pokerDeck = [];
     this.pokerState.handId = undefined;
     this.pokerState.showdown = undefined;
+    this.pokerState.actionLog = [];
     this.pokerState.players = this.pokerState.players
       .filter((player) => player.connected)
       .map((player) => ({
@@ -770,6 +843,10 @@ export default class RPSParty {
         accountError: undefined
       }));
     this.pokerState.message = "Next hand ready. Players can ready up with the fixed table ante.";
+    this.appendPokerActionLog({
+      action: "RESET",
+      message: "Next hand ready. Players can ready up."
+    });
     this.broadcastPoker();
   }
 

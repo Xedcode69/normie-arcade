@@ -507,6 +507,8 @@ function PokerPvP() {
         <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} traitsById={visibleTraitsById} />
       ) : null}
 
+      <PokerActionTimeline actionLog={state.actionLog} />
+
       {state.phase === "betting" ? (
         <PokerBettingControls
           availableChips={tableStack}
@@ -1217,6 +1219,47 @@ function PokerHandHistory({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function PokerActionTimeline({
+  actionLog
+}: {
+  actionLog: Array<{
+    id: string;
+    round: number;
+    street?: string;
+    playerName?: string;
+    action: string;
+    amount?: number;
+    message: string;
+  }>;
+}) {
+  if (!actionLog.length) return null;
+
+  return (
+    <div className="mx-auto mt-5 w-full max-w-5xl border border-paper/25 bg-black/55 p-3">
+      <div className="terminal-hash text-center text-[10px] uppercase tracking-[0.22em] text-pixel/60">Action Timeline</div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {actionLog.slice(0, 8).map((entry) => (
+          <div key={entry.id} className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-2 border border-paper/15 bg-black/65 px-3 py-2 text-xs">
+            <span className="terminal-hash truncate uppercase tracking-widest text-pixel/50">{entry.street ?? `R${entry.round}`}</span>
+            <span className="truncate text-paper/75">{entry.message}</span>
+            <span
+              className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${
+                entry.action === "FOLD"
+                  ? "border-magenta/50 text-magenta"
+                  : entry.action === "RAISE" || entry.action === "SHOWDOWN"
+                  ? "border-mint/50 text-mint"
+                  : "border-paper/25 text-paper/55"
+              }`}
+            >
+              {entry.action}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

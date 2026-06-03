@@ -47,6 +47,15 @@ export type PokerPvPState = {
     payoutEach: number;
     summary: string;
   }>;
+  actionLog: Array<{
+    id: string;
+    round: number;
+    street?: string;
+    playerName?: string;
+    action: string;
+    amount?: number;
+    message: string;
+  }>;
   showdown?: {
     winners: string[];
     pot: number;
@@ -80,6 +89,7 @@ export const initialPokerPvpState: PokerPvPState = {
   minRaise: 50,
   communityCards: [],
   history: [],
+  actionLog: [],
   message: "Create or join a DNA Poker table."
 };
 
