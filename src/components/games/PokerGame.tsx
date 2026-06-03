@@ -789,11 +789,29 @@ function PokerTableSeat({
   const status = player
     ? player.folded
       ? "FOLD"
-      : player.lastAction ?? (isTurn ? "TURN" : player.ready ? "READY" : player.connected ? "SEATED" : "OFFLINE")
+      : isTurn
+      ? "ACTING"
+      : player.lastAction ?? (player.ready ? "READY" : player.connected ? "SEATED" : "OFFLINE")
     : "OPEN";
 
   return (
-    <div className={`w-56 border bg-black/85 p-3 text-center ${isTurn ? "border-mint shadow-neon" : isYou ? "border-cyan" : "border-paper/35"}`}>
+    <div
+      className={`relative w-56 border bg-black/85 p-3 text-center transition ${
+        isTurn
+          ? "animate-pulse border-mint shadow-[0_0_34px_rgba(34,255,225,0.45)] ring-2 ring-mint/45"
+          : isYou
+          ? "border-cyan"
+          : "border-paper/35"
+      }`}
+    >
+      {isTurn ? (
+        <>
+          <div className="pointer-events-none absolute -inset-2 border border-mint/30 shadow-neon" />
+          <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 border border-mint bg-black px-3 py-1 font-display text-[10px] uppercase tracking-[0.22em] text-mint shadow-neon">
+            Acting
+          </div>
+        </>
+      ) : null}
       <div className="flex items-center gap-2">
         <div className="grid h-12 w-12 shrink-0 place-items-center border border-paper/35 bg-paper">
           {player?.avatarUrl ? (
@@ -806,7 +824,15 @@ function PokerTableSeat({
           <div className="truncate text-sm text-paper">{player?.name ?? `Seat ${seat + 1}`}</div>
           <div className="text-[10px] uppercase tracking-widest text-paper/45">Stack {player?.stack ?? "--"}</div>
         </div>
-        <div className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${status === "FOLD" ? "border-magenta/50 text-magenta" : "border-mint/45 text-mint"}`}>
+        <div
+          className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${
+            status === "FOLD"
+              ? "border-magenta/50 text-magenta"
+              : status === "ACTING"
+              ? "border-mint bg-mint/10 text-mint shadow-neon"
+              : "border-mint/45 text-mint"
+          }`}
+        >
           {status}
         </div>
       </div>
