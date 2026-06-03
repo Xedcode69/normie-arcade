@@ -11,14 +11,19 @@ type ServerMessage =
 type JoinOptions = {
   privyToken: string;
   ante: number;
+  accountKey?: string | null;
   name?: string | null;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
 };
 
-function getOrCreatePlayerId() {
-  const key = "normie-poker-player-id";
+function normalizeAccountKey(accountKey?: string | null) {
+  return accountKey?.trim().toLowerCase().replace(/[^a-z0-9:_-]/g, "-") || "guest";
+}
+
+function getOrCreatePlayerId(accountKey?: string | null) {
+  const key = `normie-poker-player-id:${normalizeAccountKey(accountKey)}`;
   const existing = window.sessionStorage.getItem(key);
   if (existing) return existing;
 
@@ -51,7 +56,7 @@ export function usePokerPvp(room = "poker-quickplay") {
       return;
     }
 
-    const nextPlayerId = getOrCreatePlayerId();
+    const nextPlayerId = getOrCreatePlayerId(options.accountKey);
     setPlayerId(nextPlayerId);
     setError(null);
 

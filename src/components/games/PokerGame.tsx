@@ -237,7 +237,7 @@ function PokerPvP() {
     return normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "") ? "join" : "create";
   });
   const { connected, connect, clearError, disconnect, error, errorMeta, nextHand, playerId, state, submitAction, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
-  const { ready, authenticated, getAccessToken, login } = usePrivy();
+  const { ready, authenticated, getAccessToken, login, user } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
   const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
@@ -245,6 +245,7 @@ function PokerPvP() {
   const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
   const notify = useArcadeStore((store) => store.notify);
   const setBalance = useChipStore((store) => store.setBalance);
+  const accountKey = user?.id ?? user?.wallet?.address ?? null;
   const you = state.players.find((player) => player.id === playerId);
   const privateHand = useMemo(() => state.privateHand ?? [], [state.privateHand]);
   const streetLabel = state.street ? state.street.toUpperCase() : "WAITING";
@@ -293,6 +294,7 @@ function PokerPvP() {
         connect({
           privyToken: token,
           ante: state.buyIn,
+          accountKey,
           name: displayName || username,
           isNormieHolder,
           selectedNormieId: selectedNormieId ?? null,
@@ -303,7 +305,7 @@ function PokerPvP() {
     } catch {
       window.sessionStorage.removeItem(POKER_RECONNECT_KEY);
     }
-  }, [authenticated, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, state.buyIn, username]);
+  }, [accountKey, authenticated, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, state.buyIn, username]);
 
   useEffect(() => {
     if (error?.toLowerCase().includes("full")) {
@@ -360,6 +362,7 @@ function PokerPvP() {
     connect({
       privyToken: token,
       ante: state.buyIn,
+      accountKey,
       name: displayName || username,
       isNormieHolder,
       selectedNormieId: selectedNormieId ?? null,
