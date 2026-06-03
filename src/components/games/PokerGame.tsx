@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Copy, Dices, Info, LogOut, RotateCcw, Search, Users } from "lucide-react";
+import { CheckCircle2, Copy, Dices, Info, LogOut, RotateCcw, Search, Trophy, Users } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -246,7 +246,7 @@ function PokerPvP() {
   const notify = useArcadeStore((store) => store.notify);
   const setBalance = useChipStore((store) => store.setBalance);
   const you = state.players.find((player) => player.id === playerId);
-  const privateHand = state.privateHand ?? [];
+  const privateHand = useMemo(() => state.privateHand ?? [], [state.privateHand]);
   const streetLabel = state.street ? state.street.toUpperCase() : "WAITING";
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
   const connectedCount = state.players.filter((player) => player.connected).length;
@@ -266,13 +266,12 @@ function PokerPvP() {
   const reconnectAttempted = useRef(false);
   const visiblePokerCardIds = useMemo(() => [...privateHand, ...state.communityCards].filter((id) => typeof id === "number"), [privateHand, state.communityCards]);
   const visibleTraitsById = useNormieTraitsById(visiblePokerCardIds);
-  const visibleTraitKey = visiblePokerCardIds.map((id) => `${id}:${Boolean(visibleTraitsById[id])}`).join("|");
   const highlightedCardIds = useMemo(() => {
     const cards = visiblePokerCardIds
       .map((id) => ({ id, traits: visibleTraitsById[id] }))
       .filter((card): card is TraitCard => Boolean(card.traits));
     return findComboHighlightIds(cards);
-  }, [visiblePokerCardIds, visibleTraitKey, visibleTraitsById]);
+  }, [visiblePokerCardIds, visibleTraitsById]);
 
   useEffect(() => {
     if (typeof window === "undefined" || reconnectAttempted.current || connected || !ready || !authenticated) return;
@@ -1192,25 +1191,47 @@ function PokerShowdownPanel({
   playerId: string | null;
   onNextHand: () => void;
 }) {
+  const youWon = showdown.winners.includes(playerId ?? "");
+  const winnerNames = showdown.hands
+    .filter((hand) => showdown.winners.includes(hand.playerId))
+    .map((hand) => hand.playerName)
+    .join(" / ");
+
   return (
-    <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/50 bg-black/75 p-4 shadow-neon">
-      <div className="text-center">
-        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Showdown</div>
-        <h3 className="mt-1 font-display text-lg uppercase tracking-[0.22em] text-paper">
-          {showdown.winners.includes(playerId ?? "") ? "You Won The Pot" : "Pot Resolved"}
-        </h3>
-        <div className="mt-2 text-sm text-paper/70">
-          Pot {showdown.pot} chips. {showdown.winners.length > 1 ? `Split payout ${showdown.payoutEach} each.` : `Winner payout ${showdown.payoutEach}.`}
+    <div className={`mx-auto mt-6 w-full max-w-5xl border bg-black/80 p-4 ${youWon ? "border-mint shadow-neon" : "border-paper/50 shadow-neon"}`}>
+      <div className={`relative overflow-hidden border p-4 text-center ${youWon ? "border-mint/70 bg-mint/10" : "border-paper/30 bg-paper/5"}`}>
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,255,225,0.18),transparent_58%)]" />
+        <div className="relative">
+          <div className="mx-auto grid h-10 w-10 place-items-center border border-mint/60 bg-black text-mint shadow-neon">
+            <Trophy size={20} />
+          </div>
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Showdown</div>
+          <h3 className={`mt-2 font-display text-xl uppercase tracking-[0.24em] ${youWon ? "text-mint" : "text-paper"}`}>
+            {youWon ? "You Won The Pot" : "Pot Resolved"}
+          </h3>
+          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-paper/55">Winner: {winnerNames || "Pending"}</div>
+          <div className="mt-2 text-sm text-paper/70">
+            Pot {showdown.pot} chips. {showdown.winners.length > 1 ? `Split payout ${showdown.payoutEach} each.` : `Winner payout ${showdown.payoutEach}.`}
+          </div>
         </div>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {showdown.hands.map((hand) => {
           const winner = showdown.winners.includes(hand.playerId);
           return (
-            <div key={hand.playerId} className={`border bg-black/70 p-3 ${winner ? "border-mint shadow-neon" : "border-paper/30"}`}>
+            <div
+              key={hand.playerId}
+              className={`relative border bg-black/70 p-3 transition ${
+                winner ? "scale-[1.01] border-mint shadow-neon ring-1 ring-mint/45" : "border-paper/20 opacity-55 grayscale"
+              }`}
+            >
+              {winner ? (
+                <div className="pointer-events-none absolute -inset-1 border border-mint/30 shadow-neon" />
+              ) : null}
               <div className="flex items-center justify-between gap-3">
                 <div className="truncate text-sm text-paper">{hand.playerName}</div>
-                <div className={`text-[10px] uppercase tracking-widest ${winner ? "text-mint" : "text-paper/45"}`}>
+                <div className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest ${winner ? "text-mint" : "text-paper/45"}`}>
+                  {winner ? <Trophy size={12} /> : null}
                   {winner ? "Winner" : "Settled"}
                 </div>
               </div>
