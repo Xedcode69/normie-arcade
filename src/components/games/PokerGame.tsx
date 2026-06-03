@@ -794,6 +794,7 @@ function NormieTraitPopover({
   normieId?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [traits, setTraits] = useState<NormieTraits | null>(initialTraits ?? null);
   const [error, setError] = useState("");
@@ -805,7 +806,7 @@ function NormieTraitPopover({
   }, [initialTraits]);
 
   useEffect(() => {
-    if (!open || normieId === undefined || traits || error) return;
+    if ((!open && !hovered) || normieId === undefined || traits || error) return;
 
     let active = true;
     setLoading(true);
@@ -824,7 +825,7 @@ function NormieTraitPopover({
     return () => {
       active = false;
     };
-  }, [error, normieId, open, traits]);
+  }, [error, hovered, normieId, open, traits]);
 
   if (normieId === undefined) return <>{children}</>;
 
@@ -835,8 +836,21 @@ function NormieTraitPopover({
       aria-expanded={open}
       aria-label={`Inspect Normie #${normieId} traits`}
       onClick={() => setOpen((value) => !value)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {children}
+      {hovered && !open ? (
+        <div className="pointer-events-none absolute left-1/2 top-full z-40 mt-2 w-44 -translate-x-1/2 border border-paper/35 bg-black/90 p-2 text-center shadow-neon">
+          {loading ? (
+            <div className="text-[10px] text-paper/55">Reading traits...</div>
+          ) : error ? (
+            <div className="text-[10px] text-magenta">{error}</div>
+          ) : (
+            <TraitPreview traits={traits} />
+          )}
+        </div>
+      ) : null}
       {open ? (
         <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 border border-mint/55 bg-black/95 p-3 shadow-neon">
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint">Normie #{normieId}</div>
@@ -846,6 +860,21 @@ function NormieTraitPopover({
         </div>
       ) : null}
     </button>
+  );
+}
+
+function TraitPreview({ traits }: { traits?: NormieTraits | null }) {
+  const preview = [
+    traits?.Expression ? `Exp ${traits.Expression}` : "",
+    traits?.Eyes ? `Eyes ${traits.Eyes}` : "",
+    traits?.Accessory ? `Acc ${traits.Accessory}` : ""
+  ].filter(Boolean);
+
+  return (
+    <div className="space-y-1 text-[10px] leading-3 text-paper/70">
+      <div className="terminal-hash uppercase tracking-[0.18em] text-mint/70">Trait Peek</div>
+      <div>{preview.length ? preview.join(" // ") : "No traits loaded."}</div>
+    </div>
   );
 }
 
