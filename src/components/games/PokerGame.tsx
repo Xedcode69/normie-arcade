@@ -142,6 +142,66 @@ function evaluateBestVisibleCombo(traits: NormieTraits[]) {
     .reduce((best, current) => (current.multiplier > best.multiplier ? current : best));
 }
 
+type TraitCard = {
+  id: number;
+  traits: NormieTraits;
+};
+
+function countTraitCards(cards: TraitCard[], traitName: keyof NormieTraits | "Facial Feature") {
+  return cards.reduce<Record<string, number[]>>((counts, card) => {
+    const value = card.traits[traitName];
+    if (!value || value === "Unknown") return counts;
+    const key = String(value);
+    counts[key] = [...(counts[key] ?? []), card.id];
+    return counts;
+  }, {});
+}
+
+function idsForTraitCount(cards: TraitCard[], traitName: keyof NormieTraits | "Facial Feature", target: number) {
+  const counts = countTraitCards(cards, traitName);
+  return Object.values(counts).find((ids) => ids.length >= target) ?? [];
+}
+
+function allShareTrait(cards: TraitCard[], traitName: keyof NormieTraits) {
+  if (!cards.length) return false;
+  const firstValue = cards[0].traits[traitName];
+  return Boolean(firstValue) && firstValue !== "Unknown" && cards.every((card) => card.traits[traitName] === firstValue);
+}
+
+function findComboHighlightIds(cards: TraitCard[]) {
+  if (cards.length < 2) return new Set<number>();
+
+  const combos = cards.length > 5 ? fiveCardCombos(cards) : [cards];
+  const ranked = combos
+    .map((combo) => ({ combo, hand: evaluateTraitsCombo(combo.map((card) => card.traits), 5) }))
+    .sort((left, right) => right.hand.multiplier - left.hand.multiplier);
+  const best = ranked[0];
+  if (!best || best.hand.multiplier <= 0) return new Set<number>();
+
+  const combo = best.combo;
+  const eyePerfect = idsForTraitCount(combo, "Eyes", 4);
+  if (eyePerfect.length) return new Set(eyePerfect);
+
+  const accessoryPerfect = idsForTraitCount(combo, "Accessory", 4);
+  if (accessoryPerfect.length) return new Set(accessoryPerfect);
+
+  const facialFeaturePerfect = idsForTraitCount(combo, "Facial Feature", 4);
+  if (facialFeaturePerfect.length) return new Set(facialFeaturePerfect);
+
+  const expressionPair = idsForTraitCount(combo, "Expression", 2);
+  const accessoryTriple = idsForTraitCount(combo, "Accessory", 3);
+  if (expressionPair.length && accessoryTriple.length) return new Set([...expressionPair, ...accessoryTriple]);
+
+  if (allShareTrait(combo, "Gender") || allShareTrait(combo, "Age")) return new Set(combo.map((card) => card.id));
+
+  const eyeTrips = idsForTraitCount(combo, "Eyes", 3);
+  if (eyeTrips.length) return new Set(eyeTrips);
+
+  if (expressionPair.length) return new Set(expressionPair);
+
+  return new Set<number>();
+}
+
 export function PokerGame() {
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4">
@@ -204,6 +264,15 @@ function PokerPvP() {
       ? `Insufficient chips for poker buy-in. Required ${errorMeta?.buyIn ?? state.buyIn}, server balance ${errorMeta?.balance ?? "unknown"}.`
       : error;
   const reconnectAttempted = useRef(false);
+  const visiblePokerCardIds = useMemo(() => [...privateHand, ...state.communityCards].filter((id) => typeof id === "number"), [privateHand, state.communityCards]);
+  const visibleTraitsById = useNormieTraitsById(visiblePokerCardIds);
+  const visibleTraitKey = visiblePokerCardIds.map((id) => `${id}:${Boolean(visibleTraitsById[id])}`).join("|");
+  const highlightedCardIds = useMemo(() => {
+    const cards = visiblePokerCardIds
+      .map((id) => ({ id, traits: visibleTraitsById[id] }))
+      .filter((card): card is TraitCard => Boolean(card.traits));
+    return findComboHighlightIds(cards);
+  }, [visiblePokerCardIds, visibleTraitKey, visibleTraitsById]);
 
   useEffect(() => {
     if (typeof window === "undefined" || reconnectAttempted.current || connected || !ready || !authenticated) return;
@@ -423,6 +492,7 @@ function PokerPvP() {
       <PokerTable
         communityIds={state.communityCards}
         currentBet={state.currentBet}
+        highlightedCardIds={highlightedCardIds}
         maxPlayers={state.maxPlayers}
         phase={state.phase}
         playerId={playerId}
@@ -434,7 +504,7 @@ function PokerPvP() {
       />
 
       {state.phase === "dealt" || state.phase === "betting" ? (
-        <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} />
+        <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} traitsById={visibleTraitsById} />
       ) : null}
 
       {state.phase === "betting" ? (
@@ -624,6 +694,7 @@ type PokerSeatPlayer = {
 function PokerTable({
   communityIds,
   currentBet,
+  highlightedCardIds,
   maxPlayers,
   phase,
   playerId,
@@ -635,6 +706,7 @@ function PokerTable({
 }: {
   communityIds: number[];
   currentBet: number;
+  highlightedCardIds: Set<number>;
   maxPlayers: number;
   phase: string;
   playerId: string | null;
@@ -664,7 +736,13 @@ function PokerTable({
           </div>
           <div className="mt-4 grid grid-cols-5 gap-2">
             {Array.from({ length: 5 }, (_, index) => (
-              <TableNormieCard key={`${index}-${communityIds[index] ?? "hidden"}`} normieId={communityIds[index]} label={`B${index + 1}`} compact />
+              <TableNormieCard
+                key={`${index}-${communityIds[index] ?? "hidden"}`}
+                highlighted={communityIds[index] !== undefined && highlightedCardIds.has(communityIds[index])}
+                normieId={communityIds[index]}
+                label={`B${index + 1}`}
+                compact
+              />
             ))}
           </div>
         </div>
@@ -678,6 +756,7 @@ function PokerTable({
                 isYou={player?.id === playerId}
                 phase={phase}
                 player={player}
+                highlightedCardIds={highlightedCardIds}
                 privateIds={player?.id === playerId ? privateIds : []}
                 seat={seat}
               />
@@ -690,6 +769,7 @@ function PokerTable({
 }
 
 function PokerTableSeat({
+  highlightedCardIds,
   isTurn,
   isYou,
   phase,
@@ -697,6 +777,7 @@ function PokerTableSeat({
   privateIds,
   seat
 }: {
+  highlightedCardIds: Set<number>;
   isTurn: boolean;
   isYou: boolean;
   phase: string;
@@ -734,7 +815,13 @@ function PokerTableSeat({
         {activeHand ? (
           Array.from({ length: 2 }, (_, index) =>
             isYou ? (
-              <TableNormieCard key={index} normieId={privateIds[index]} label={`H${index + 1}`} compact />
+              <TableNormieCard
+                key={index}
+                highlighted={privateIds[index] !== undefined && highlightedCardIds.has(privateIds[index])}
+                normieId={privateIds[index]}
+                label={`H${index + 1}`}
+                compact
+              />
             ) : (
               <CardBack key={index} />
             )
@@ -760,13 +847,23 @@ function CardBack() {
   );
 }
 
-function TableNormieCard({ normieId, label, compact }: { normieId?: number; label: string; compact?: boolean }) {
+function TableNormieCard({
+  normieId,
+  label,
+  compact,
+  highlighted
+}: {
+  normieId?: number;
+  label: string;
+  compact?: boolean;
+  highlighted?: boolean;
+}) {
   return (
     <NormieTraitPopover normieId={normieId}>
       <div
         className={`border border-paper/35 bg-black/80 p-1 text-center ${compact ? "w-16" : "w-24"} ${
           normieId !== undefined ? "cursor-pointer hover:border-mint" : ""
-        }`}
+        } ${highlighted ? "animate-pulse border-mint shadow-neon ring-1 ring-mint/45" : ""}`}
       >
         <div className={`grid place-items-center border border-paper/25 bg-paper ${compact ? "h-16 w-14" : "h-24 w-20"}`}>
           {normieId !== undefined ? (
@@ -992,9 +1089,9 @@ function PokerHandHistory({
   );
 }
 
-function LivePokerHints({ privateIds, communityIds }: { privateIds: number[]; communityIds: number[] }) {
+function useNormieTraitsById(ids: number[]) {
   const [traitsById, setTraitsById] = useState<Record<number, NormieTraits>>({});
-  const visibleKey = [...privateIds, ...communityIds].filter((id) => typeof id === "number").join("-");
+  const visibleKey = ids.filter((id) => typeof id === "number").join("-");
   const visibleIds = useMemo(() => (visibleKey ? visibleKey.split("-").map((id) => Number(id)) : []), [visibleKey]);
 
   useEffect(() => {
@@ -1024,6 +1121,11 @@ function LivePokerHints({ privateIds, communityIds }: { privateIds: number[]; co
     };
   }, [visibleIds, visibleKey]);
 
+  return traitsById;
+}
+
+function LivePokerHints({ privateIds, communityIds, traitsById }: { privateIds: number[]; communityIds: number[]; traitsById: Record<number, NormieTraits> }) {
+  const visibleIds = useMemo(() => [...privateIds, ...communityIds].filter((id) => typeof id === "number"), [privateIds, communityIds]);
   const yourTraits = visibleIds.map((id) => traitsById[id]).filter((traits): traits is NormieTraits => Boolean(traits));
   const boardTraits = communityIds.map((id) => traitsById[id]).filter((traits): traits is NormieTraits => Boolean(traits));
   const yourBest = yourTraits.length ? evaluateBestVisibleCombo(yourTraits) : null;
