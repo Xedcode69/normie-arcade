@@ -102,3 +102,31 @@ img {
     linear-gradient(90deg, rgba(244, 241, 232, 0.06) 1px, transparent 1px);
   background-size: 10px 10px;
 }
+
+.chip-flight {
+  position: absolute;
+  left: var(--chip-from-left);
+  top: var(--chip-from-top);
+  animation: chip-flight 900ms ease-out forwards;
+}
+
+@keyframes chip-flight {
+  0% {
+    left: var(--chip-from-left);
+    top: var(--chip-from-top);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.65);
+  }
+
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    left: 50%;
+    top: 50%;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.55);
+  }
+}

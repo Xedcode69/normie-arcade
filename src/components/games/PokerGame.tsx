@@ -3,7 +3,7 @@
 import { CheckCircle2, Copy, Dices, Info, LogOut, RotateCcw, Search, Users } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
 import { createPokerRoomCode, normalizePokerRoomCode } from "@/lib/pokerPvp";
 import { usePokerPvp } from "@/hooks/usePokerPvp";
@@ -691,6 +691,12 @@ type PokerSeatPlayer = {
   avatarUrl?: string | null;
 };
 
+type ChipFlight = {
+  id: string;
+  amount: number;
+  seat: number;
+};
+
 function PokerTable({
   communityIds,
   currentBet,
@@ -723,12 +729,53 @@ function PokerTable({
     "left-10 bottom-10",
     "left-4 top-16"
   ];
+  const [chipFlights, setChipFlights] = useState<ChipFlight[]>([]);
+  const previousCommittedRef = useRef<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    const nextCommitted = players.reduce<Record<string, number>>((next, player) => {
+      next[player.id] = player.committed ?? 0;
+      return next;
+    }, {});
+
+    const previousCommitted = previousCommittedRef.current;
+    if (!previousCommitted) {
+      previousCommittedRef.current = nextCommitted;
+      return;
+    }
+
+    const newFlights = players
+      .map((player) => {
+        const previous = previousCommitted[player.id] ?? 0;
+        const current = player.committed ?? 0;
+        const amount = current - previous;
+        if (amount <= 0) return null;
+        return {
+          id: `${player.id}-${current}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          amount,
+          seat: player.seat
+        };
+      })
+      .filter((flight): flight is ChipFlight => Boolean(flight));
+
+    previousCommittedRef.current = nextCommitted;
+
+    if (!newFlights.length) return;
+
+    setChipFlights((current) => [...current, ...newFlights]);
+    const cleanup = window.setTimeout(() => {
+      setChipFlights((current) => current.filter((flight) => !newFlights.some((newFlight) => newFlight.id === flight.id)));
+    }, 950);
+
+    return () => window.clearTimeout(cleanup);
+  }, [players, pot]);
 
   return (
     <div className="mx-auto mt-6 w-full max-w-6xl">
       <div className="relative min-h-[34rem] overflow-visible border border-paper/45 bg-black/70 p-4 shadow-neon">
         <div className="absolute inset-x-10 top-20 bottom-20 rounded-[50%] border-[10px] border-paper/20 bg-[radial-gradient(ellipse_at_center,rgba(18,96,70,0.9),rgba(4,18,14,0.96)_62%,rgba(0,0,0,0.96))] shadow-[inset_0_0_60px_rgba(255,255,255,0.08)]" />
         <div className="absolute inset-x-24 top-32 bottom-32 rounded-[50%] border border-mint/20" />
+        <ChipFlightLayer flights={chipFlights} />
 
         <div className="absolute left-1/2 top-1/2 z-10 w-full max-w-xl -translate-x-1/2 -translate-y-1/2 px-6 text-center">
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint/65">
@@ -764,6 +811,38 @@ function PokerTable({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ChipFlightLayer({ flights }: { flights: ChipFlight[] }) {
+  const seatOrigins: Array<{ left: string; top: string }> = [
+    { left: "50%", top: "18%" },
+    { left: "82%", top: "34%" },
+    { left: "78%", top: "76%" },
+    { left: "22%", top: "76%" },
+    { left: "18%", top: "34%" }
+  ];
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+      {flights.map((flight, index) => {
+        const origin = seatOrigins[flight.seat] ?? seatOrigins[0];
+        const style =
+          {
+            "--chip-from-left": origin.left,
+            "--chip-from-top": origin.top,
+            animationDelay: `${index * 45}ms`
+          } as CSSProperties;
+
+        return (
+          <div key={flight.id} className="chip-flight" style={style}>
+            <div className="grid h-8 w-8 place-items-center rounded-full border-2 border-paper bg-black text-[8px] font-semibold text-mint shadow-neon">
+              +{flight.amount}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
