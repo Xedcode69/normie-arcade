@@ -17,6 +17,7 @@ export type PokerPvPPlayer = {
   streetCommitted?: number;
   folded?: boolean;
   acted?: boolean;
+  lastAction?: string;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;

@@ -5,8 +5,8 @@ import { buildPokerSocketUrl, initialPokerPvpState, type PokerPvPState } from "@
 
 type ServerMessage =
   | { type: "poker_state"; state: PokerPvPState }
-  | { type: "full"; message: string }
-  | { type: "error"; message: string };
+  | { type: "full"; message: string; balance?: number; buyIn?: number }
+  | { type: "error"; message: string; balance?: number; buyIn?: number };
 
 type JoinOptions = {
   privyToken: string;
@@ -35,6 +35,7 @@ export function usePokerPvp(room = "poker-quickplay") {
   const socketRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorMeta, setErrorMeta] = useState<{ balance?: number; buyIn?: number } | null>(null);
   const [state, setState] = useState<PokerPvPState>(initialPokerPvpState);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const url = useMemo(() => buildPokerSocketUrl(room), [room]);
@@ -78,6 +79,7 @@ export function usePokerPvp(room = "poker-quickplay") {
       }
       if (data.type === "full" || data.type === "error") {
         setError(data.message);
+        setErrorMeta({ balance: data.balance, buyIn: data.buyIn });
       }
     };
 
@@ -95,10 +97,12 @@ export function usePokerPvp(room = "poker-quickplay") {
     socketRef.current = null;
     setConnected(false);
     setState(initialPokerPvpState);
+    setErrorMeta(null);
   }, []);
 
   const clearError = useCallback(() => {
     setError(null);
+    setErrorMeta(null);
   }, []);
 
   const toggleReady = useCallback(() => {
@@ -127,6 +131,7 @@ export function usePokerPvp(room = "poker-quickplay") {
     clearError,
     disconnect,
     error,
+    errorMeta,
     playerId,
     nextHand,
     state,

@@ -68,6 +68,7 @@ type PokerPlayer = {
   streetCommitted?: number;
   folded?: boolean;
   acted?: boolean;
+  lastAction?: string;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
@@ -108,7 +109,14 @@ type NormieTraits = {
   Eyes?: string;
   Accessory?: string;
   "Facial Feature"?: string;
+  [key: string]: string | number | boolean | undefined;
 };
+
+type RawNormieTraitsResponse =
+  | NormieTraits
+  | {
+      attributes?: Array<{ trait_type?: string; value?: string | number | boolean }>;
+    };
 
 type PokerEvaluation = {
   handName: string;
@@ -395,13 +403,21 @@ export default class RPSParty {
         streetCommitted: 0,
         folded: false,
         acted: false,
+        lastAction: undefined,
         isNormieHolder: data.isNormieHolder,
         selectedNormieId: data.selectedNormieId,
         avatarUrl: data.avatarUrl
       };
       const reserved = await this.reservePokerBuyIn(player);
       if (!reserved.ok) {
-        connection.send(JSON.stringify({ type: "full", message: reserved.error ?? "Could not reserve poker buy-in." }));
+        connection.send(
+          JSON.stringify({
+            type: "full",
+            message: reserved.error ?? "Could not reserve poker buy-in.",
+            balance: reserved.balance,
+            buyIn: player.buyIn
+          })
+        );
         return;
       }
       this.pokerState.players.push(player);
@@ -475,6 +491,7 @@ export default class RPSParty {
           streetCommitted: 0,
           folded: false,
           acted: false,
+          lastAction: undefined,
           accountError: undefined
         }));
       this.pokerState.phase = "waiting";
@@ -567,6 +584,7 @@ export default class RPSParty {
     if (data.action === "fold") {
       player.folded = true;
       player.acted = true;
+      player.lastAction = "FOLD";
       this.pokerState.message = `${player.name} folded.`;
       if (this.activePokerPlayers().length === 1) {
         await this.finishPokerShowdown();
@@ -583,6 +601,7 @@ export default class RPSParty {
     if (data.action === "check") {
       if (callAmount > 0) return;
       player.acted = true;
+      player.lastAction = "CHECK";
       this.pokerState.message = `${player.name} checked.`;
       this.advancePokerTurn(player.id);
       return;
@@ -600,6 +619,7 @@ export default class RPSParty {
         this.pokerState.pot += callAmount;
       }
       player.acted = true;
+      player.lastAction = callAmount > 0 ? `CALL ${callAmount}` : "CALL";
       this.pokerState.message = `${player.name} called.`;
       this.advancePokerTurn(player.id);
       return;
@@ -622,6 +642,7 @@ export default class RPSParty {
       player.streetCommitted = raiseTo;
       player.committed = totalCommitted + extra;
       player.acted = true;
+      player.lastAction = `RAISE ${raiseTo}`;
       this.pokerState.currentBet = raiseTo;
       this.pokerState.pot += extra;
       this.pokerState.players.forEach((item) => {
@@ -660,6 +681,7 @@ export default class RPSParty {
     this.pokerState.players.forEach((player) => {
       if (player.connected && !player.folded) {
         player.acted = false;
+        player.lastAction = undefined;
         player.streetCommitted = 0;
       }
     });
@@ -744,6 +766,7 @@ export default class RPSParty {
         streetCommitted: 0,
         folded: false,
         acted: false,
+        lastAction: undefined,
         accountError: undefined
       }));
     this.pokerState.message = "Next hand ready. Players can ready up with the fixed table ante.";
@@ -771,10 +794,23 @@ export default class RPSParty {
         headers: { accept: "application/json" }
       });
       if (!response.ok) return {};
-      return (await response.json()) as NormieTraits;
+      return this.normalizeNormieTraits((await response.json()) as RawNormieTraitsResponse);
     } catch {
       return {};
     }
+  }
+
+  private normalizeNormieTraits(response: RawNormieTraitsResponse): NormieTraits {
+    if ("attributes" in response && Array.isArray(response.attributes)) {
+      return response.attributes.reduce<NormieTraits>((traits, attribute) => {
+        if (attribute.trait_type && attribute.value !== undefined) {
+          traits[attribute.trait_type] = attribute.value;
+        }
+        return traits;
+      }, {});
+    }
+
+    return response as NormieTraits;
   }
 
   private countValues(values: Array<string | undefined>) {
@@ -1157,7 +1193,6 @@ export default class RPSParty {
   }
 
   private broadcastPoker() {
-    this.room.broadcast(JSON.stringify({ type: "poker_state", state: this.publicPokerState() }));
     this.pokerConnectionObjects.forEach((connection, connectionId) => {
       const playerId = this.pokerConnections.get(connectionId);
       if (!playerId) return;
@@ -1208,14 +1243,14 @@ export default class RPSParty {
 
       if (!response.ok || !data.ok) {
         player.accountError = data.error ?? "Could not reserve poker buy-in.";
-        return { ok: false as const, error: player.accountError };
+        return { ok: false as const, error: player.accountError, balance: data.balance };
       }
 
       player.reserved = true;
       player.stack = player.buyIn;
       player.serverBalance = data.balance;
       player.accountError = undefined;
-      return { ok: true as const };
+      return { ok: true as const, balance: data.balance };
     } catch {
       player.accountError = "Poker buy-in service unavailable.";
       return { ok: false as const, error: player.accountError };
