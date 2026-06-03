@@ -499,9 +499,11 @@ function PokerPvP() {
         players={state.players}
         pot={state.pot}
         privateIds={privateHand}
+        showdownWinnerIds={state.showdown?.winners ?? []}
         streetLabel={streetLabel}
         turnPlayerId={state.turnPlayerId}
       />
+      <PokerSeatLegend />
 
       {state.phase === "dealt" || state.phase === "betting" ? (
         <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} traitsById={visibleTraitsById} />
@@ -709,6 +711,7 @@ function PokerTable({
   players,
   pot,
   privateIds,
+  showdownWinnerIds,
   streetLabel,
   turnPlayerId
 }: {
@@ -721,6 +724,7 @@ function PokerTable({
   players: PokerSeatPlayer[];
   pot: number;
   privateIds: number[];
+  showdownWinnerIds: string[];
   streetLabel: string;
   turnPlayerId?: string;
 }) {
@@ -834,11 +838,32 @@ function PokerTable({
                 highlightedCardIds={highlightedCardIds}
                 privateIds={player?.id === playerId ? privateIds : []}
                 seat={seat}
+                showdownWinnerIds={showdownWinnerIds}
               />
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function PokerSeatLegend() {
+  const states = [
+    { label: "Ready", className: "border-mint/55 bg-mint/10 text-mint" },
+    { label: "Acting", className: "border-mint bg-black text-mint shadow-neon" },
+    { label: "Folded", className: "border-magenta/50 bg-magenta/10 text-magenta" },
+    { label: "Offline", className: "border-paper/20 bg-black/55 text-paper/40" },
+    { label: "Winner", className: "border-mint bg-mint/15 text-mint shadow-neon" }
+  ];
+
+  return (
+    <div className="mx-auto mt-3 flex max-w-5xl flex-wrap justify-center gap-2">
+      {states.map((state) => (
+        <div key={state.label} className={`border px-2 py-1 text-[10px] uppercase tracking-widest ${state.className}`}>
+          {state.label}
+        </div>
+      ))}
     </div>
   );
 }
@@ -882,7 +907,8 @@ function PokerTableSeat({
   phase,
   player,
   privateIds,
-  seat
+  seat,
+  showdownWinnerIds
 }: {
   highlightedCardIds: Set<number>;
   isTurn: boolean;
@@ -891,31 +917,69 @@ function PokerTableSeat({
   player?: PokerSeatPlayer;
   privateIds: number[];
   seat: number;
+  showdownWinnerIds: string[];
 }) {
   const activeHand = phase === "dealt" || phase === "betting" || phase === "showdown";
-  const status = player
-    ? player.folded
+  const isWinner = Boolean(player && showdownWinnerIds.includes(player.id));
+  const seatState = !player
+    ? "open"
+    : isWinner
+    ? "winner"
+    : player.folded
+    ? "folded"
+    : !player.connected
+    ? "offline"
+    : isTurn
+    ? "acting"
+    : player.ready
+    ? "ready"
+    : player.lastAction
+    ? "acted"
+    : "seated";
+  const status =
+    seatState === "open"
+      ? "OPEN"
+      : seatState === "winner"
+      ? "WINNER"
+      : seatState === "folded"
       ? "FOLD"
-      : isTurn
+      : seatState === "offline"
+      ? "OFFLINE"
+      : seatState === "acting"
       ? "ACTING"
-      : player.lastAction ?? (player.ready ? "READY" : player.connected ? "SEATED" : "OFFLINE")
-    : "OPEN";
+      : seatState === "ready"
+      ? "READY"
+      : player?.lastAction ?? "SEATED";
+  const seatStyles = {
+    open: "border-paper/20 bg-black/45 opacity-75",
+    seated: isYou ? "border-cyan bg-black/85" : "border-paper/35 bg-black/85",
+    ready: "border-mint/55 bg-mint/10 shadow-neon",
+    acting: "animate-pulse border-mint bg-black/90 shadow-[0_0_34px_rgba(34,255,225,0.45)] ring-2 ring-mint/45",
+    folded: "border-magenta/45 bg-magenta/10 opacity-70",
+    offline: "border-paper/20 bg-black/65 grayscale opacity-55",
+    acted: "border-paper/40 bg-black/85",
+    winner: "border-mint bg-mint/15 shadow-neon ring-2 ring-mint/55"
+  }[seatState];
+  const badgeStyles = {
+    open: "border-paper/25 text-paper/45",
+    seated: "border-paper/30 text-paper/55",
+    ready: "border-mint/50 text-mint",
+    acting: "border-mint bg-mint/10 text-mint shadow-neon",
+    folded: "border-magenta/50 text-magenta",
+    offline: "border-paper/20 text-paper/35",
+    acted: "border-cyan/40 text-cyan",
+    winner: "border-mint bg-mint/15 text-mint shadow-neon"
+  }[seatState];
 
   return (
     <div
-      className={`relative w-56 border bg-black/85 p-3 text-center transition ${
-        isTurn
-          ? "animate-pulse border-mint shadow-[0_0_34px_rgba(34,255,225,0.45)] ring-2 ring-mint/45"
-          : isYou
-          ? "border-cyan"
-          : "border-paper/35"
-      }`}
+      className={`relative w-56 border p-3 text-center transition ${seatStyles}`}
     >
-      {isTurn ? (
+      {isTurn || isWinner ? (
         <>
           <div className="pointer-events-none absolute -inset-2 border border-mint/30 shadow-neon" />
           <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 border border-mint bg-black px-3 py-1 font-display text-[10px] uppercase tracking-[0.22em] text-mint shadow-neon">
-            Acting
+            {isWinner ? "Winner" : "Acting"}
           </div>
         </>
       ) : null}
@@ -931,15 +995,7 @@ function PokerTableSeat({
           <div className="truncate text-sm text-paper">{player?.name ?? `Seat ${seat + 1}`}</div>
           <div className="text-[10px] uppercase tracking-widest text-paper/45">Stack {player?.stack ?? "--"}</div>
         </div>
-        <div
-          className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${
-            status === "FOLD"
-              ? "border-magenta/50 text-magenta"
-              : status === "ACTING"
-              ? "border-mint bg-mint/10 text-mint shadow-neon"
-              : "border-mint/45 text-mint"
-          }`}
-        >
+        <div className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${badgeStyles}`}>
           {status}
         </div>
       </div>
