@@ -109,7 +109,14 @@ type NormieTraits = {
   Eyes?: string;
   Accessory?: string;
   "Facial Feature"?: string;
+  [key: string]: string | number | boolean | undefined;
 };
+
+type RawNormieTraitsResponse =
+  | NormieTraits
+  | {
+      attributes?: Array<{ trait_type?: string; value?: string | number | boolean }>;
+    };
 
 type PokerEvaluation = {
   handName: string;
@@ -787,10 +794,23 @@ export default class RPSParty {
         headers: { accept: "application/json" }
       });
       if (!response.ok) return {};
-      return (await response.json()) as NormieTraits;
+      return this.normalizeNormieTraits((await response.json()) as RawNormieTraitsResponse);
     } catch {
       return {};
     }
+  }
+
+  private normalizeNormieTraits(response: RawNormieTraitsResponse): NormieTraits {
+    if ("attributes" in response && Array.isArray(response.attributes)) {
+      return response.attributes.reduce<NormieTraits>((traits, attribute) => {
+        if (attribute.trait_type && attribute.value !== undefined) {
+          traits[attribute.trait_type] = attribute.value;
+        }
+        return traits;
+      }, {});
+    }
+
+    return response as NormieTraits;
   }
 
   private countValues(values: Array<string | undefined>) {
@@ -1173,7 +1193,6 @@ export default class RPSParty {
   }
 
   private broadcastPoker() {
-    this.room.broadcast(JSON.stringify({ type: "poker_state", state: this.publicPokerState() }));
     this.pokerConnectionObjects.forEach((connection, connectionId) => {
       const playerId = this.pokerConnections.get(connectionId);
       if (!playerId) return;

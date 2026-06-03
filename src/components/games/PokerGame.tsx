@@ -1,9 +1,9 @@
 "use client";
 
-import { CheckCircle2, Copy, Dices, LogOut, RotateCcw, Search, Users } from "lucide-react";
+import { CheckCircle2, Copy, Dices, Info, LogOut, RotateCcw, Search, Users } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
 import { createPokerRoomCode, normalizePokerRoomCode } from "@/lib/pokerPvp";
 import { usePokerPvp } from "@/hooks/usePokerPvp";
@@ -654,7 +654,7 @@ function PokerTable({
 
   return (
     <div className="mx-auto mt-6 w-full max-w-6xl">
-      <div className="relative min-h-[34rem] overflow-hidden border border-paper/45 bg-black/70 p-4 shadow-neon">
+      <div className="relative min-h-[34rem] overflow-visible border border-paper/45 bg-black/70 p-4 shadow-neon">
         <div className="absolute inset-x-10 top-20 bottom-20 rounded-[50%] border-[10px] border-paper/20 bg-[radial-gradient(ellipse_at_center,rgba(18,96,70,0.9),rgba(4,18,14,0.96)_62%,rgba(0,0,0,0.96))] shadow-[inset_0_0_60px_rgba(255,255,255,0.08)]" />
         <div className="absolute inset-x-24 top-32 bottom-32 rounded-[50%] border border-mint/20" />
 
@@ -762,16 +762,90 @@ function CardBack() {
 
 function TableNormieCard({ normieId, label, compact }: { normieId?: number; label: string; compact?: boolean }) {
   return (
-    <div className={`border border-paper/35 bg-black/80 p-1 text-center ${compact ? "w-16" : "w-24"}`}>
-      <div className={`grid place-items-center border border-paper/25 bg-paper ${compact ? "h-16 w-14" : "h-24 w-20"}`}>
-        {normieId !== undefined ? (
-          <CenteredNormieImage src={`https://api.normies.art/normie/${normieId}/image.png`} alt={`Normie poker card #${normieId}`} className="h-full w-full" />
-        ) : (
-          <div className="grid h-full w-full place-items-center bg-black/90 text-[9px] text-paper/35">0xN</div>
-        )}
+    <NormieTraitPopover normieId={normieId}>
+      <div
+        className={`border border-paper/35 bg-black/80 p-1 text-center ${compact ? "w-16" : "w-24"} ${
+          normieId !== undefined ? "cursor-pointer hover:border-mint" : ""
+        }`}
+      >
+        <div className={`grid place-items-center border border-paper/25 bg-paper ${compact ? "h-16 w-14" : "h-24 w-20"}`}>
+          {normieId !== undefined ? (
+            <CenteredNormieImage src={`https://api.normies.art/normie/${normieId}/image.png`} alt={`Normie poker card #${normieId}`} className="h-full w-full" />
+          ) : (
+            <div className="grid h-full w-full place-items-center bg-black/90 text-[9px] text-paper/35">0xN</div>
+          )}
+        </div>
+        <div className="mt-1 flex items-center justify-center gap-1 truncate text-[9px] text-paper/50">
+          {normieId !== undefined ? `#${normieId}` : label}
+          {normieId !== undefined ? <Info size={9} className="text-mint/75" /> : null}
+        </div>
       </div>
-      <div className="mt-1 truncate text-[9px] text-paper/50">{normieId !== undefined ? `#${normieId}` : label}</div>
-    </div>
+    </NormieTraitPopover>
+  );
+}
+
+function NormieTraitPopover({
+  children,
+  initialTraits,
+  normieId
+}: {
+  children: ReactNode;
+  initialTraits?: NormieTraits | null;
+  normieId?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [traits, setTraits] = useState<NormieTraits | null>(initialTraits ?? null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (initialTraits) {
+      setTraits(initialTraits);
+    }
+  }, [initialTraits]);
+
+  useEffect(() => {
+    if (!open || normieId === undefined || traits || error) return;
+
+    let active = true;
+    setLoading(true);
+    setError("");
+    NormieAPIService.fetchNormieTraits(normieId)
+      .then((nextTraits) => {
+        if (active) setTraits(nextTraits);
+      })
+      .catch(() => {
+        if (active) setError("Unable to read traits.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [error, normieId, open, traits]);
+
+  if (normieId === undefined) return <>{children}</>;
+
+  return (
+    <button
+      type="button"
+      className="relative inline-block appearance-none border-0 bg-transparent p-0 text-left text-inherit"
+      aria-expanded={open}
+      aria-label={`Inspect Normie #${normieId} traits`}
+      onClick={() => setOpen((value) => !value)}
+    >
+      {children}
+      {open ? (
+        <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 border border-mint/55 bg-black/95 p-3 shadow-neon">
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint">Normie #{normieId}</div>
+          {loading ? <div className="mt-2 text-xs text-paper/55">Reading traits...</div> : null}
+          {error ? <div className="mt-2 text-xs text-magenta">{error}</div> : null}
+          {!loading && !error ? <TraitSummary traits={traits} /> : null}
+        </div>
+      ) : null}
+    </button>
   );
 }
 
@@ -948,9 +1022,11 @@ function LivePokerHints({ privateIds, communityIds }: { privateIds: number[]; co
 
 function TraitSummary({ traits }: { traits?: NormieTraits | null }) {
   const rows = [
+    ["Type", traits?.Type],
     ["Exp", traits?.Expression],
     ["Eyes", traits?.Eyes],
     ["Acc", traits?.Accessory],
+    ["Face", traits?.["Facial Feature"]],
     ["Age", traits?.Age],
     ["Gen", traits?.Gender]
   ];
@@ -968,12 +1044,17 @@ function TraitSummary({ traits }: { traits?: NormieTraits | null }) {
 
 function ShowdownTraitCard({ id, traits }: { id: number; traits?: NormieTraits }) {
   return (
-    <div className="min-w-0 border border-paper/20 bg-black/55 p-1 text-center">
-      <div className="grid aspect-square place-items-center border border-paper/25 bg-paper">
-        <CenteredNormieImage src={`https://api.normies.art/normie/${id}/image.png`} alt={`Showdown Normie #${id}`} className="h-full w-full" />
+    <NormieTraitPopover normieId={id} initialTraits={traits}>
+      <div className="min-w-0 cursor-pointer border border-paper/20 bg-black/55 p-1 text-center hover:border-mint">
+        <div className="grid aspect-square place-items-center border border-paper/25 bg-paper">
+          <CenteredNormieImage src={`https://api.normies.art/normie/${id}/image.png`} alt={`Showdown Normie #${id}`} className="h-full w-full" />
+        </div>
+        <div className="mt-1 flex items-center justify-center gap-1 text-[10px] text-paper/60">
+          #{id}
+          <Info size={9} className="text-mint/75" />
+        </div>
+        <TraitSummary traits={traits} />
       </div>
-      <div className="mt-1 text-[10px] text-paper/60">#{id}</div>
-      <TraitSummary traits={traits} />
-    </div>
+    </NormieTraitPopover>
   );
 }
