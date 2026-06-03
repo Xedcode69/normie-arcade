@@ -730,7 +730,9 @@ function PokerTable({
     "left-4 top-16"
   ];
   const [chipFlights, setChipFlights] = useState<ChipFlight[]>([]);
+  const [revealedCommunityIds, setRevealedCommunityIds] = useState<Set<number>>(new Set());
   const previousCommittedRef = useRef<Record<string, number> | null>(null);
+  const previousCommunityRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     const nextCommitted = players.reduce<Record<string, number>>((next, player) => {
@@ -770,6 +772,29 @@ function PokerTable({
     return () => window.clearTimeout(cleanup);
   }, [players, pot]);
 
+  useEffect(() => {
+    const nextIds = new Set(communityIds.filter((id) => typeof id === "number"));
+    const previousIds = previousCommunityRef.current;
+    const newIds = [...nextIds].filter((id) => !previousIds.has(id));
+    previousCommunityRef.current = nextIds;
+
+    if (!newIds.length) {
+      if (!nextIds.size) setRevealedCommunityIds(new Set());
+      return;
+    }
+
+    setRevealedCommunityIds((current) => new Set([...current, ...newIds]));
+    const cleanup = window.setTimeout(() => {
+      setRevealedCommunityIds((current) => {
+        const next = new Set(current);
+        newIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, 720);
+
+    return () => window.clearTimeout(cleanup);
+  }, [communityIds]);
+
   return (
     <div className="mx-auto mt-6 w-full max-w-6xl">
       <div className="relative min-h-[34rem] overflow-visible border border-paper/45 bg-black/70 p-4 shadow-neon">
@@ -786,6 +811,7 @@ function PokerTable({
               <TableNormieCard
                 key={`${index}-${communityIds[index] ?? "hidden"}`}
                 highlighted={communityIds[index] !== undefined && highlightedCardIds.has(communityIds[index])}
+                revealed={communityIds[index] !== undefined && revealedCommunityIds.has(communityIds[index])}
                 normieId={communityIds[index]}
                 label={`B${index + 1}`}
                 compact
@@ -956,19 +982,21 @@ function TableNormieCard({
   normieId,
   label,
   compact,
-  highlighted
+  highlighted,
+  revealed
 }: {
   normieId?: number;
   label: string;
   compact?: boolean;
   highlighted?: boolean;
+  revealed?: boolean;
 }) {
   return (
     <NormieTraitPopover normieId={normieId}>
       <div
         className={`border border-paper/35 bg-black/80 p-1 text-center ${compact ? "w-16" : "w-24"} ${
           normieId !== undefined ? "cursor-pointer hover:border-mint" : ""
-        } ${highlighted ? "animate-pulse border-mint shadow-neon ring-1 ring-mint/45" : ""}`}
+        } ${highlighted ? "animate-pulse border-mint shadow-neon ring-1 ring-mint/45" : ""} ${revealed ? "community-card-reveal" : ""}`}
       >
         <div className={`grid place-items-center border border-paper/25 bg-paper ${compact ? "h-16 w-14" : "h-24 w-20"}`}>
           {normieId !== undefined ? (

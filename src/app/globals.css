@@ -130,3 +130,28 @@ img {
     transform: translate(-50%, -50%) scale(0.55);
   }
 }
+
+.community-card-reveal {
+  animation: community-card-reveal 620ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+  transform-origin: center;
+}
+
+@keyframes community-card-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(-18px) rotateY(88deg) scale(0.82);
+    filter: brightness(0.4);
+  }
+
+  55% {
+    opacity: 1;
+    transform: translateY(2px) rotateY(-10deg) scale(1.05);
+    filter: brightness(1.35);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateY(0deg) scale(1);
+    filter: brightness(1);
+  }
+}
