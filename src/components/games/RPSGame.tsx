@@ -22,6 +22,7 @@ type FighterPick = { type: RPSType };
 type MatchMode = "solo" | "pvp";
 type RoomMode = "quick" | "create" | "join";
 const RPS_RECONNECT_KEY = "normie-rps-active-room";
+const RPS_QUICK_MATCH_STAKE = 250;
 
 const typeImages: Record<RPSType, string> = {
   Human: "/human.png",
@@ -228,6 +229,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   });
   const [roomMode, setRoomMode] = useState<RoomMode>(() => (roomCode === "QUICKPLAY" ? "quick" : "join"));
   const [joinCode, setJoinCode] = useState(() => (roomCode === "QUICKPLAY" ? "" : roomCode));
+  const [inviteStakeLoaded, setInviteStakeLoaded] = useState(false);
   const { connected, connect, clearError, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
   const { ready, authenticated, getAccessToken, login, user } = usePrivy();
   const username = useAccountStore((store) => store.username);
@@ -241,6 +243,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const accountKey = user?.id ?? user?.wallet?.address ?? null;
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
+  const effectiveStake = roomMode === "quick" ? RPS_QUICK_MATCH_STAKE : state.stake ?? bet;
   const waitingForOpponent = connected && state.phase === "waiting" && !opponent?.connected;
   const opponentDisconnected = Boolean(opponent && !opponent.connected);
   const reveal = state.reveal;
@@ -290,6 +293,21 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     winnerId: state.winnerId,
     playerId
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || inviteStakeLoaded) return;
+    setInviteStakeLoaded(true);
+    const stakeParam = Number(new URLSearchParams(window.location.search).get("rpsStake"));
+    if (Number.isFinite(stakeParam) && stakeParam > 0) {
+      setBet(Math.round(stakeParam));
+    }
+  }, [inviteStakeLoaded, setBet]);
+
+  useEffect(() => {
+    if (roomMode === "quick" && bet !== RPS_QUICK_MATCH_STAKE) {
+      setBet(RPS_QUICK_MATCH_STAKE);
+    }
+  }, [bet, roomMode, setBet]);
 
   useEffect(() => {
     const opponentConnected = Boolean(opponent?.connected);
@@ -375,15 +393,14 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
       setRoomCode(storedRoom);
       setJoinCode(storedRoom === "QUICKPLAY" ? "" : storedRoom);
       setRoomMode(parsed.roomMode ?? (storedRoom === "QUICKPLAY" ? "quick" : "join"));
-      if (typeof parsed.bet === "number") {
-        setBet(parsed.bet);
-      }
+      const reconnectBet = storedRoom === "QUICKPLAY" ? RPS_QUICK_MATCH_STAKE : typeof parsed.bet === "number" ? parsed.bet : bet;
+      setBet(reconnectBet);
 
       getAccessToken().then((token) => {
         if (!token) return;
         connect({
           privyToken: token,
-          bet: typeof parsed.bet === "number" ? parsed.bet : bet,
+          bet: reconnectBet,
           accountKey,
           name: displayName || username,
           isNormieHolder,
@@ -408,8 +425,10 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     const url = new URL(window.location.href);
     if (roomCode === "QUICKPLAY") {
       url.searchParams.delete("rpsRoom");
+      url.searchParams.delete("rpsStake");
     } else {
       url.searchParams.set("rpsRoom", roomCode);
+      url.searchParams.set("rpsStake", String(effectiveStake));
     }
     return url.toString();
   }
@@ -435,7 +454,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
 
     connect({
       privyToken: token,
-      bet,
+      bet: effectiveStake,
       accountKey,
       name: displayName || username,
       isNormieHolder,
@@ -448,7 +467,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
       JSON.stringify({
         roomCode,
         roomMode,
-        bet
+        bet: effectiveStake
       })
     );
   }
@@ -460,6 +479,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
 
     if (mode === "quick") {
       setRoomCode("QUICKPLAY");
+      setBet(RPS_QUICK_MATCH_STAKE);
       return;
     }
 
@@ -587,6 +607,12 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
             <Copy size={15} /> Copy Invite
           </button>
         </div>
+        <div className="mx-auto mt-3 flex w-fit items-center justify-center border border-paper/25 bg-black/55 px-4 py-2 text-center">
+          <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">
+            RPS PvP stake: {effectiveStake} chips
+            {roomMode === "quick" ? " / fixed quick match" : connected ? " / room locked" : " / private room"}
+          </span>
+        </div>
       </div>
       <div className="mx-auto mt-3 flex w-full max-w-4xl shrink-0 items-center justify-center border border-paper/25 bg-black/45 px-4 py-2 text-center">
         <span className={`terminal-hash text-[10px] uppercase tracking-[0.22em] ${friendlyError ? "text-magenta" : "text-pixel/60"}`}>{phaseLabel}</span>
@@ -653,7 +679,13 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
             <Swords size={15} /> {type}
           </button>
         ))}
-        <BetControls bet={bet} setBet={setBet} disabled={connected} />
+        {roomMode === "quick" ? (
+          <div className="min-w-32 border-2 border-paper bg-black/80 px-3 py-2 text-center text-sm text-paper shadow-neon">
+            {RPS_QUICK_MATCH_STAKE} chips
+          </div>
+        ) : (
+          <BetControls bet={bet} setBet={setBet} disabled={connected} />
+        )}
       </div>
       <div className="mt-5 flex shrink-0 flex-wrap justify-center gap-3">
         <div className="pixel-card px-5 py-2 text-sm text-paper">
@@ -665,6 +697,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
         {typeof you?.serverBalance === "number" ? (
           <div className="pixel-card px-5 py-2 text-sm text-paper">Server chips {you.serverBalance}</div>
         ) : null}
+        <div className="pixel-card px-5 py-2 text-sm text-paper">Stake {effectiveStake}</div>
         {state.phase === "finished" ? (
           <button
             onClick={handleReset}
