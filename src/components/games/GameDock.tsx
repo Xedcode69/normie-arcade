@@ -10,6 +10,7 @@ import { RouletteGame } from "./RouletteGame";
 import { RPSGame } from "./RPSGame";
 import { PokerGame } from "./PokerGame";
 import { UpDownGame } from "./UpDownGame";
+import { SortSprintGame } from "./SortSprintGame";
 
 const instructions = {
   roulette: {
@@ -31,9 +32,32 @@ const instructions = {
   poker: {
     title: "Normie DNA Poker",
     lines: [
-      "Deal five real Normies from the API and inspect their decoded traits.",
-      "Pair scores when two cards share an Expression; Three of a Kind scores when three share a Type.",
-      "Flush scores when all cards share Gender or Age. Full House scores with a Type pair and Expression triple."
+      "Texas-style PvP poker using real Normies as cards.",
+      "Each seated player reserves the same buy-in, then antes from that table stack each hand.",
+      "You receive two private Normies. Five community Normies reveal across flop, turn, and river.",
+      "Use check, call, raise, or fold during betting. The server handles chip reserve, wagers, pot, and payout.",
+      "Click a visible card to inspect full traits. Hover for a quick Expression, Eyes, and Accessory peek.",
+      "Glowing cards show which visible Normies currently contribute to your best DNA combo."
+    ],
+    sections: [
+      {
+        heading: "DNA Hands",
+        items: [
+          "Expression Pair: two or more cards share Expression.",
+          "Eye Trips: three or more cards share Eyes.",
+          "Age/Gender Flush: five cards share Age or Gender.",
+          "Accessory Full House: Expression pair plus Accessory triple.",
+          "Perfect DNA: four or more cards share Eyes, Accessory, or Facial Feature."
+        ]
+      },
+      {
+        heading: "Showdown",
+        items: [
+          "Best five-card DNA hand wins the pot.",
+          "Tied best hands split the pot.",
+          "Folded players cannot win the hand."
+        ]
+      }
     ]
   },
   updown: {
@@ -42,6 +66,15 @@ const instructions = {
       "Choose Easy, Medium, or Hard, then set your chip bet.",
       "Predict whether the next fetched Normie ID is higher or lower than the current base.",
       "Survive the target number of predictions to win the mode payout."
+    ]
+  },
+  sort: {
+    title: "Normie Sort Sprint",
+    lines: [
+      "Choose a speed, place chips, then start the sorting shift.",
+      "Read the active rule and send each live Normie to the matching trait bin.",
+      "The rule changes during the run. Correct sorts build combo and wrong bins break it.",
+      "Hit the target score before the timer ends to earn the shift payout."
     ]
   }
 } as const;
@@ -111,6 +144,7 @@ export function GameDock() {
               {activeGame === "rps" ? <RPSGame /> : null}
               {activeGame === "poker" ? <PokerGame /> : null}
               {activeGame === "updown" ? <UpDownGame /> : null}
+              {activeGame === "sort" ? <SortSprintGame /> : null}
             </div>
             <AnimatePresence>
               {showInstructions ? (
@@ -174,6 +208,21 @@ function InstructionGuide({
             {content.lines.map((line) => (
               <p key={line}>{line}</p>
             ))}
+            {"sections" in content
+              ? content.sections.map((section) => (
+                  <div key={section.heading} className="border-t border-paper/15 pt-2">
+                    <div className="terminal-hash text-[10px] uppercase tracking-[0.2em] text-mint/75">{section.heading}</div>
+                    <ul className="mt-2 space-y-1">
+                      {section.items.map((item) => (
+                        <li key={item} className="grid grid-cols-[0.75rem_1fr] gap-2 text-xs text-paper/75">
+                          <span className="text-mint">-</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              : null}
           </div>
         </div>
       </div>

@@ -208,7 +208,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const [roomMode, setRoomMode] = useState<RoomMode>(() => (roomCode === "QUICKPLAY" ? "quick" : "join"));
   const [joinCode, setJoinCode] = useState(() => (roomCode === "QUICKPLAY" ? "" : roomCode));
   const { connected, connect, clearError, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
-  const { ready, authenticated, getAccessToken, login } = usePrivy();
+  const { ready, authenticated, getAccessToken, login, user } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
   const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
@@ -217,6 +217,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const setBalance = useChipStore((store) => store.setBalance);
   const notify = useArcadeStore((store) => store.notify);
   const setActiveGame = useArcadeStore((store) => store.setActiveGame);
+  const accountKey = user?.id ?? user?.wallet?.address ?? null;
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
   const waitingForOpponent = connected && state.phase === "waiting" && !opponent?.connected;
@@ -362,6 +363,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
         connect({
           privyToken: token,
           bet: typeof parsed.bet === "number" ? parsed.bet : bet,
+          accountKey,
           name: displayName || username,
           isNormieHolder,
           selectedNormieId: selectedNormieId ?? null,
@@ -372,7 +374,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     } catch {
       window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
     }
-  }, [authenticated, bet, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, setBet, username]);
+  }, [accountKey, authenticated, bet, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, setBet, username]);
 
   useEffect(() => {
     if (error?.toLowerCase().includes("full")) {
@@ -413,6 +415,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     connect({
       privyToken: token,
       bet,
+      accountKey,
       name: displayName || username,
       isNormieHolder,
       selectedNormieId: selectedNormieId ?? null,

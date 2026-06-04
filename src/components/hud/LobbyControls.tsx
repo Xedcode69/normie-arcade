@@ -1,46 +1,72 @@
 "use client";
 
-import { CircleDot, Dices, Joystick, TrendingUp } from "lucide-react";
+import type { ReactNode } from "react";
+import { CircleDot, Dices, Gamepad2, Joystick, Shapes, TrendingUp, X } from "lucide-react";
 import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
 
-const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; shortcut: string; icon: React.ReactNode; color: string }> = [
-  { id: "roulette", label: "Roulette", shortcut: "1", icon: <CircleDot size={16} />, color: "text-paper border-paper/70" },
-  { id: "rps", label: "RPS Arena", shortcut: "2", icon: <Joystick size={16} />, color: "text-paper border-paper/70" },
-  { id: "poker", label: "DNA Poker", shortcut: "3", icon: <Dices size={16} />, color: "text-paper border-paper/70" },
-  { id: "updown", label: "Up or Down", shortcut: "4", icon: <TrendingUp size={16} />, color: "text-paper border-paper/70" }
+const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; shortcut: string; icon: ReactNode; description: string }> = [
+  { id: "roulette", label: "Roulette", shortcut: "1", icon: <CircleDot size={16} />, description: "Match live API expressions" },
+  { id: "rps", label: "RPS Arena", shortcut: "2", icon: <Joystick size={16} />, description: "Human, Cat, Alien duels" },
+  { id: "poker", label: "DNA Poker", shortcut: "3", icon: <Dices size={16} />, description: "Trait hands and PvP pots" },
+  { id: "updown", label: "Up or Down", shortcut: "4", icon: <TrendingUp size={16} />, description: "Read the next Normie ID" },
+  { id: "sort", label: "Sort Sprint", shortcut: "5", icon: <Shapes size={16} />, description: "Timed trait sorting shift" }
 ];
 
 export function LobbyControls() {
   const activeGame = useArcadeStore((state) => state.activeGame);
+  const gameMenuOpen = useArcadeStore((state) => state.gameMenuOpen);
   const setActiveGame = useArcadeStore((state) => state.setActiveGame);
+  const setGameMenuOpen = useArcadeStore((state) => state.setGameMenuOpen);
+  const toggleGameMenu = useArcadeStore((state) => state.toggleGameMenu);
 
   if (activeGame !== "lobby") return null;
 
   return (
-    <nav className="pointer-events-auto absolute bottom-5 left-1/2 z-30 hidden -translate-x-1/2 gap-2 md:flex">
-      {stations.map((station) => (
-        <button
-          key={station.id}
-          onClick={() => setActiveGame(station.id)}
-          className={`hud-panel inline-flex items-center gap-2 border px-4 py-3 text-sm uppercase tracking-widest transition hover:scale-[1.03] ${station.color}`}
-        >
-          {station.icon}
-          {station.label}
-          <span className="border border-paper/30 px-1.5 py-0.5 text-[10px] text-pixel/70">{station.shortcut}</span>
-        </button>
-      ))}
+    <nav className="pointer-events-auto absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-3">
+      {gameMenuOpen ? (
+        <div className="hud-panel w-[min(92vw,34rem)] border border-paper/65 p-3 shadow-neon">
+          <div className="mb-3 flex items-center justify-between gap-3 border-b border-paper/20 pb-3">
+            <div>
+              <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Available Games</div>
+              <div className="font-display text-sm uppercase tracking-[0.22em] text-paper">Choose Cabinet</div>
+            </div>
+            <button
+              aria-label="Close games menu"
+              onClick={() => setGameMenuOpen(false)}
+              className="grid h-8 w-8 place-items-center border border-paper/40 bg-black/70 text-paper/70 transition hover:text-paper"
+            >
+              <X size={15} />
+            </button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {stations.map((station) => (
+              <button
+                key={station.id}
+                onClick={() => setActiveGame(station.id)}
+                className="group grid min-h-20 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-3 border border-paper/25 bg-black/70 px-3 py-2 text-left transition hover:-translate-y-0.5 hover:border-mint/70 hover:bg-paper/10"
+              >
+                <span className="grid h-8 w-8 place-items-center border border-paper/30 text-paper/75 group-hover:border-mint/70 group-hover:text-mint">
+                  {station.icon}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm uppercase tracking-[0.15em] text-paper">{station.label}</span>
+                  <span className="mt-1 block truncate text-[11px] text-paper/50">{station.description}</span>
+                </span>
+                <span className="justify-self-end border border-paper/30 px-2 py-1 text-[10px] uppercase text-pixel/75 group-hover:border-mint/70 group-hover:text-mint">
+                  {station.shortcut}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <button
-        onClick={() =>
-          useArcadeStore.getState().notify({
-            kind: "info",
-            title: "Chip Master",
-            body: "Chip purchase and withdraw support will arrive in a future update."
-          })
-        }
-        className="hud-panel inline-flex items-center gap-2 border border-paper/70 px-4 py-3 text-sm uppercase tracking-widest text-paper transition hover:scale-[1.03]"
+        onClick={toggleGameMenu}
+        className="hud-panel inline-flex items-center gap-2 border border-paper/70 px-5 py-3 text-sm uppercase tracking-widest text-paper transition hover:scale-[1.03] hover:border-mint/80"
       >
-        Chip Master
-        <span className="border border-paper/30 px-1.5 py-0.5 text-[10px] text-pixel/70">C</span>
+        <Gamepad2 size={16} />
+        Games
+        <span className="border border-paper/30 px-1.5 py-0.5 text-[10px] text-pixel/70">G</span>
       </button>
     </nav>
   );

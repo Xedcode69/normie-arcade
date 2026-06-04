@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import type { Normie } from "@/types/normie";
 
-export type GameId = "lobby" | "roulette" | "rps" | "poker" | "updown";
+export type GameId = "lobby" | "roulette" | "rps" | "poker" | "updown" | "sort";
 
-type DealerRole = "Expression Croupier" | "Arena Master" | "DNA Card Sharp" | "Prediction Host" | "Cashier";
+type DealerRole = "Expression Croupier" | "Arena Master" | "DNA Card Sharp" | "Prediction Host" | "Sort Marshal" | "Cashier";
 
 export type Dealer = {
   role: DealerRole;
@@ -22,10 +22,13 @@ export type ArcadeNotification = {
 
 type ArcadeState = {
   activeGame: GameId;
+  gameMenuOpen: boolean;
   dealers: Dealer[];
   loadedNormies: Normie[];
   notifications: ArcadeNotification[];
   setActiveGame: (game: GameId) => void;
+  setGameMenuOpen: (open: boolean) => void;
+  toggleGameMenu: () => void;
   setDealers: (dealers: Dealer[]) => void;
   setLoadedNormies: (normies: Normie[]) => void;
   notify: (notification: Omit<ArcadeNotification, "id">) => void;
@@ -34,16 +37,20 @@ type ArcadeState = {
 
 export const useArcadeStore = create<ArcadeState>((set) => ({
   activeGame: "lobby",
+  gameMenuOpen: false,
   dealers: [
     { role: "Expression Croupier", persona: "Serious dealer" },
     { role: "Arena Master", persona: "Chaotic dealer" },
     { role: "DNA Card Sharp", persona: "Precise dealer" },
     { role: "Prediction Host", persona: "Robotic dealer" },
+    { role: "Sort Marshal", persona: "Speed clerk" },
     { role: "Cashier", persona: "Lucky dealer" }
   ],
   loadedNormies: [],
   notifications: [],
-  setActiveGame: (activeGame) => set({ activeGame }),
+  setActiveGame: (activeGame) => set({ activeGame, gameMenuOpen: false }),
+  setGameMenuOpen: (gameMenuOpen) => set({ gameMenuOpen }),
+  toggleGameMenu: () => set((state) => ({ gameMenuOpen: !state.gameMenuOpen })),
   setDealers: (dealers) => set({ dealers }),
   setLoadedNormies: (loadedNormies) => set({ loadedNormies }),
   notify: (notification) =>

@@ -1,9 +1,9 @@
 "use client";
 
-import { CheckCircle2, Copy, Dices, Info, LogOut, RotateCcw, Search, Users } from "lucide-react";
+import { CheckCircle2, Copy, Dices, Info, LogOut, RotateCcw, Search, Trophy, Users } from "lucide-react";
 import Image from "next/image";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
 import { createPokerRoomCode, normalizePokerRoomCode } from "@/lib/pokerPvp";
 import { usePokerPvp } from "@/hooks/usePokerPvp";
@@ -142,6 +142,66 @@ function evaluateBestVisibleCombo(traits: NormieTraits[]) {
     .reduce((best, current) => (current.multiplier > best.multiplier ? current : best));
 }
 
+type TraitCard = {
+  id: number;
+  traits: NormieTraits;
+};
+
+function countTraitCards(cards: TraitCard[], traitName: keyof NormieTraits | "Facial Feature") {
+  return cards.reduce<Record<string, number[]>>((counts, card) => {
+    const value = card.traits[traitName];
+    if (!value || value === "Unknown") return counts;
+    const key = String(value);
+    counts[key] = [...(counts[key] ?? []), card.id];
+    return counts;
+  }, {});
+}
+
+function idsForTraitCount(cards: TraitCard[], traitName: keyof NormieTraits | "Facial Feature", target: number) {
+  const counts = countTraitCards(cards, traitName);
+  return Object.values(counts).find((ids) => ids.length >= target) ?? [];
+}
+
+function allShareTrait(cards: TraitCard[], traitName: keyof NormieTraits) {
+  if (!cards.length) return false;
+  const firstValue = cards[0].traits[traitName];
+  return Boolean(firstValue) && firstValue !== "Unknown" && cards.every((card) => card.traits[traitName] === firstValue);
+}
+
+function findComboHighlightIds(cards: TraitCard[]) {
+  if (cards.length < 2) return new Set<number>();
+
+  const combos = cards.length > 5 ? fiveCardCombos(cards) : [cards];
+  const ranked = combos
+    .map((combo) => ({ combo, hand: evaluateTraitsCombo(combo.map((card) => card.traits), 5) }))
+    .sort((left, right) => right.hand.multiplier - left.hand.multiplier);
+  const best = ranked[0];
+  if (!best || best.hand.multiplier <= 0) return new Set<number>();
+
+  const combo = best.combo;
+  const eyePerfect = idsForTraitCount(combo, "Eyes", 4);
+  if (eyePerfect.length) return new Set(eyePerfect);
+
+  const accessoryPerfect = idsForTraitCount(combo, "Accessory", 4);
+  if (accessoryPerfect.length) return new Set(accessoryPerfect);
+
+  const facialFeaturePerfect = idsForTraitCount(combo, "Facial Feature", 4);
+  if (facialFeaturePerfect.length) return new Set(facialFeaturePerfect);
+
+  const expressionPair = idsForTraitCount(combo, "Expression", 2);
+  const accessoryTriple = idsForTraitCount(combo, "Accessory", 3);
+  if (expressionPair.length && accessoryTriple.length) return new Set([...expressionPair, ...accessoryTriple]);
+
+  if (allShareTrait(combo, "Gender") || allShareTrait(combo, "Age")) return new Set(combo.map((card) => card.id));
+
+  const eyeTrips = idsForTraitCount(combo, "Eyes", 3);
+  if (eyeTrips.length) return new Set(eyeTrips);
+
+  if (expressionPair.length) return new Set(expressionPair);
+
+  return new Set<number>();
+}
+
 export function PokerGame() {
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4">
@@ -177,7 +237,7 @@ function PokerPvP() {
     return normalizePokerRoomCode(new URLSearchParams(window.location.search).get("pokerRoom") ?? "") ? "join" : "create";
   });
   const { connected, connect, clearError, disconnect, error, errorMeta, nextHand, playerId, state, submitAction, toggleReady } = usePokerPvp(`poker-${roomCode.toLowerCase()}`);
-  const { ready, authenticated, getAccessToken, login } = usePrivy();
+  const { ready, authenticated, getAccessToken, login, user } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
   const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
@@ -185,8 +245,9 @@ function PokerPvP() {
   const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
   const notify = useArcadeStore((store) => store.notify);
   const setBalance = useChipStore((store) => store.setBalance);
+  const accountKey = user?.id ?? user?.wallet?.address ?? null;
   const you = state.players.find((player) => player.id === playerId);
-  const privateHand = state.privateHand ?? [];
+  const privateHand = useMemo(() => state.privateHand ?? [], [state.privateHand]);
   const streetLabel = state.street ? state.street.toUpperCase() : "WAITING";
   const readyCount = state.players.filter((player) => player.connected && player.ready).length;
   const connectedCount = state.players.filter((player) => player.connected).length;
@@ -204,6 +265,14 @@ function PokerPvP() {
       ? `Insufficient chips for poker buy-in. Required ${errorMeta?.buyIn ?? state.buyIn}, server balance ${errorMeta?.balance ?? "unknown"}.`
       : error;
   const reconnectAttempted = useRef(false);
+  const visiblePokerCardIds = useMemo(() => [...privateHand, ...state.communityCards].filter((id) => typeof id === "number"), [privateHand, state.communityCards]);
+  const visibleTraitsById = useNormieTraitsById(visiblePokerCardIds);
+  const highlightedCardIds = useMemo(() => {
+    const cards = visiblePokerCardIds
+      .map((id) => ({ id, traits: visibleTraitsById[id] }))
+      .filter((card): card is TraitCard => Boolean(card.traits));
+    return findComboHighlightIds(cards);
+  }, [visiblePokerCardIds, visibleTraitsById]);
 
   useEffect(() => {
     if (typeof window === "undefined" || reconnectAttempted.current || connected || !ready || !authenticated) return;
@@ -225,6 +294,7 @@ function PokerPvP() {
         connect({
           privyToken: token,
           ante: state.buyIn,
+          accountKey,
           name: displayName || username,
           isNormieHolder,
           selectedNormieId: selectedNormieId ?? null,
@@ -235,7 +305,7 @@ function PokerPvP() {
     } catch {
       window.sessionStorage.removeItem(POKER_RECONNECT_KEY);
     }
-  }, [authenticated, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, state.buyIn, username]);
+  }, [accountKey, authenticated, connect, connected, displayName, getAccessToken, isNormieHolder, notify, ready, selectedNormieId, selectedNormieImage, state.buyIn, username]);
 
   useEffect(() => {
     if (error?.toLowerCase().includes("full")) {
@@ -292,6 +362,7 @@ function PokerPvP() {
     connect({
       privyToken: token,
       ante: state.buyIn,
+      accountKey,
       name: displayName || username,
       isNormieHolder,
       selectedNormieId: selectedNormieId ?? null,
@@ -423,19 +494,24 @@ function PokerPvP() {
       <PokerTable
         communityIds={state.communityCards}
         currentBet={state.currentBet}
+        highlightedCardIds={highlightedCardIds}
         maxPlayers={state.maxPlayers}
         phase={state.phase}
         playerId={playerId}
         players={state.players}
         pot={state.pot}
         privateIds={privateHand}
+        showdownWinnerIds={state.showdown?.winners ?? []}
         streetLabel={streetLabel}
         turnPlayerId={state.turnPlayerId}
       />
+      <PokerSeatLegend />
 
       {state.phase === "dealt" || state.phase === "betting" ? (
-        <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} />
+        <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} traitsById={visibleTraitsById} />
       ) : null}
+
+      <PokerActionTimeline actionLog={state.actionLog} />
 
       {state.phase === "betting" ? (
         <PokerBettingControls
@@ -621,26 +697,36 @@ type PokerSeatPlayer = {
   avatarUrl?: string | null;
 };
 
+type ChipFlight = {
+  id: string;
+  amount: number;
+  seat: number;
+};
+
 function PokerTable({
   communityIds,
   currentBet,
+  highlightedCardIds,
   maxPlayers,
   phase,
   playerId,
   players,
   pot,
   privateIds,
+  showdownWinnerIds,
   streetLabel,
   turnPlayerId
 }: {
   communityIds: number[];
   currentBet: number;
+  highlightedCardIds: Set<number>;
   maxPlayers: number;
   phase: string;
   playerId: string | null;
   players: PokerSeatPlayer[];
   pot: number;
   privateIds: number[];
+  showdownWinnerIds: string[];
   streetLabel: string;
   turnPlayerId?: string;
 }) {
@@ -651,12 +737,78 @@ function PokerTable({
     "left-10 bottom-10",
     "left-4 top-16"
   ];
+  const [chipFlights, setChipFlights] = useState<ChipFlight[]>([]);
+  const [revealedCommunityIds, setRevealedCommunityIds] = useState<Set<number>>(new Set());
+  const previousCommittedRef = useRef<Record<string, number> | null>(null);
+  const previousCommunityRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    const nextCommitted = players.reduce<Record<string, number>>((next, player) => {
+      next[player.id] = player.committed ?? 0;
+      return next;
+    }, {});
+
+    const previousCommitted = previousCommittedRef.current;
+    if (!previousCommitted) {
+      previousCommittedRef.current = nextCommitted;
+      return;
+    }
+
+    const newFlights = players
+      .map((player) => {
+        const previous = previousCommitted[player.id] ?? 0;
+        const current = player.committed ?? 0;
+        const amount = current - previous;
+        if (amount <= 0) return null;
+        return {
+          id: `${player.id}-${current}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          amount,
+          seat: player.seat
+        };
+      })
+      .filter((flight): flight is ChipFlight => Boolean(flight));
+
+    previousCommittedRef.current = nextCommitted;
+
+    if (!newFlights.length) return;
+
+    setChipFlights((current) => [...current, ...newFlights]);
+    const cleanup = window.setTimeout(() => {
+      setChipFlights((current) => current.filter((flight) => !newFlights.some((newFlight) => newFlight.id === flight.id)));
+    }, 950);
+
+    return () => window.clearTimeout(cleanup);
+  }, [players, pot]);
+
+  useEffect(() => {
+    const nextIds = new Set(communityIds.filter((id) => typeof id === "number"));
+    const previousIds = previousCommunityRef.current;
+    const newIds = [...nextIds].filter((id) => !previousIds.has(id));
+    previousCommunityRef.current = nextIds;
+
+    if (!newIds.length) {
+      if (!nextIds.size) setRevealedCommunityIds(new Set());
+      return;
+    }
+
+    setRevealedCommunityIds((current) => new Set([...current, ...newIds]));
+    const cleanup = window.setTimeout(() => {
+      setRevealedCommunityIds((current) => {
+        const next = new Set(current);
+        newIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, 720);
+
+    return () => window.clearTimeout(cleanup);
+  }, [communityIds]);
 
   return (
     <div className="mx-auto mt-6 w-full max-w-6xl">
       <div className="relative min-h-[34rem] overflow-visible border border-paper/45 bg-black/70 p-4 shadow-neon">
         <div className="absolute inset-x-10 top-20 bottom-20 rounded-[50%] border-[10px] border-paper/20 bg-[radial-gradient(ellipse_at_center,rgba(18,96,70,0.9),rgba(4,18,14,0.96)_62%,rgba(0,0,0,0.96))] shadow-[inset_0_0_60px_rgba(255,255,255,0.08)]" />
         <div className="absolute inset-x-24 top-32 bottom-32 rounded-[50%] border border-mint/20" />
+        <ChipFlightLayer flights={chipFlights} />
 
         <div className="absolute left-1/2 top-1/2 z-10 w-full max-w-xl -translate-x-1/2 -translate-y-1/2 px-6 text-center">
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint/65">
@@ -664,7 +816,14 @@ function PokerTable({
           </div>
           <div className="mt-4 grid grid-cols-5 gap-2">
             {Array.from({ length: 5 }, (_, index) => (
-              <TableNormieCard key={`${index}-${communityIds[index] ?? "hidden"}`} normieId={communityIds[index]} label={`B${index + 1}`} compact />
+              <TableNormieCard
+                key={`${index}-${communityIds[index] ?? "hidden"}`}
+                highlighted={communityIds[index] !== undefined && highlightedCardIds.has(communityIds[index])}
+                revealed={communityIds[index] !== undefined && revealedCommunityIds.has(communityIds[index])}
+                normieId={communityIds[index]}
+                label={`B${index + 1}`}
+                compact
+              />
             ))}
           </div>
         </div>
@@ -678,8 +837,10 @@ function PokerTable({
                 isYou={player?.id === playerId}
                 phase={phase}
                 player={player}
+                highlightedCardIds={highlightedCardIds}
                 privateIds={player?.id === playerId ? privateIds : []}
                 seat={seat}
+                showdownWinnerIds={showdownWinnerIds}
               />
             </div>
           );
@@ -689,30 +850,141 @@ function PokerTable({
   );
 }
 
+function PokerSeatLegend() {
+  const states = [
+    { label: "Ready", className: "border-mint/55 bg-mint/10 text-mint" },
+    { label: "Acting", className: "border-mint bg-black text-mint shadow-neon" },
+    { label: "Folded", className: "border-magenta/50 bg-magenta/10 text-magenta" },
+    { label: "Offline", className: "border-paper/20 bg-black/55 text-paper/40" },
+    { label: "Winner", className: "border-mint bg-mint/15 text-mint shadow-neon" }
+  ];
+
+  return (
+    <div className="mx-auto mt-3 flex max-w-5xl flex-wrap justify-center gap-2">
+      {states.map((state) => (
+        <div key={state.label} className={`border px-2 py-1 text-[10px] uppercase tracking-widest ${state.className}`}>
+          {state.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChipFlightLayer({ flights }: { flights: ChipFlight[] }) {
+  const seatOrigins: Array<{ left: string; top: string }> = [
+    { left: "50%", top: "18%" },
+    { left: "82%", top: "34%" },
+    { left: "78%", top: "76%" },
+    { left: "22%", top: "76%" },
+    { left: "18%", top: "34%" }
+  ];
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+      {flights.map((flight, index) => {
+        const origin = seatOrigins[flight.seat] ?? seatOrigins[0];
+        const style =
+          {
+            "--chip-from-left": origin.left,
+            "--chip-from-top": origin.top,
+            animationDelay: `${index * 45}ms`
+          } as CSSProperties;
+
+        return (
+          <div key={flight.id} className="chip-flight" style={style}>
+            <div className="grid h-8 w-8 place-items-center rounded-full border-2 border-paper bg-black text-[8px] font-semibold text-mint shadow-neon">
+              +{flight.amount}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function PokerTableSeat({
+  highlightedCardIds,
   isTurn,
   isYou,
   phase,
   player,
   privateIds,
-  seat
+  seat,
+  showdownWinnerIds
 }: {
+  highlightedCardIds: Set<number>;
   isTurn: boolean;
   isYou: boolean;
   phase: string;
   player?: PokerSeatPlayer;
   privateIds: number[];
   seat: number;
+  showdownWinnerIds: string[];
 }) {
   const activeHand = phase === "dealt" || phase === "betting" || phase === "showdown";
-  const status = player
-    ? player.folded
+  const isWinner = Boolean(player && showdownWinnerIds.includes(player.id));
+  const seatState = !player
+    ? "open"
+    : isWinner
+    ? "winner"
+    : player.folded
+    ? "folded"
+    : !player.connected
+    ? "offline"
+    : isTurn
+    ? "acting"
+    : player.ready
+    ? "ready"
+    : player.lastAction
+    ? "acted"
+    : "seated";
+  const status =
+    seatState === "open"
+      ? "OPEN"
+      : seatState === "winner"
+      ? "WINNER"
+      : seatState === "folded"
       ? "FOLD"
-      : player.lastAction ?? (isTurn ? "TURN" : player.ready ? "READY" : player.connected ? "SEATED" : "OFFLINE")
-    : "OPEN";
+      : seatState === "offline"
+      ? "OFFLINE"
+      : seatState === "acting"
+      ? "ACTING"
+      : seatState === "ready"
+      ? "READY"
+      : player?.lastAction ?? "SEATED";
+  const seatStyles = {
+    open: "border-paper/20 bg-black/45 opacity-75",
+    seated: isYou ? "border-cyan bg-black/85" : "border-paper/35 bg-black/85",
+    ready: "border-mint/55 bg-mint/10 shadow-neon",
+    acting: "animate-pulse border-mint bg-black/90 shadow-[0_0_34px_rgba(34,255,225,0.45)] ring-2 ring-mint/45",
+    folded: "border-magenta/45 bg-magenta/10 opacity-70",
+    offline: "border-paper/20 bg-black/65 grayscale opacity-55",
+    acted: "border-paper/40 bg-black/85",
+    winner: "border-mint bg-mint/15 shadow-neon ring-2 ring-mint/55"
+  }[seatState];
+  const badgeStyles = {
+    open: "border-paper/25 text-paper/45",
+    seated: "border-paper/30 text-paper/55",
+    ready: "border-mint/50 text-mint",
+    acting: "border-mint bg-mint/10 text-mint shadow-neon",
+    folded: "border-magenta/50 text-magenta",
+    offline: "border-paper/20 text-paper/35",
+    acted: "border-cyan/40 text-cyan",
+    winner: "border-mint bg-mint/15 text-mint shadow-neon"
+  }[seatState];
 
   return (
-    <div className={`w-56 border bg-black/85 p-3 text-center ${isTurn ? "border-mint shadow-neon" : isYou ? "border-cyan" : "border-paper/35"}`}>
+    <div
+      className={`relative w-56 border p-3 text-center transition ${seatStyles}`}
+    >
+      {isTurn || isWinner ? (
+        <>
+          <div className="pointer-events-none absolute -inset-2 border border-mint/30 shadow-neon" />
+          <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 border border-mint bg-black px-3 py-1 font-display text-[10px] uppercase tracking-[0.22em] text-mint shadow-neon">
+            {isWinner ? "Winner" : "Acting"}
+          </div>
+        </>
+      ) : null}
       <div className="flex items-center gap-2">
         <div className="grid h-12 w-12 shrink-0 place-items-center border border-paper/35 bg-paper">
           {player?.avatarUrl ? (
@@ -725,7 +997,7 @@ function PokerTableSeat({
           <div className="truncate text-sm text-paper">{player?.name ?? `Seat ${seat + 1}`}</div>
           <div className="text-[10px] uppercase tracking-widest text-paper/45">Stack {player?.stack ?? "--"}</div>
         </div>
-        <div className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${status === "FOLD" ? "border-magenta/50 text-magenta" : "border-mint/45 text-mint"}`}>
+        <div className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${badgeStyles}`}>
           {status}
         </div>
       </div>
@@ -734,7 +1006,13 @@ function PokerTableSeat({
         {activeHand ? (
           Array.from({ length: 2 }, (_, index) =>
             isYou ? (
-              <TableNormieCard key={index} normieId={privateIds[index]} label={`H${index + 1}`} compact />
+              <TableNormieCard
+                key={index}
+                highlighted={privateIds[index] !== undefined && highlightedCardIds.has(privateIds[index])}
+                normieId={privateIds[index]}
+                label={`H${index + 1}`}
+                compact
+              />
             ) : (
               <CardBack key={index} />
             )
@@ -760,13 +1038,25 @@ function CardBack() {
   );
 }
 
-function TableNormieCard({ normieId, label, compact }: { normieId?: number; label: string; compact?: boolean }) {
+function TableNormieCard({
+  normieId,
+  label,
+  compact,
+  highlighted,
+  revealed
+}: {
+  normieId?: number;
+  label: string;
+  compact?: boolean;
+  highlighted?: boolean;
+  revealed?: boolean;
+}) {
   return (
     <NormieTraitPopover normieId={normieId}>
       <div
         className={`border border-paper/35 bg-black/80 p-1 text-center ${compact ? "w-16" : "w-24"} ${
           normieId !== undefined ? "cursor-pointer hover:border-mint" : ""
-        }`}
+        } ${highlighted ? "animate-pulse border-mint shadow-neon ring-1 ring-mint/45" : ""} ${revealed ? "community-card-reveal" : ""}`}
       >
         <div className={`grid place-items-center border border-paper/25 bg-paper ${compact ? "h-16 w-14" : "h-24 w-20"}`}>
           {normieId !== undefined ? (
@@ -794,6 +1084,7 @@ function NormieTraitPopover({
   normieId?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [traits, setTraits] = useState<NormieTraits | null>(initialTraits ?? null);
   const [error, setError] = useState("");
@@ -805,7 +1096,7 @@ function NormieTraitPopover({
   }, [initialTraits]);
 
   useEffect(() => {
-    if (!open || normieId === undefined || traits || error) return;
+    if ((!open && !hovered) || normieId === undefined || traits || error) return;
 
     let active = true;
     setLoading(true);
@@ -824,7 +1115,7 @@ function NormieTraitPopover({
     return () => {
       active = false;
     };
-  }, [error, normieId, open, traits]);
+  }, [error, hovered, normieId, open, traits]);
 
   if (normieId === undefined) return <>{children}</>;
 
@@ -835,8 +1126,21 @@ function NormieTraitPopover({
       aria-expanded={open}
       aria-label={`Inspect Normie #${normieId} traits`}
       onClick={() => setOpen((value) => !value)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {children}
+      {hovered && !open ? (
+        <div className="pointer-events-none absolute left-1/2 top-full z-40 mt-2 w-44 -translate-x-1/2 border border-paper/35 bg-black/90 p-2 text-center shadow-neon">
+          {loading ? (
+            <div className="text-[10px] text-paper/55">Reading traits...</div>
+          ) : error ? (
+            <div className="text-[10px] text-magenta">{error}</div>
+          ) : (
+            <TraitPreview traits={traits} />
+          )}
+        </div>
+      ) : null}
       {open ? (
         <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 border border-mint/55 bg-black/95 p-3 shadow-neon">
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint">Normie #{normieId}</div>
@@ -846,6 +1150,21 @@ function NormieTraitPopover({
         </div>
       ) : null}
     </button>
+  );
+}
+
+function TraitPreview({ traits }: { traits?: NormieTraits | null }) {
+  const preview = [
+    traits?.Expression ? `Exp ${traits.Expression}` : "",
+    traits?.Eyes ? `Eyes ${traits.Eyes}` : "",
+    traits?.Accessory ? `Acc ${traits.Accessory}` : ""
+  ].filter(Boolean);
+
+  return (
+    <div className="space-y-1 text-[10px] leading-3 text-paper/70">
+      <div className="terminal-hash uppercase tracking-[0.18em] text-mint/70">Trait Peek</div>
+      <div>{preview.length ? preview.join(" // ") : "No traits loaded."}</div>
+    </div>
   );
 }
 
@@ -875,25 +1194,47 @@ function PokerShowdownPanel({
   playerId: string | null;
   onNextHand: () => void;
 }) {
+  const youWon = showdown.winners.includes(playerId ?? "");
+  const winnerNames = showdown.hands
+    .filter((hand) => showdown.winners.includes(hand.playerId))
+    .map((hand) => hand.playerName)
+    .join(" / ");
+
   return (
-    <div className="mx-auto mt-6 w-full max-w-5xl border border-paper/50 bg-black/75 p-4 shadow-neon">
-      <div className="text-center">
-        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Showdown</div>
-        <h3 className="mt-1 font-display text-lg uppercase tracking-[0.22em] text-paper">
-          {showdown.winners.includes(playerId ?? "") ? "You Won The Pot" : "Pot Resolved"}
-        </h3>
-        <div className="mt-2 text-sm text-paper/70">
-          Pot {showdown.pot} chips. {showdown.winners.length > 1 ? `Split payout ${showdown.payoutEach} each.` : `Winner payout ${showdown.payoutEach}.`}
+    <div className={`mx-auto mt-6 w-full max-w-5xl border bg-black/80 p-4 ${youWon ? "border-mint shadow-neon" : "border-paper/50 shadow-neon"}`}>
+      <div className={`relative overflow-hidden border p-4 text-center ${youWon ? "border-mint/70 bg-mint/10" : "border-paper/30 bg-paper/5"}`}>
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,255,225,0.18),transparent_58%)]" />
+        <div className="relative">
+          <div className="mx-auto grid h-10 w-10 place-items-center border border-mint/60 bg-black text-mint shadow-neon">
+            <Trophy size={20} />
+          </div>
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Showdown</div>
+          <h3 className={`mt-2 font-display text-xl uppercase tracking-[0.24em] ${youWon ? "text-mint" : "text-paper"}`}>
+            {youWon ? "You Won The Pot" : "Pot Resolved"}
+          </h3>
+          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-paper/55">Winner: {winnerNames || "Pending"}</div>
+          <div className="mt-2 text-sm text-paper/70">
+            Pot {showdown.pot} chips. {showdown.winners.length > 1 ? `Split payout ${showdown.payoutEach} each.` : `Winner payout ${showdown.payoutEach}.`}
+          </div>
         </div>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {showdown.hands.map((hand) => {
           const winner = showdown.winners.includes(hand.playerId);
           return (
-            <div key={hand.playerId} className={`border bg-black/70 p-3 ${winner ? "border-mint shadow-neon" : "border-paper/30"}`}>
+            <div
+              key={hand.playerId}
+              className={`relative border bg-black/70 p-3 transition ${
+                winner ? "scale-[1.01] border-mint shadow-neon ring-1 ring-mint/45" : "border-paper/20 opacity-55 grayscale"
+              }`}
+            >
+              {winner ? (
+                <div className="pointer-events-none absolute -inset-1 border border-mint/30 shadow-neon" />
+              ) : null}
               <div className="flex items-center justify-between gap-3">
                 <div className="truncate text-sm text-paper">{hand.playerName}</div>
-                <div className={`text-[10px] uppercase tracking-widest ${winner ? "text-mint" : "text-paper/45"}`}>
+                <div className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-widest ${winner ? "text-mint" : "text-paper/45"}`}>
+                  {winner ? <Trophy size={12} /> : null}
                   {winner ? "Winner" : "Settled"}
                 </div>
               </div>
@@ -963,9 +1304,50 @@ function PokerHandHistory({
   );
 }
 
-function LivePokerHints({ privateIds, communityIds }: { privateIds: number[]; communityIds: number[] }) {
+function PokerActionTimeline({
+  actionLog
+}: {
+  actionLog: Array<{
+    id: string;
+    round: number;
+    street?: string;
+    playerName?: string;
+    action: string;
+    amount?: number;
+    message: string;
+  }>;
+}) {
+  if (!actionLog.length) return null;
+
+  return (
+    <div className="mx-auto mt-5 w-full max-w-5xl border border-paper/25 bg-black/55 p-3">
+      <div className="terminal-hash text-center text-[10px] uppercase tracking-[0.22em] text-pixel/60">Action Timeline</div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {actionLog.slice(0, 8).map((entry) => (
+          <div key={entry.id} className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-2 border border-paper/15 bg-black/65 px-3 py-2 text-xs">
+            <span className="terminal-hash truncate uppercase tracking-widest text-pixel/50">{entry.street ?? `R${entry.round}`}</span>
+            <span className="truncate text-paper/75">{entry.message}</span>
+            <span
+              className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${
+                entry.action === "FOLD"
+                  ? "border-magenta/50 text-magenta"
+                  : entry.action === "RAISE" || entry.action === "SHOWDOWN"
+                  ? "border-mint/50 text-mint"
+                  : "border-paper/25 text-paper/55"
+              }`}
+            >
+              {entry.action}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function useNormieTraitsById(ids: number[]) {
   const [traitsById, setTraitsById] = useState<Record<number, NormieTraits>>({});
-  const visibleKey = [...privateIds, ...communityIds].filter((id) => typeof id === "number").join("-");
+  const visibleKey = ids.filter((id) => typeof id === "number").join("-");
   const visibleIds = useMemo(() => (visibleKey ? visibleKey.split("-").map((id) => Number(id)) : []), [visibleKey]);
 
   useEffect(() => {
@@ -995,6 +1377,11 @@ function LivePokerHints({ privateIds, communityIds }: { privateIds: number[]; co
     };
   }, [visibleIds, visibleKey]);
 
+  return traitsById;
+}
+
+function LivePokerHints({ privateIds, communityIds, traitsById }: { privateIds: number[]; communityIds: number[]; traitsById: Record<number, NormieTraits> }) {
+  const visibleIds = useMemo(() => [...privateIds, ...communityIds].filter((id) => typeof id === "number"), [privateIds, communityIds]);
   const yourTraits = visibleIds.map((id) => traitsById[id]).filter((traits): traits is NormieTraits => Boolean(traits));
   const boardTraits = communityIds.map((id) => traitsById[id]).filter((traits): traits is NormieTraits => Boolean(traits));
   const yourBest = yourTraits.length ? evaluateBestVisibleCombo(yourTraits) : null;

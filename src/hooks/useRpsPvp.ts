@@ -9,8 +9,12 @@ type ServerMessage =
   | { type: "full"; message: string }
   | { type: "error"; message: string };
 
-function getOrCreatePlayerId() {
-  const key = "normie-rps-player-id";
+function normalizeAccountKey(accountKey?: string | null) {
+  return accountKey?.trim().toLowerCase().replace(/[^a-z0-9:_-]/g, "-") || "guest";
+}
+
+function getOrCreatePlayerId(accountKey?: string | null) {
+  const key = `normie-rps-player-id:${normalizeAccountKey(accountKey)}`;
   const existing = window.sessionStorage.getItem(key);
   if (existing) return existing;
 
@@ -26,6 +30,7 @@ function getPlayerName(playerId: string) {
 type JoinOptions = {
   privyToken: string;
   bet: number;
+  accountKey?: string | null;
   name?: string | null;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
@@ -51,7 +56,7 @@ export function useRpsPvp(room = "rps-quickplay") {
       return;
     }
 
-    const nextPlayerId = getOrCreatePlayerId();
+    const nextPlayerId = getOrCreatePlayerId(options.accountKey);
     setPlayerId(nextPlayerId);
     setError(null);
 
