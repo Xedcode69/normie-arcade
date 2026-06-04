@@ -101,6 +101,10 @@ export function SortSprintGame() {
   }, [loadMore, phase, queue.length]);
 
   useEffect(() => {
+    if (phase === "loading" && current) setPhase("running");
+  }, [current, phase]);
+
+  useEffect(() => {
     if (phase !== "running") return undefined;
 
     const interval = window.setInterval(() => {
@@ -133,7 +137,7 @@ export function SortSprintGame() {
       return;
     }
 
-    setPhase("loading");
+    setPhase(current ? "running" : "loading");
     setTimeLeft(settings.seconds);
     setRule("Expression");
     setSortsOnRule(0);
@@ -142,7 +146,7 @@ export function SortSprintGame() {
     setMistakes(0);
     setMessage("Sorting belt online. First rule: Expression.");
     setLastResult("Shift started.");
-    void loadMore().then(() => setPhase("running"));
+    if (!current || queue.length < 4) void loadMore();
   }
 
   function reset() {
