@@ -24,63 +24,66 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, alreadySettled: true, balance: session.user.chipAccount.balance });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const chipAccount =
-        payload.payout > 0
-          ? await tx.chipAccount.update({
-              where: { userId: session.userId ?? "" },
-              data: {
-                balance: { increment: payload.payout },
-                streak: payload.outcome === "WIN" ? { increment: 1 } : undefined,
-                multiplier: payload.outcome === "WIN" ? { increment: 0.1 } : undefined
-              }
-            })
-          : await tx.chipAccount.update({
-              where: { userId: session.userId ?? "" },
-              data: {
-                streak: 0,
-                multiplier: 1
-              }
-            });
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const chipAccount =
+          payload.payout > 0
+            ? await tx.chipAccount.update({
+                where: { userId: session.userId ?? "" },
+                data: {
+                  balance: { increment: payload.payout },
+                  streak: payload.outcome === "WIN" ? { increment: 1 } : undefined,
+                  multiplier: payload.outcome === "WIN" ? { increment: 0.1 } : undefined
+                }
+              })
+            : await tx.chipAccount.update({
+                where: { userId: session.userId ?? "" },
+                data: {
+                  streak: 0,
+                  multiplier: 1
+                }
+              });
 
-      await tx.gameSession.update({
-        where: { id: session.id },
-        data: {
+        await tx.gameSession.update({
+          where: { id: session.id },
+          data: {
+            outcome: payload.outcome,
+            payout: payload.payout,
+            completedAt: new Date(),
+            metadata: {
+              mode: "pvp",
+              roomId: payload.roomId,
+              matchId: payload.matchId,
+              playerId: payload.playerId,
+              handName: payload.handName,
+              score: payload.score
+            }
+          }
+        });
+
+        await recordLeaderboardResult(tx, session.userId ?? "", {
+          privyToken: payload.privyToken,
+          game: "POKER",
+          mode: "PVP",
           outcome: payload.outcome,
-          payout: payload.payout,
-          completedAt: new Date(),
+          score: payload.outcome === "WIN" ? 1 : 0,
+          chipsWon: payload.payout,
+          netChips: payload.payout - session.bet,
+          bestCombo: 0,
           metadata: {
-            mode: "pvp",
             roomId: payload.roomId,
             matchId: payload.matchId,
             playerId: payload.playerId,
             handName: payload.handName,
-            score: payload.score
+            score: payload.score,
+            reservedChips: session.bet
           }
-        }
-      });
+        });
 
-      await recordLeaderboardResult(tx, session.userId ?? "", {
-        privyToken: payload.privyToken,
-        game: "POKER",
-        mode: "PVP",
-        outcome: payload.outcome,
-        score: payload.outcome === "WIN" ? 1 : 0,
-        chipsWon: payload.payout,
-        netChips: payload.payout - session.bet,
-        bestCombo: 0,
-        metadata: {
-          roomId: payload.roomId,
-          matchId: payload.matchId,
-          playerId: payload.playerId,
-          handName: payload.handName,
-          score: payload.score,
-          reservedChips: session.bet
-        }
-      });
-
-      return { balance: chipAccount.balance, payout: payload.payout };
-    });
+        return { balance: chipAccount.balance, payout: payload.payout };
+      },
+      { maxWait: 15_000, timeout: 30_000 }
+    );
 
     return NextResponse.json({ ok: true, balance: result.balance, payout: result.payout });
   } catch (error) {

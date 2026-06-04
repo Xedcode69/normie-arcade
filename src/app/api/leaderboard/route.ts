@@ -74,18 +74,21 @@ export async function POST(request: Request) {
   try {
     const privyId = await verifyPrivyToken(payload.data.privyToken);
 
-    await prisma.$transaction(async (tx) => {
-      const user = await tx.user.upsert({
-        where: { privyId },
-        create: {
-          privyId,
-          chipAccount: { create: {} }
-        },
-        update: {}
-      });
+    await prisma.$transaction(
+      async (tx) => {
+        const user = await tx.user.upsert({
+          where: { privyId },
+          create: {
+            privyId,
+            chipAccount: { create: {} }
+          },
+          update: {}
+        });
 
-      await recordLeaderboardResult(tx, user.id, payload.data);
-    });
+        await recordLeaderboardResult(tx, user.id, payload.data);
+      },
+      { maxWait: 15_000, timeout: 30_000 }
+    );
 
     return NextResponse.json({ ok: true });
   } catch (error) {
