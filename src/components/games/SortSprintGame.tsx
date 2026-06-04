@@ -18,14 +18,16 @@ const modes = {
 
 const fallbackRuleLabels = {
   Expression: [],
-  Age: ["Young", "Middle-Aged", "Old"]
+  Age: ["Young", "Middle-Aged", "Old"],
+  "Facial Feature": [],
+  "Hair Style": []
 } as const;
 
 type Mode = keyof typeof modes;
 type Rule = keyof typeof fallbackRuleLabels;
 type Phase = "idle" | "loading" | "running" | "won" | "lost";
 
-const rules: Rule[] = ["Expression", "Age"];
+const rules: Rule[] = ["Expression", "Age", "Facial Feature", "Hair Style"];
 
 function displayTrait(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : "Unknown";
