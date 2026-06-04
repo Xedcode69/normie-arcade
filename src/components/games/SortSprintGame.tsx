@@ -16,14 +16,14 @@ const modes = {
   hard: { label: "Hard", seconds: 35, target: 20, payout: 7, ruleEvery: 3 }
 } as const;
 
-const ruleLabels = {
+const fallbackRuleLabels = {
   Type: ["Human", "Cat", "Alien", "Agent"],
-  Expression: ["Smile", "Frown", "Angry", "Surprised", "Neutral", "Smirk", "Sleepy"],
+  Expression: [],
   Age: ["Young", "Middle-Aged", "Old"]
 } as const;
 
 type Mode = keyof typeof modes;
-type Rule = keyof typeof ruleLabels;
+type Rule = keyof typeof fallbackRuleLabels;
 type Phase = "idle" | "loading" | "running" | "won" | "lost";
 
 const rules: Rule[] = ["Type", "Expression", "Age"];
@@ -35,6 +35,17 @@ function displayTrait(value: unknown) {
 function nextRule(current: Rule) {
   const index = rules.indexOf(current);
   return rules[(index + 1) % rules.length];
+}
+
+function buildBins(rule: Rule, current: Normie | null, queue: Normie[]) {
+  const liveValues = [current, ...queue]
+    .map((normie) => displayTrait(normie?.traits[rule]))
+    .filter((value) => value !== "Unknown");
+  const values = Array.from(new Set([...liveValues, ...fallbackRuleLabels[rule]]));
+  const expected = current ? displayTrait(current.traits[rule]) : "";
+  const compact = values.filter((value) => value === expected || value !== "Unknown").slice(0, 8);
+
+  return expected && !compact.includes(expected) ? [expected, ...compact.slice(0, 7)] : compact;
 }
 
 export function SortSprintGame() {
@@ -58,7 +69,7 @@ export function SortSprintGame() {
   const notify = useArcadeStore((state) => state.notify);
   const settings = modes[mode];
 
-  const bins = useMemo(() => ruleLabels[rule], [rule]);
+  const bins = useMemo(() => buildBins(rule, current, queue), [current, queue, rule]);
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current) return;
