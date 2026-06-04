@@ -17,7 +17,6 @@ const modes = {
 } as const;
 
 const fallbackRuleLabels = {
-  Type: ["Human", "Cat", "Alien", "Agent"],
   Expression: [],
   Age: ["Young", "Middle-Aged", "Old"]
 } as const;
@@ -26,7 +25,7 @@ type Mode = keyof typeof modes;
 type Rule = keyof typeof fallbackRuleLabels;
 type Phase = "idle" | "loading" | "running" | "won" | "lost";
 
-const rules: Rule[] = ["Type", "Expression", "Age"];
+const rules: Rule[] = ["Expression", "Age"];
 
 function displayTrait(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : "Unknown";
@@ -53,7 +52,7 @@ export function SortSprintGame() {
   const [bet, setBet] = useState(100);
   const [phase, setPhase] = useState<Phase>("idle");
   const [timeLeft, setTimeLeft] = useState<number>(modes.medium.seconds);
-  const [rule, setRule] = useState<Rule>("Type");
+  const [rule, setRule] = useState<Rule>("Expression");
   const [sortsOnRule, setSortsOnRule] = useState(0);
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
@@ -134,12 +133,12 @@ export function SortSprintGame() {
 
     setPhase("loading");
     setTimeLeft(settings.seconds);
-    setRule("Type");
+    setRule("Expression");
     setSortsOnRule(0);
     setScore(0);
     setCombo(0);
     setMistakes(0);
-    setMessage("Sorting belt online. First rule: Type.");
+    setMessage("Sorting belt online. First rule: Expression.");
     setLastResult("Shift started.");
     void loadMore().then(() => setPhase("running"));
   }
@@ -147,7 +146,7 @@ export function SortSprintGame() {
   function reset() {
     setPhase("idle");
     setTimeLeft(settings.seconds);
-    setRule("Type");
+    setRule("Expression");
     setSortsOnRule(0);
     setScore(0);
     setCombo(0);
