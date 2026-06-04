@@ -41,6 +41,7 @@ function LobbyScene() {
     rps: -2,
     poker: 2,
     updown: 6,
+    sort: 0,
     lobby: 0
   } satisfies Record<typeof activeGame, number>;
 
@@ -55,7 +56,7 @@ function LobbyScene() {
       camera.position.x += (targetX - camera.position.x) * 0.035;
       camera.position.y = 6.2 + Math.sin(clock.elapsedTime * 0.4) * 0.08;
       camera.position.z += (12 - camera.position.z) * 0.04;
-      camera.lookAt(targetX * 0.25, 0.7, activeGame === "poker" ? -0.55 : 0);
+      camera.lookAt(targetX * 0.25, 0.7, activeGame === "poker" || activeGame === "sort" ? -0.55 : 0);
     }
     if (rig.current) rig.current.rotation.y = Math.sin(clock.elapsedTime * 0.08) * 0.015;
   });
@@ -76,14 +77,16 @@ function LobbyScene() {
       <GameTable id="rps" label="Type RPS Arena" position={[-2, 0.72, -0.8]} accent="#ff43cf" dealer={dealers[1]} />
       <GameTable id="poker" label="DNA Poker" position={[2, 0.72, -0.8]} accent="#f4f1e8" dealer={dealers[2]} />
       <GameTable id="updown" label="Up or Down" position={[6, 0.72, 0]} accent="#d7ff35" dealer={dealers[3]} />
-      <Cashier normie={dealers[4]?.normie ?? loadedNormies[4]} />
+      <GameTable id="sort" label="Sort Sprint" position={[0, 0.72, 2.25]} accent="#35ff8f" dealer={dealers[4]} />
+      <Cashier normie={dealers[5]?.normie ?? loadedNormies[4]} />
       <PlayerAvatar />
-      {dealers.slice(0, 4).map((dealer, index) => {
+      {dealers.slice(0, 5).map((dealer, index) => {
         const positions: Array<[number, number, number]> = [
           [-6, 1.42, -1.35],
           [-2, 1.42, -2.15],
           [2, 1.42, -2.15],
-          [6, 1.42, -1.35]
+          [6, 1.42, -1.35],
+          [0, 1.42, 0.9]
         ];
 
         return <NormieDealer key={dealer.role} dealer={dealer} position={positions[index]} />;

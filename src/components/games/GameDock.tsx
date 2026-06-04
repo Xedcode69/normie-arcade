@@ -10,6 +10,7 @@ import { RouletteGame } from "./RouletteGame";
 import { RPSGame } from "./RPSGame";
 import { PokerGame } from "./PokerGame";
 import { UpDownGame } from "./UpDownGame";
+import { SortSprintGame } from "./SortSprintGame";
 
 const instructions = {
   roulette: {
@@ -65,6 +66,15 @@ const instructions = {
       "Choose Easy, Medium, or Hard, then set your chip bet.",
       "Predict whether the next fetched Normie ID is higher or lower than the current base.",
       "Survive the target number of predictions to win the mode payout."
+    ]
+  },
+  sort: {
+    title: "Normie Sort Sprint",
+    lines: [
+      "Choose a speed, place chips, then start the sorting shift.",
+      "Read the active rule and send each live Normie to the matching trait bin.",
+      "The rule changes during the run. Correct sorts build combo and wrong bins break it.",
+      "Hit the target score before the timer ends to earn the shift payout."
     ]
   }
 } as const;
@@ -134,6 +144,7 @@ export function GameDock() {
               {activeGame === "rps" ? <RPSGame /> : null}
               {activeGame === "poker" ? <PokerGame /> : null}
               {activeGame === "updown" ? <UpDownGame /> : null}
+              {activeGame === "sort" ? <SortSprintGame /> : null}
             </div>
             <AnimatePresence>
               {showInstructions ? (
