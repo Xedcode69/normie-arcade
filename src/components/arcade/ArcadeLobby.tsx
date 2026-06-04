@@ -278,12 +278,13 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
         {Array.from({ length: 12 }).map((_, index) => (
           <span
             key={index}
-            className="absolute h-1.5 w-1.5 rounded-full"
+            className="city-casino-bulb absolute h-1.5 w-1.5 rounded-full"
             style={{
               backgroundColor: color,
               left: `${10 + index * 7}%`,
               top: `${22 + (index % 2) * 48}%`,
-              boxShadow: `0 0 10px ${color}`
+              boxShadow: `0 0 10px ${color}`,
+              animationDelay: `${index * 120}ms`
             }}
           />
         ))}
@@ -294,8 +295,8 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
   if (kind === "arena") {
     return (
       <>
-        <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 opacity-70" style={{ borderColor: color }} />
-        <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rotate-45 border opacity-55" style={{ borderColor: color }} />
+        <div className="city-arena-ring absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 opacity-70" style={{ borderColor: color }} />
+        <div className="city-arena-ring city-arena-ring-delayed absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rotate-45 border opacity-55" style={{ borderColor: color }} />
         <div className="absolute bottom-6 left-8 right-8 h-px" style={{ backgroundColor: `${color}88` }} />
       </>
     );
@@ -306,7 +307,8 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
       <>
         <div className="absolute bottom-5 left-6 right-6 h-16 border opacity-60" style={{ borderColor: color }} />
         <div className="absolute right-8 top-8 h-24 w-16 border opacity-45" style={{ borderColor: color }} />
-        <div className="absolute inset-x-8 top-1/2 h-px rotate-[-8deg]" style={{ backgroundColor: `${color}66` }} />
+        <div className="city-lounge-line absolute inset-x-8 top-1/2 h-px rotate-[-8deg]" style={{ backgroundColor: `${color}66` }} />
+        <div className="city-lounge-line city-lounge-line-delayed absolute inset-x-12 top-[62%] h-px rotate-[-8deg]" style={{ backgroundColor: `${color}55` }} />
       </>
     );
   }
@@ -315,6 +317,7 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
     return (
       <>
         <div className="absolute bottom-4 left-1/2 h-[78%] w-20 -translate-x-1/2 border-2 opacity-75" style={{ borderColor: color }} />
+        <div className="city-tower-scan absolute left-1/2 h-8 w-20 -translate-x-1/2" style={{ background: `linear-gradient(to bottom, transparent, ${color}66, transparent)` }} />
         {Array.from({ length: 7 }).map((_, index) => (
           <span key={index} className="absolute left-1/2 h-px w-16 -translate-x-1/2" style={{ top: `${22 + index * 9}%`, backgroundColor: `${color}88` }} />
         ))}
@@ -328,6 +331,7 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
       <>
         <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2" style={{ backgroundColor: `${color}77` }} />
         <div className="absolute left-4 right-4 top-[58%] h-1" style={{ backgroundColor: `${color}55` }} />
+        <span className="city-depot-signal absolute right-8 top-[42%] h-3 w-3 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 14px ${color}` }} />
         {Array.from({ length: 9 }).map((_, index) => (
           <span key={index} className="absolute top-[46%] h-10 w-px rotate-12" style={{ left: `${10 + index * 10}%`, backgroundColor: `${color}88` }} />
         ))}
@@ -351,7 +355,15 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
     <>
       <div className="absolute bottom-5 left-7 right-7 top-10 border-2 opacity-70" style={{ borderColor: color }} />
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="absolute left-10 right-10 h-5 border" style={{ top: `${28 + index * 11}%`, borderColor: `${color}88` }} />
+        <div
+          key={index}
+          className="city-leaderboard-row absolute left-10 right-10 h-5 border"
+          style={{
+            top: `${28 + index * 11}%`,
+            borderColor: `${color}88`,
+            animationDelay: `${index * 180}ms`
+          }}
+        />
       ))}
       <div className="absolute right-8 top-7 h-3 w-3 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 14px ${color}` }} />
     </>
