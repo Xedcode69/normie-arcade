@@ -38,15 +38,33 @@ function nextRule(current: Rule) {
   return rules[(index + 1) % rules.length];
 }
 
+function seededShuffle<T>(items: T[], seed: string) {
+  const shuffled = [...items];
+  let hash = 0;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    hash = (hash * 1664525 + 1013904223) >>> 0;
+    const swapIndex = hash % (index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
 function buildBins(rule: Rule, current: Normie | null, queue: Normie[]) {
   const liveValues = [current, ...queue]
     .map((normie) => displayTrait(normie?.traits[rule]))
     .filter((value) => value !== "Unknown");
   const values = Array.from(new Set([...liveValues, ...fallbackRuleLabels[rule]]));
   const expected = current ? displayTrait(current.traits[rule]) : "";
-  const compact = values.filter((value) => value === expected || value !== "Unknown").slice(0, 8);
+  const compact = values.filter((value) => value !== "Unknown").slice(0, 8);
+  const withExpected = expected && !compact.includes(expected) ? [expected, ...compact.slice(0, 7)] : compact;
 
-  return expected && !compact.includes(expected) ? [expected, ...compact.slice(0, 7)] : compact;
+  return seededShuffle(withExpected, `${current?.id ?? "empty"}:${rule}:${withExpected.join("|")}`);
 }
 
 export function SortSprintGame() {
@@ -210,8 +228,6 @@ export function SortSprintGame() {
     pullNext();
   }
 
-  const activeTrait = current ? displayTrait(current.traits[rule]) : "Loading";
-
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 pt-1">
       <div className="shrink-0 text-center">
@@ -266,9 +282,7 @@ export function SortSprintGame() {
                 key={bin}
                 disabled={phase !== "running" || !current}
                 onClick={() => sortTo(bin)}
-                className={`group min-h-24 border bg-black/70 px-3 py-4 text-center transition hover:-translate-y-0.5 disabled:opacity-40 ${
-                  activeTrait === bin ? "border-mint/80" : "border-paper/30 hover:border-paper/70"
-                }`}
+                className="group min-h-24 border border-paper/30 bg-black/70 px-3 py-4 text-center transition hover:-translate-y-0.5 hover:border-paper/70 disabled:opacity-40"
               >
                 <Send className="mx-auto mb-2 text-paper/70 transition group-hover:text-paper" size={18} />
                 <span className="block text-sm uppercase tracking-[0.12em] text-paper">{bin}</span>
