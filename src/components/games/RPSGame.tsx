@@ -14,6 +14,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import type { RPSType } from "@/types/normie";
 import { RPS_TYPES } from "@/types/normie";
 import { playTone } from "@/lib/audio";
+import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { BetControls } from "./BetControls";
 
 type Score = { player: number; npc: number };
@@ -53,6 +54,7 @@ export function RPSGame() {
   const win = useChipStore((state) => state.win);
   const lose = useChipStore((state) => state.lose);
   const notify = useArcadeStore((state) => state.notify);
+  const recordLeaderboardResult = useLeaderboardRecorder();
 
   async function playRound(playerType: RPSType) {
     if (locked) return;
@@ -89,10 +91,29 @@ export function RPSGame() {
     if (nextScore.player >= 2 || nextScore.npc >= 2) {
       const won = nextScore.player > nextScore.npc;
       if (won) {
-        win(bet * 2.4);
+        const payout = Math.round(bet * 2.4);
+        win(payout);
+        void recordLeaderboardResult({
+          game: "RPS",
+          mode: "SOLO",
+          outcome: "WIN",
+          score: payout - bet,
+          chipsWon: payout,
+          netChips: payout - bet,
+          metadata: { bet, finalScore: `${nextScore.player}-${nextScore.npc}` }
+        });
         setRoundResult(`MATCH WIN - final score ${nextScore.player}-${nextScore.npc}. 2.4x payout awarded.`);
       } else {
         lose();
+        void recordLeaderboardResult({
+          game: "RPS",
+          mode: "SOLO",
+          outcome: "LOSS",
+          score: 0,
+          chipsWon: 0,
+          netChips: -bet,
+          metadata: { bet, finalScore: `${nextScore.player}-${nextScore.npc}` }
+        });
         setRoundResult(`MATCH LOSS - final score ${nextScore.player}-${nextScore.npc}. The dealer keeps the wager.`);
       }
       setTimeout(() => setScore({ player: 0, npc: 0 }), 900);

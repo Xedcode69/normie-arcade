@@ -5,28 +5,35 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { playTone } from "@/lib/audio";
 import { NormieAPIService } from "@/services/NormieAPIService";
+import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
-import { useChipStore } from "@/stores/chipStore";
 import type { Normie } from "@/types/normie";
-import { BetControls } from "./BetControls";
+import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 
-const modes = {
-  easy: { label: "Easy", seconds: 45, target: 12, payout: 2, ruleEvery: 5 },
-  medium: { label: "Medium", seconds: 40, target: 16, payout: 4, ruleEvery: 4 },
-  hard: { label: "Hard", seconds: 35, target: 20, payout: 7, ruleEvery: 3 }
+const RUN_SECONDS = 30;
+const RULE_EVERY = 4;
+const LEADERBOARD_KEY = "normie-sort-sprint-leaderboard:v1";
+
+const fallbackRuleLabels = {
+  Expression: [],
+  Age: ["Young", "Middle-Aged", "Old"],
+  "Facial Feature": [],
+  "Hair Style": []
 } as const;
 
-const ruleLabels = {
-  Type: ["Human", "Cat", "Alien", "Agent"],
-  Expression: ["Smile", "Frown", "Angry", "Surprised", "Neutral", "Smirk", "Sleepy"],
-  Age: ["Young", "Middle-Aged", "Old"]
-} as const;
+type Rule = keyof typeof fallbackRuleLabels;
+type Phase = "idle" | "loading" | "running" | "ended";
+type SortSprintEntry = {
+  id: string;
+  player: string;
+  correct: number;
+  mistakes: number;
+  bestCombo: number;
+  accuracy: number;
+  createdAt: string;
+};
 
-type Mode = keyof typeof modes;
-type Rule = keyof typeof ruleLabels;
-type Phase = "idle" | "loading" | "running" | "won" | "lost";
-
-const rules: Rule[] = ["Type", "Expression", "Age"];
+const rules: Rule[] = ["Expression", "Age", "Facial Feature", "Hair Style"];
 
 function displayTrait(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : "Unknown";
@@ -37,28 +44,87 @@ function nextRule(current: Rule) {
   return rules[(index + 1) % rules.length];
 }
 
+function seededShuffle<T>(items: T[], seed: string) {
+  const shuffled = [...items];
+  let hash = 0;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    hash = (hash * 1664525 + 1013904223) >>> 0;
+    const swapIndex = hash % (index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
+function buildBins(rule: Rule, current: Normie | null, queue: Normie[]) {
+  const liveValues = [current, ...queue]
+    .map((normie) => displayTrait(normie?.traits[rule]))
+    .filter((value) => value !== "Unknown");
+  const values = Array.from(new Set([...liveValues, ...fallbackRuleLabels[rule]]));
+  const expected = current ? displayTrait(current.traits[rule]) : "";
+  const compact = values.filter((value) => value !== "Unknown").slice(0, 8);
+  const withExpected = expected && !compact.includes(expected) ? [expected, ...compact.slice(0, 7)] : compact;
+
+  return seededShuffle(withExpected, `${current?.id ?? "empty"}:${rule}:${withExpected.join("|")}`);
+}
+
+function rankEntries(entries: SortSprintEntry[]) {
+  return [...entries]
+    .sort((left, right) => {
+      if (right.correct !== left.correct) return right.correct - left.correct;
+      if (right.accuracy !== left.accuracy) return right.accuracy - left.accuracy;
+      if (right.bestCombo !== left.bestCombo) return right.bestCombo - left.bestCombo;
+      if (left.mistakes !== right.mistakes) return left.mistakes - right.mistakes;
+      return Date.parse(right.createdAt) - Date.parse(left.createdAt);
+    })
+    .slice(0, 8);
+}
+
+function loadLeaderboard() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LEADERBOARD_KEY) ?? "[]");
+    return Array.isArray(parsed) ? rankEntries(parsed as SortSprintEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLeaderboard(entries: SortSprintEntry[]) {
+  window.localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(rankEntries(entries)));
+}
+
 export function SortSprintGame() {
-  const [mode, setMode] = useState<Mode>("medium");
-  const [bet, setBet] = useState(100);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [timeLeft, setTimeLeft] = useState<number>(modes.medium.seconds);
-  const [rule, setRule] = useState<Rule>("Type");
+  const [timeLeft, setTimeLeft] = useState<number>(RUN_SECONDS);
+  const [rule, setRule] = useState<Rule>("Expression");
   const [sortsOnRule, setSortsOnRule] = useState(0);
-  const [score, setScore] = useState(0);
+  const [correct, setCorrect] = useState(0);
   const [combo, setCombo] = useState(0);
+  const [bestCombo, setBestCombo] = useState(0);
   const [mistakes, setMistakes] = useState(0);
   const [current, setCurrent] = useState<Normie | null>(null);
   const [queue, setQueue] = useState<Normie[]>([]);
+  const [leaderboard, setLeaderboard] = useState<SortSprintEntry[]>([]);
   const [message, setMessage] = useState("Clock in, read the rule, and throw Normies into the right bin.");
   const [lastResult, setLastResult] = useState("Waiting for the sorting belt.");
   const loadingRef = useRef(false);
-  const wager = useChipStore((state) => state.wager);
-  const win = useChipStore((state) => state.win);
-  const lose = useChipStore((state) => state.lose);
   const notify = useArcadeStore((state) => state.notify);
-  const settings = modes[mode];
+  const displayName = useAccountStore((state) => state.displayName);
+  const username = useAccountStore((state) => state.username);
+  const recordLeaderboardResult = useLeaderboardRecorder();
 
-  const bins = useMemo(() => ruleLabels[rule], [rule]);
+  const bins = useMemo(() => buildBins(rule, current, queue), [current, queue, rule]);
+
+  useEffect(() => {
+    setLeaderboard(loadLeaderboard());
+  }, []);
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current) return;
@@ -89,57 +155,81 @@ export function SortSprintGame() {
   }, [loadMore, phase, queue.length]);
 
   useEffect(() => {
+    if (phase === "loading" && current) setPhase("running");
+  }, [current, phase]);
+
+  useEffect(() => {
     if (phase !== "running") return undefined;
 
     const interval = window.setInterval(() => {
-      setTimeLeft((value) => {
-        if (value <= 1) {
-          window.clearInterval(interval);
-          setPhase("lost");
-          lose();
-          playTone(160, 0.25, "square");
-          setMessage("Shift failed. The belt outran the sorter.");
-          setLastResult(`LOSE - scored ${score}/${settings.target} before the clock hit zero.`);
-          notify({
-            kind: "loss",
-            title: "Sort Sprint failed",
-            body: `You sorted ${score}/${settings.target} before time expired.`
-          });
-          return 0;
-        }
-        return value - 1;
-      });
+      setTimeLeft((value) => Math.max(0, value - 1));
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [lose, notify, phase, score, settings.target]);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "running" || timeLeft > 0) return;
+
+    const totalAttempts = correct + mistakes;
+    const accuracy = totalAttempts > 0 ? Math.round((correct / totalAttempts) * 100) : 0;
+    const entry: SortSprintEntry = {
+      id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+      player: displayName || username || "Guest Sorter",
+      correct,
+      mistakes,
+      bestCombo,
+      accuracy,
+      createdAt: new Date().toISOString()
+    };
+    const ranked = rankEntries([...leaderboard, entry]);
+    setLeaderboard(ranked);
+    saveLeaderboard(ranked);
+    setPhase("ended");
+    playTone(760, 0.2, "triangle");
+    setMessage("Shift complete. Score posted to the cabinet board.");
+    setLastResult(`FINAL - ${correct} correct, ${accuracy}% accuracy, best combo ${bestCombo}.`);
+    void recordLeaderboardResult({
+      game: "SORT_SPRINT",
+      mode: "SKILL",
+      outcome: correct > 0 ? "WIN" : "LOSS",
+      score: correct,
+      chipsWon: 0,
+      netChips: 0,
+      bestCombo,
+      metadata: { mistakes, accuracy, seconds: RUN_SECONDS }
+    });
+    notify({
+      kind: "info",
+      title: "Sort Sprint complete",
+      body: `${correct} correct selections in ${RUN_SECONDS} seconds.`
+    });
+  }, [bestCombo, correct, displayName, leaderboard, mistakes, notify, phase, recordLeaderboardResult, timeLeft, username]);
 
   function start() {
     if (phase === "running" || phase === "loading") return;
-    if (!wager(bet)) {
-      setLastResult("Not enough chips. Lower the bet.");
-      return;
-    }
 
-    setPhase("loading");
-    setTimeLeft(settings.seconds);
-    setRule("Type");
+    setPhase(current ? "running" : "loading");
+    setTimeLeft(RUN_SECONDS);
+    setRule("Expression");
     setSortsOnRule(0);
-    setScore(0);
+    setCorrect(0);
     setCombo(0);
+    setBestCombo(0);
     setMistakes(0);
-    setMessage("Sorting belt online. First rule: Type.");
-    setLastResult("Shift started.");
-    void loadMore().then(() => setPhase("running"));
+    setMessage("Sorting belt online. Score as many correct sorts as possible.");
+    setLastResult("30-second shift started.");
+    if (!current || queue.length < 4) void loadMore();
   }
 
   function reset() {
     setPhase("idle");
-    setTimeLeft(settings.seconds);
-    setRule("Type");
+    setTimeLeft(RUN_SECONDS);
+    setRule("Expression");
     setSortsOnRule(0);
-    setScore(0);
+    setCorrect(0);
     setCombo(0);
+    setBestCombo(0);
     setMistakes(0);
     setCurrent(null);
     setQueue([]);
@@ -155,28 +245,15 @@ export function SortSprintGame() {
 
     if (correct) {
       const nextCombo = combo + 1;
-      const gained = 1 + Math.floor(nextCombo / 5);
-      const nextScore = score + gained;
       const nextSortsOnRule = sortsOnRule + 1;
-      setScore(nextScore);
+      setCorrect((value) => value + 1);
       setCombo(nextCombo);
+      setBestCombo((value) => Math.max(value, nextCombo));
       setSortsOnRule(nextSortsOnRule);
       playTone(520 + Math.min(nextCombo, 12) * 24, 0.1, "triangle");
-      setLastResult(`Correct - ${expected}. Combo ${nextCombo} scored +${gained}.`);
+      setLastResult(`Correct - ${expected}. Combo ${nextCombo}.`);
 
-      if (nextScore >= settings.target) {
-        const payout = bet * settings.payout + nextCombo * 10;
-        setPhase("won");
-        win(payout);
-        playTone(780, 0.22, "sawtooth");
-        setMessage("Shift cleared. The bins are immaculate.");
-        setLastResult(`WIN - paid ${payout} chips with a ${nextCombo} combo.`);
-        notify({
-          kind: "win",
-          title: "Sort Sprint cleared",
-          body: `Paid ${payout} chips for ${nextScore} correct sorting points.`
-        });
-      } else if (nextSortsOnRule >= settings.ruleEvery) {
+      if (nextSortsOnRule >= RULE_EVERY) {
         const changedRule = nextRule(rule);
         setRule(changedRule);
         setSortsOnRule(0);
@@ -194,8 +271,6 @@ export function SortSprintGame() {
     pullNext();
   }
 
-  const activeTrait = current ? displayTrait(current.traits[rule]) : "Loading";
-
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 pt-1">
       <div className="shrink-0 text-center">
@@ -203,23 +278,10 @@ export function SortSprintGame() {
         <p className="terminal-hash mx-auto mt-1 max-w-4xl truncate text-xs text-pixel/70">{message}</p>
       </div>
 
-      <div className="mt-5 flex shrink-0 flex-wrap items-center justify-center gap-2">
-        {(Object.keys(modes) as Mode[]).map((key) => (
-          <button
-            key={key}
-            disabled={phase === "running" || phase === "loading"}
-            onClick={() => {
-              setMode(key);
-              setTimeLeft(modes[key].seconds);
-            }}
-            className={`min-w-32 border px-3 py-2 text-xs uppercase tracking-widest transition ${
-              mode === key ? "border-paper bg-paper/15 text-paper shadow-neon" : "border-paper/25 bg-black/60 text-paper/55 hover:border-paper/70"
-            } disabled:opacity-45`}
-          >
-            {modes[key].label} {modes[key].target}
-          </button>
-        ))}
-        <BetControls bet={bet} setBet={setBet} disabled={phase === "running" || phase === "loading"} />
+      <div className="mt-5 flex shrink-0 items-center justify-center">
+        <div className="pixel-card px-5 py-2 text-center text-xs uppercase tracking-[0.2em] text-paper/75">
+          30 seconds / ranked by correct selections
+        </div>
       </div>
 
       <div className="mt-5 grid min-h-0 flex-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_17rem]">
@@ -237,8 +299,8 @@ export function SortSprintGame() {
             </div>
             <div className="pixel-card px-3 py-2">
               <Trophy className="mx-auto mb-1" size={16} />
-              <div className="text-xl text-paper">{score}/{settings.target}</div>
-              <div className="text-[9px] uppercase tracking-widest text-paper/45">Score</div>
+              <div className="text-xl text-paper">{correct}</div>
+              <div className="text-[9px] uppercase tracking-widest text-paper/45">Correct</div>
             </div>
           </div>
         </section>
@@ -250,9 +312,7 @@ export function SortSprintGame() {
                 key={bin}
                 disabled={phase !== "running" || !current}
                 onClick={() => sortTo(bin)}
-                className={`group min-h-24 border bg-black/70 px-3 py-4 text-center transition hover:-translate-y-0.5 disabled:opacity-40 ${
-                  activeTrait === bin ? "border-mint/80" : "border-paper/30 hover:border-paper/70"
-                }`}
+                className="group min-h-24 border border-paper/30 bg-black/70 px-3 py-4 text-center transition hover:-translate-y-0.5 hover:border-paper/70 disabled:opacity-40"
               >
                 <Send className="mx-auto mb-2 text-paper/70 transition group-hover:text-paper" size={18} />
                 <span className="block text-sm uppercase tracking-[0.12em] text-paper">{bin}</span>
@@ -288,9 +348,9 @@ export function SortSprintGame() {
             <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/70">Shift Stats</div>
             <div className="grid gap-2">
               <Stat label="Combo" value={combo} />
+              <Stat label="Best" value={bestCombo} />
               <Stat label="Mistakes" value={mistakes} />
               <Stat label="Queued" value={queue.length} />
-              <Stat label="Payout" value={`${settings.payout}x`} />
             </div>
           </div>
           <div className="space-y-2">
@@ -308,6 +368,28 @@ export function SortSprintGame() {
           </div>
         </section>
       </div>
+      <section className="mt-4 shrink-0 border-t border-paper/20 pt-3">
+        <div className="mb-2 flex items-center justify-center gap-2 terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/70">
+          <Trophy size={14} /> Sort Sprint Leaderboard
+        </div>
+        <div className="mx-auto grid w-full max-w-5xl gap-2 md:grid-cols-2">
+          {leaderboard.length ? (
+            leaderboard.slice(0, 6).map((entry, index) => (
+              <div key={entry.id} className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_4rem_4rem] items-center gap-2 border border-paper/15 bg-black/60 px-3 py-2 text-sm">
+                <span className="text-pixel/70">#{index + 1}</span>
+                <span className="truncate text-paper">{entry.player}</span>
+                <span className="text-right text-paper">{entry.correct}</span>
+                <span className="text-right text-paper/65">{entry.accuracy}%</span>
+                <span className="text-right text-paper/65">x{entry.bestCombo}</span>
+              </div>
+            ))
+          ) : (
+            <div className="col-span-full border border-paper/15 bg-black/50 px-3 py-4 text-center text-sm text-paper/55">
+              No runs posted yet.
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordLeaderboardResult } from "@/lib/leaderboard";
 import { settlePokerAnteSchema } from "@/lib/pvpPokerSchema";
 import { assertPartyKitRequest, verifyPrivyToken } from "@/lib/privyServer";
 import { prisma } from "@/lib/prisma";
@@ -56,6 +57,25 @@ export async function POST(request: Request) {
             handName: payload.handName,
             score: payload.score
           }
+        }
+      });
+
+      await recordLeaderboardResult(tx, session.userId ?? "", {
+        privyToken: payload.privyToken,
+        game: "POKER",
+        mode: "PVP",
+        outcome: payload.outcome,
+        score: payload.outcome === "WIN" ? 1 : 0,
+        chipsWon: payload.payout,
+        netChips: payload.payout - session.bet,
+        bestCombo: 0,
+        metadata: {
+          roomId: payload.roomId,
+          matchId: payload.matchId,
+          playerId: payload.playerId,
+          handName: payload.handName,
+          score: payload.score,
+          reservedChips: session.bet
         }
       });
 

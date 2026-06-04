@@ -7,6 +7,7 @@ import { useChipStore } from "@/stores/chipStore";
 import type { Normie } from "@/types/normie";
 import { playTone } from "@/lib/audio";
 import { NormieImage } from "@/components/normies/NormieImage";
+import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { BetControls } from "./BetControls";
 
 const modes = {
@@ -30,6 +31,7 @@ export function UpDownGame() {
   const wager = useChipStore((state) => state.wager);
   const win = useChipStore((state) => state.win);
   const lose = useChipStore((state) => state.lose);
+  const recordLeaderboardResult = useLeaderboardRecorder();
   const target = modes[mode].target;
 
   async function predict(direction: "higher" | "lower") {
@@ -56,6 +58,15 @@ export function UpDownGame() {
         const payout = bet * modes[mode].payout;
         setActive(false);
         win(payout);
+        void recordLeaderboardResult({
+          game: "UP_DOWN",
+          mode: "SOLO",
+          outcome: "WIN",
+          score: payout - bet,
+          chipsWon: payout,
+          netChips: payout - bet,
+          metadata: { difficulty: mode, bet, target, survived: target }
+        });
         setMessage(`Terminal cleared. Normie #${normie.id} completed the final read.`);
         setRoundResult(`WIN - survived ${target} predictions. Paid ${payout} chips.`);
       } else {
@@ -66,6 +77,15 @@ export function UpDownGame() {
     } else {
       setActive(false);
       lose();
+      void recordLeaderboardResult({
+        game: "UP_DOWN",
+        mode: "SOLO",
+        outcome: "LOSS",
+        score: 0,
+        chipsWon: 0,
+        netChips: -bet,
+        metadata: { difficulty: mode, bet, target, survived: Math.max(0, round - 1) }
+      });
       playTone(170, 0.25, "square");
       setMessage(`Wrong read. Normie #${normie.id} ended the run.`);
       setRoundResult(`LOSE - ${direction} failed against Normie #${normie.id}.`);
