@@ -1,305 +1,312 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
-import { Environment, Float, PerspectiveCamera, Stars } from "@react-three/drei";
-import { Suspense, useMemo, useRef } from "react";
-import type { Group, Mesh } from "three";
-import { AdditiveBlending } from "three";
-import { GameTable } from "./GameTable";
-import { NormieDealer } from "./NormieDealer";
-import { HologramSign } from "./HologramSign";
+import { CircleDot, Dices, Landmark, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
+import { useMemo } from "react";
+import { NormieImage } from "@/components/normies/NormieImage";
 import { useNormiePreload } from "@/hooks/useNormiePreload";
-import { useArcadeStore } from "@/stores/arcadeStore";
-import type { Normie } from "@/types/normie";
-import { usePlayerStore } from "@/stores/playerStore";
-import { PlayerAvatar } from "./PlayerAvatar";
-import { NormieVoxel } from "./NormieVoxel";
+import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
+
+type MapLocation = {
+  id: string;
+  label: string;
+  subtitle: string;
+  hotkey?: string;
+  x: number;
+  y: number;
+  color: string;
+  kind: "game" | "utility";
+  game?: Exclude<GameId, "lobby">;
+  icon: React.ReactNode;
+};
+
+const locations: MapLocation[] = [
+  {
+    id: "roulette-district",
+    label: "Roulette District",
+    subtitle: "Neon expression casino",
+    hotkey: "1",
+    x: 16,
+    y: 42,
+    color: "#27f6e7",
+    kind: "game",
+    game: "roulette",
+    icon: <CircleDot size={22} />
+  },
+  {
+    id: "rps-arena",
+    label: "RPS Arena",
+    subtitle: "Fixed-stake battle station",
+    hotkey: "2",
+    x: 32,
+    y: 28,
+    color: "#ff43cf",
+    kind: "game",
+    game: "rps",
+    icon: <Swords size={22} />
+  },
+  {
+    id: "dna-poker-club",
+    label: "DNA Poker Club",
+    subtitle: "Private trait lounge",
+    hotkey: "3",
+    x: 61,
+    y: 29,
+    color: "#f4f1e8",
+    kind: "game",
+    game: "poker",
+    icon: <Dices size={22} />
+  },
+  {
+    id: "prediction-tower",
+    label: "Prediction Tower",
+    subtitle: "Up/Down terminal",
+    hotkey: "4",
+    x: 82,
+    y: 45,
+    color: "#d7ff35",
+    kind: "game",
+    game: "updown",
+    icon: <TowerControl size={22} />
+  },
+  {
+    id: "sort-depot",
+    label: "Sort Sprint Depot",
+    subtitle: "Transit sorting station",
+    hotkey: "5",
+    x: 48,
+    y: 62,
+    color: "#35ff8f",
+    kind: "game",
+    game: "sort",
+    icon: <Workflow size={22} />
+  },
+  {
+    id: "chip-bank",
+    label: "Chip Bank",
+    subtitle: "Cashier and balances",
+    hotkey: "C",
+    x: 22,
+    y: 76,
+    color: "#f4f1e8",
+    kind: "utility",
+    icon: <Landmark size={22} />
+  },
+  {
+    id: "leaderboard-wall",
+    label: "Leaderboard Wall",
+    subtitle: "Global rankings",
+    x: 72,
+    y: 75,
+    color: "#ff43cf",
+    kind: "utility",
+    icon: <Trophy size={22} />
+  }
+];
+
+const routePairs = [
+  ["roulette-district", "rps-arena"],
+  ["rps-arena", "dna-poker-club"],
+  ["dna-poker-club", "prediction-tower"],
+  ["roulette-district", "sort-depot"],
+  ["sort-depot", "prediction-tower"],
+  ["sort-depot", "chip-bank"],
+  ["sort-depot", "leaderboard-wall"]
+];
 
 export function ArcadeLobby() {
   useNormiePreload();
+  const setActiveGame = useArcadeStore((state) => state.setActiveGame);
+  const notify = useArcadeStore((state) => state.notify);
+  const normies = useArcadeStore((state) => state.loadedNormies);
+  const locationById = useMemo(() => new Map(locations.map((location) => [location.id, location])), []);
 
-  return (
-    <Canvas shadows dpr={[1, 1.75]} gl={{ antialias: true }}>
-      <color attach="background" args={["#050505"]} />
-      <fog attach="fog" args={["#050505", 8, 30]} />
-      <PerspectiveCamera makeDefault position={[0, 6.2, 12]} fov={48} />
-      <Suspense fallback={null}>
-        <LobbyScene />
-      </Suspense>
-    </Canvas>
-  );
-}
-
-function LobbyScene() {
-  const activeGame = useArcadeStore((state) => state.activeGame);
-  const dealers = useArcadeStore((state) => state.dealers);
-  const loadedNormies = useArcadeStore((state) => state.loadedNormies);
-  const playerPosition = usePlayerStore((state) => state.position);
-  const rig = useRef<Group>(null);
-  const tableTargets = {
-    roulette: -6,
-    rps: -2,
-    poker: 2,
-    updown: 6,
-    sort: 0,
-    lobby: 0
-  } satisfies Record<typeof activeGame, number>;
-
-  useFrame(({ clock, camera }) => {
-    const targetX = tableTargets[activeGame];
-    if (activeGame === "lobby") {
-      camera.position.x += (playerPosition.x - camera.position.x) * 0.06;
-      camera.position.y += (4.7 - camera.position.y) * 0.04;
-      camera.position.z += (playerPosition.z + 7.4 - camera.position.z) * 0.05;
-      camera.lookAt(playerPosition.x, 0.9, playerPosition.z - 0.8);
-    } else {
-      camera.position.x += (targetX - camera.position.x) * 0.035;
-      camera.position.y = 6.2 + Math.sin(clock.elapsedTime * 0.4) * 0.08;
-      camera.position.z += (12 - camera.position.z) * 0.04;
-      camera.lookAt(targetX * 0.25, 0.7, activeGame === "poker" || activeGame === "sort" ? -0.55 : 0);
+  function selectLocation(location: MapLocation) {
+    if (location.game) {
+      setActiveGame(location.game);
+      return;
     }
-    if (rig.current) rig.current.rotation.y = Math.sin(clock.elapsedTime * 0.08) * 0.015;
-  });
+
+    notify({
+      kind: "info",
+      title: location.label,
+      body:
+        location.id === "chip-bank"
+          ? "Chip purchase and withdraw support will arrive in a future update."
+          : "Open the trophy panel to inspect live global rankings."
+    });
+  }
 
   return (
-    <group ref={rig}>
-      <ambientLight intensity={0.35} />
-      <pointLight position={[-6, 5, 4]} intensity={85} color="#25f4ee" />
-      <pointLight position={[6, 5, 4]} intensity={70} color="#f846d8" />
-      <spotLight position={[0, 9, 7]} angle={0.44} penumbra={0.7} intensity={115} color="#ffffff" castShadow />
-      <MovingLights />
-      <Environment preset="night" />
-      <Stars radius={40} depth={20} count={900} factor={2.6} saturation={0} fade speed={0.25} />
-      <CasinoFloor />
-      <CeilingGrid />
-      <HologramSign />
-      <GameTable id="roulette" label="Expression Roulette" position={[-6, 0.72, 0]} accent="#27f6e7" dealer={dealers[0]} />
-      <GameTable id="rps" label="Type RPS Arena" position={[-2, 0.72, -0.8]} accent="#ff43cf" dealer={dealers[1]} />
-      <GameTable id="poker" label="DNA Poker" position={[2, 0.72, -0.8]} accent="#f4f1e8" dealer={dealers[2]} />
-      <GameTable id="updown" label="Up or Down" position={[6, 0.72, 0]} accent="#d7ff35" dealer={dealers[3]} />
-      <GameTable id="sort" label="Sort Sprint" position={[0, 0.72, 2.25]} accent="#35ff8f" dealer={dealers[4]} />
-      <Cashier normie={dealers[5]?.normie ?? loadedNormies[4]} />
-      <PlayerAvatar />
-      {dealers.slice(0, 5).map((dealer, index) => {
-        const positions: Array<[number, number, number]> = [
-          [-6, 1.42, -1.35],
-          [-2, 1.42, -2.15],
-          [2, 1.42, -2.15],
-          [6, 1.42, -1.35],
-          [0, 1.42, 0.9]
-        ];
+    <section className="relative h-screen overflow-hidden bg-void pt-24 text-paper">
+      <div className="pointer-events-none absolute inset-0 opacity-70 [background-image:linear-gradient(rgba(244,241,232,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.055)_1px,transparent_1px)] [background-size:18px_18px]" />
+      <div className="pointer-events-none absolute inset-x-0 top-24 h-px bg-gradient-to-r from-transparent via-mint/60 to-transparent" />
+      <div className="pointer-events-none absolute bottom-0 left-1/4 h-44 w-44 bg-mint/18 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-0 right-1/5 h-52 w-52 bg-magenta/16 blur-3xl" />
 
-        return <NormieDealer key={dealer.role} dealer={dealer} position={positions[index]} />;
-      })}
-      <NormieCrowd normies={loadedNormies.slice(6, 14)} />
-    </group>
+      <div className="relative flex h-full w-full flex-col px-4 pb-20 md:px-8">
+        <div className="mb-2 shrink-0">
+          <div>
+            <div className="terminal-hash text-[10px] uppercase tracking-[0.28em] text-pixel/70">City Map</div>
+            <h1 className="mt-1 font-display text-2xl uppercase tracking-[0.24em] text-paper neon-text md:text-5xl">
+              Normie City Arcade
+            </h1>
+          </div>
+        </div>
+
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 opacity-75 [background-image:radial-gradient(circle_at_center,rgba(244,241,232,0.085)_0_1px,transparent_1px)] [background-size:24px_24px]" />
+          <DistrictZone left={7} top={26} width={24} height={24} color="#27f6e7" label="Expression Casino Block" />
+          <DistrictZone left={25} top={12} width={24} height={24} color="#ff43cf" label="Arena Quarter" />
+          <DistrictZone left={53} top={14} width={25} height={24} color="#f4f1e8" label="Private Lounge Row" />
+          <DistrictZone left={73} top={32} width={22} height={26} color="#d7ff35" label="Prediction Highrise" />
+          <DistrictZone left={39} top={50} width={25} height={24} color="#35ff8f" label="Transit Depot Yard" />
+          <DistrictZone left={13} top={66} width={24} height={22} color="#f4f1e8" label="Chip Bank Plaza" />
+          <DistrictZone left={64} top={65} width={25} height={22} color="#ff43cf" label="Leaderboard Wall" />
+          <CityBlocks />
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {routePairs.map(([fromId, toId]) => {
+              const from = locationById.get(fromId)!;
+              const to = locationById.get(toId)!;
+              return (
+                <g key={`${fromId}-${toId}`}>
+                <line
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                  stroke="rgba(0,0,0,0.72)"
+                  strokeWidth="2.1"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                  stroke="rgba(244,241,232,0.68)"
+                  strokeWidth="0.7"
+                  strokeDasharray="1.8 1.5"
+                  strokeLinecap="round"
+                />
+                </g>
+              );
+            })}
+          </svg>
+
+          <div className="absolute inset-0">
+            {locations.map((location, index) => (
+              <MapStop
+                key={location.id}
+                location={location}
+                normie={normies[index]}
+                onSelect={() => selectLocation(location)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
-function CasinoFloor() {
-  const grid = useMemo(() => Array.from({ length: 34 }, (_, index) => index), []);
-
+function DistrictZone({
+  left,
+  top,
+  width,
+  height,
+  color,
+  label
+}: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  color: string;
+  label: string;
+}) {
   return (
-    <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[18, 16, 1, 1]} />
-        <meshStandardMaterial color="#080808" roughness={0.22} metalness={0.38} />
-      </mesh>
-      {grid.map((line) => {
-        const offset = -8 + line * 0.5;
-        return (
-          <mesh key={line} position={[offset, 0.012, 0]} rotation={[-Math.PI / 2, 0, Math.sin(line) * 0.8]}>
-            <planeGeometry args={[0.018, 18]} />
-            <meshBasicMaterial
-              color={line % 5 === 0 ? "#f4f1e8" : line % 3 === 0 ? "#27f6e7" : line % 3 === 1 ? "#ff43cf" : "#d7d2c6"}
-              transparent
-              opacity={line % 5 === 0 ? 0.38 : 0.2}
-            />
-          </mesh>
-        );
-      })}
-      {Array.from({ length: 17 }, (_, line) => (
-        <mesh key={`cross-${line}`} position={[0, 0.014, -8 + line]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-          <planeGeometry args={[0.014, 18]} />
-          <meshBasicMaterial color={line % 4 === 0 ? "#f4f1e8" : "#d7d2c6"} transparent opacity={line % 4 === 0 ? 0.28 : 0.1} />
-        </mesh>
-      ))}
-    </group>
+    <div
+      className="pointer-events-none absolute border bg-black/30 opacity-85"
+      style={{
+        left: `${left}%`,
+        top: `${top}%`,
+        width: `${width}%`,
+        height: `${height}%`,
+        borderColor: `${color}55`,
+        boxShadow: `0 0 34px ${color}20 inset, 0 0 18px ${color}12`
+      }}
+    >
+      <div className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate text-[8px] uppercase tracking-[0.22em] text-paper/32">
+        {label}
+      </div>
+    </div>
   );
 }
 
-function CeilingGrid() {
-  return (
-    <group position={[0, 5.4, -1]}>
-      {Array.from({ length: 9 }, (_, index) => (
-        <mesh key={`beam-x-${index}`} position={[-8 + index * 2, 0, 0]}>
-          <boxGeometry args={[0.05, 0.05, 12]} />
-          <meshStandardMaterial color="#080808" emissive="#f4f1e8" emissiveIntensity={0.06} />
-        </mesh>
-      ))}
-      {Array.from({ length: 7 }, (_, index) => (
-        <mesh key={`beam-z-${index}`} position={[0, 0, -6 + index * 2]}>
-          <boxGeometry args={[18, 0.05, 0.05]} />
-          <meshStandardMaterial color="#080808" emissive="#f4f1e8" emissiveIntensity={0.06} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-function MovingLights() {
-  const lightA = useRef<Mesh>(null);
-  const lightB = useRef<Mesh>(null);
-
-  useFrame(({ clock }) => {
-    const t = clock.elapsedTime;
-    if (lightA.current) lightA.current.position.x = Math.sin(t * 0.7) * 7;
-    if (lightB.current) lightB.current.position.x = Math.cos(t * 0.55) * 7;
-  });
+function CityBlocks() {
+  const blocks = [
+    { left: 4, top: 18, width: 6, height: 18, color: "#27f6e7" },
+    { left: 13, top: 18, width: 5, height: 10, color: "#f4f1e8" },
+    { left: 37, top: 16, width: 5, height: 14, color: "#ff43cf" },
+    { left: 47, top: 18, width: 5, height: 9, color: "#35ff8f" },
+    { left: 82, top: 20, width: 4, height: 15, color: "#d7ff35" },
+    { left: 91, top: 40, width: 5, height: 16, color: "#f4f1e8" },
+    { left: 5, top: 62, width: 6, height: 17, color: "#f4f1e8" },
+    { left: 34, top: 75, width: 7, height: 11, color: "#35ff8f" },
+    { left: 54, top: 78, width: 5, height: 10, color: "#27f6e7" },
+    { left: 91, top: 72, width: 5, height: 13, color: "#ff43cf" }
+  ];
 
   return (
     <>
-      <mesh ref={lightA} position={[0, 4.9, 2]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[1.1, 48]} />
-        <meshBasicMaterial color="#25f4ee" transparent opacity={0.16} blending={AdditiveBlending} />
-      </mesh>
-      <mesh ref={lightB} position={[0, 4.92, -4]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[1.1, 48]} />
-        <meshBasicMaterial color="#f846d8" transparent opacity={0.14} blending={AdditiveBlending} />
-      </mesh>
+      {blocks.map((block, index) => (
+        <div
+          key={index}
+          className="pointer-events-none absolute border border-paper/15 bg-black/50"
+          style={{
+            left: `${block.left}%`,
+            top: `${block.top}%`,
+            width: `${block.width}%`,
+            height: `${block.height}%`,
+            boxShadow: `0 0 22px ${block.color}16`
+          }}
+        >
+          <div className="absolute inset-1 opacity-45 [background-image:linear-gradient(rgba(244,241,232,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.12)_1px,transparent_1px)] [background-size:8px_8px]" />
+        </div>
+      ))}
     </>
   );
 }
 
-function NormieCrowd({ normies }: { normies: Normie[] }) {
-  const placements: Array<{
-    position: [number, number, number];
-    rotation: [number, number, number];
-    pose: "idle" | "walking" | "playing" | "talking";
-    accent: string;
-  }> = [
-    { position: [-7.1, 0.72, -4.7], rotation: [0, 0.5, 0], pose: "playing", accent: "#27f6e7" },
-    { position: [-5.8, 0.72, -4.2], rotation: [0, -0.55, 0], pose: "talking", accent: "#ff43cf" },
-    { position: [-2.7, 0.72, -4.8], rotation: [0, 0.18, 0], pose: "walking", accent: "#f4f1e8" },
-    { position: [2.4, 0.72, -4.7], rotation: [0, -0.25, 0], pose: "walking", accent: "#d7ff35" },
-    { position: [5.6, 0.72, -4.2], rotation: [0, 0.65, 0], pose: "talking", accent: "#27f6e7" },
-    { position: [7.0, 0.72, -4.8], rotation: [0, -0.75, 0], pose: "playing", accent: "#ff43cf" },
-    { position: [-7.2, 0.72, 1.7], rotation: [0, 1.2, 0], pose: "idle", accent: "#d7d2c6" },
-    { position: [6.1, 0.72, 1.5], rotation: [0, -1.1, 0], pose: "talking", accent: "#f4f1e8" }
-  ];
-
+function MapStop({ location, normie, onSelect }: { location: MapLocation; normie?: { id: number; image: string }; onSelect: () => void }) {
   return (
-    <group>
-      {normies.map((normie, index) => (
-        <Float key={normie.id} speed={1.1 + index * 0.08} floatIntensity={0.04} rotationIntensity={0.02}>
-          <group position={placements[index].position} rotation={placements[index].rotation}>
-            {placements[index].pose === "playing" ? <MiniMachine accent={placements[index].accent} /> : null}
-            {placements[index].pose === "talking" ? <SpeechPulse accent={placements[index].accent} /> : null}
-            <NormieVoxel
-              normie={normie}
-              scale={0.46}
-              accent={placements[index].accent}
-              pose={placements[index].pose}
-              showLabel={false}
-            />
-          </group>
-        </Float>
-      ))}
-    </group>
-  );
-}
-
-function MiniMachine({ accent }: { accent: string }) {
-  return (
-    <group position={[0, 0.24, 0.55]}>
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[0.76, 0.88, 0.32]} />
-        <meshStandardMaterial color="#080808" emissive={accent} emissiveIntensity={0.16} metalness={0.35} roughness={0.28} />
-      </mesh>
-      <mesh position={[0, 0.12, -0.17]}>
-        <planeGeometry args={[0.48, 0.38]} />
-        <meshBasicMaterial color={accent} transparent opacity={0.55} />
-      </mesh>
-      <mesh position={[0, -0.37, 0.08]}>
-        <boxGeometry args={[0.58, 0.08, 0.34]} />
-        <meshStandardMaterial color="#050505" emissive="#f4f1e8" emissiveIntensity={0.08} />
-      </mesh>
-    </group>
-  );
-}
-
-function SpeechPulse({ accent }: { accent: string }) {
-  return (
-    <group position={[0.42, 1.4, 0]}>
-      <mesh>
-        <sphereGeometry args={[0.06, 16, 16]} />
-        <meshBasicMaterial color={accent} transparent opacity={0.65} />
-      </mesh>
-      <mesh position={[0.14, 0.1, 0]}>
-        <sphereGeometry args={[0.045, 16, 16]} />
-        <meshBasicMaterial color={accent} transparent opacity={0.45} />
-      </mesh>
-      <mesh position={[0.25, 0.2, 0]}>
-        <sphereGeometry args={[0.032, 16, 16]} />
-        <meshBasicMaterial color={accent} transparent opacity={0.35} />
-      </mesh>
-    </group>
-  );
-}
-
-function Cashier({ normie }: { normie?: Normie }) {
-  const notify = useArcadeStore((state) => state.notify);
-
-  return (
-    <group
-      position={[7.2, 0.72, 3.5]}
-      onClick={() =>
-        notify({
-          kind: "info",
-          title: "Chip Master",
-          body: "Chip purchase and withdraw support will arrive in a future update."
-        })
-      }
+    <button
+      onClick={onSelect}
+      className="group absolute z-10 w-56 max-w-[42vw] -translate-x-1/2 -translate-y-1/2 text-left transition hover:-translate-y-[calc(50%+0.25rem)]"
+      style={{ left: `${location.x}%`, top: `${location.y}%` }}
     >
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[2.2, 1.2, 1]} />
-        <meshStandardMaterial color="#111111" emissive="#f4f1e8" emissiveIntensity={0.08} metalness={0.4} roughness={0.3} />
-      </mesh>
-      <mesh position={[0, 0.72, -0.12]} castShadow receiveShadow>
-        <boxGeometry args={[2.45, 0.18, 1.15]} />
-        <meshStandardMaterial color="#181818" emissive="#f4f1e8" emissiveIntensity={0.1} metalness={0.35} roughness={0.25} />
-      </mesh>
-      <group position={[0, 0.82, -0.42]}>
-        <NormieVoxel normie={normie} label="Chip Master" accent="#f4f1e8" scale={0.5} seated />
-      </group>
-      <ChipStacks />
-    </group>
-  );
-}
-
-function ChipStacks() {
-  const colors = ["#f4f1e8", "#080808", "#d7d2c6", "#f4f1e8"];
-  const rings = ["#27f6e7", "#ff43cf", "#d7ff35", "#f4f1e8"];
-
-  return (
-    <group position={[0, 0.9, 0.12]}>
-      {Array.from({ length: 14 }, (_, index) => {
-        const x = -0.78 + (index % 7) * 0.26;
-        const z = index < 7 ? -0.08 : 0.18;
-        const height = 0.05 + (index % 4) * 0.025;
-        return (
-          <group key={index} position={[x, height * 0.5, z]}>
-            <mesh castShadow>
-              <cylinderGeometry args={[0.095, 0.095, height, 28]} />
-              <meshStandardMaterial color={colors[index % colors.length]} emissive={rings[index % rings.length]} emissiveIntensity={0.08} metalness={0.4} roughness={0.24} />
-            </mesh>
-            <mesh position={[0, height / 2 + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[0.045, 0.075, 24]} />
-              <meshBasicMaterial color={rings[index % rings.length]} transparent opacity={0.8} />
-            </mesh>
-          </group>
-        );
-      })}
-    </group>
+      <span className="mx-auto mb-2 grid h-16 w-16 place-items-center rounded-full border-2 bg-black/90 shadow-neon transition group-hover:scale-110" style={{ borderColor: location.color, color: location.color }}>
+        {location.icon}
+      </span>
+      <span className="block border-2 border-paper/75 bg-black/80 p-2 shadow-[4px_4px_0_#000] transition group-hover:border-mint">
+        <span className="flex items-center gap-2">
+          {normie ? (
+            <NormieImage src={normie.image} alt={`Normie guide ${normie.id}`} className="h-10 w-10 border border-paper/30 bg-paper object-contain" />
+          ) : (
+            <span className="grid h-10 w-10 place-items-center border border-paper/25 bg-black text-[8px] text-paper/45">0xN</span>
+          )}
+          <span className="min-w-0">
+            <span className="block truncate text-xs uppercase tracking-[0.14em] text-paper">{location.label}</span>
+            <span className="mt-1 block truncate text-[10px] text-paper/50">{location.subtitle}</span>
+          </span>
+        </span>
+        <span className="mt-2 flex items-center justify-between border-t border-paper/15 pt-2">
+          <span className="terminal-hash text-[8px] uppercase tracking-[0.2em] text-pixel/60">
+            {location.kind === "game" ? "Station" : "Utility"}
+          </span>
+          {location.hotkey ? <span className="border border-paper/30 px-2 py-0.5 text-[9px] text-pixel/75">{location.hotkey}</span> : null}
+        </span>
+      </span>
+    </button>
   );
 }

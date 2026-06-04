@@ -5,11 +5,11 @@ import { CircleDot, Dices, Gamepad2, Joystick, Shapes, TrendingUp, X } from "luc
 import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
 
 const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; shortcut: string; icon: ReactNode; description: string }> = [
-  { id: "roulette", label: "Roulette", shortcut: "1", icon: <CircleDot size={16} />, description: "Match live API expressions" },
-  { id: "rps", label: "RPS Arena", shortcut: "2", icon: <Joystick size={16} />, description: "Human, Cat, Alien duels" },
-  { id: "poker", label: "DNA Poker", shortcut: "3", icon: <Dices size={16} />, description: "Trait hands and PvP pots" },
-  { id: "updown", label: "Up or Down", shortcut: "4", icon: <TrendingUp size={16} />, description: "Read the next Normie ID" },
-  { id: "sort", label: "Sort Sprint", shortcut: "5", icon: <Shapes size={16} />, description: "Timed trait sorting shift" }
+  { id: "roulette", label: "Roulette District", shortcut: "1", icon: <CircleDot size={16} />, description: "Neon expression casino" },
+  { id: "rps", label: "RPS Arena", shortcut: "2", icon: <Joystick size={16} />, description: "Fixed-stake battle station" },
+  { id: "poker", label: "DNA Poker Club", shortcut: "3", icon: <Dices size={16} />, description: "Private trait lounge" },
+  { id: "updown", label: "Prediction Tower", shortcut: "4", icon: <TrendingUp size={16} />, description: "Up/Down terminal" },
+  { id: "sort", label: "Sort Sprint Depot", shortcut: "5", icon: <Shapes size={16} />, description: "Transit sorting station" }
 ];
 
 export function LobbyControls() {
@@ -27,8 +27,8 @@ export function LobbyControls() {
         <div className="hud-panel w-[min(92vw,34rem)] border border-paper/65 p-3 shadow-neon">
           <div className="mb-3 flex items-center justify-between gap-3 border-b border-paper/20 pb-3">
             <div>
-              <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Available Games</div>
-              <div className="font-display text-sm uppercase tracking-[0.22em] text-paper">Choose Cabinet</div>
+              <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Normie City</div>
+              <div className="font-display text-sm uppercase tracking-[0.22em] text-paper">District Directory</div>
             </div>
             <button
               aria-label="Close games menu"
