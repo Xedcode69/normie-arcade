@@ -1,7 +1,7 @@
 "use client";
 
 import { CircleDot, Dices, Landmark, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { useNormiePreload } from "@/hooks/useNormiePreload";
 import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
@@ -19,13 +19,15 @@ type MapLocation = {
   icon: React.ReactNode;
 };
 
+type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "bank" | "leaderboard";
+
 const locations: MapLocation[] = [
   {
     id: "roulette-district",
     label: "Roulette District",
     subtitle: "Neon expression casino",
     hotkey: "1",
-    x: 16,
+    x: 15,
     y: 42,
     color: "#27f6e7",
     kind: "game",
@@ -37,7 +39,7 @@ const locations: MapLocation[] = [
     label: "RPS Arena",
     subtitle: "Fixed-stake battle station",
     hotkey: "2",
-    x: 32,
+    x: 34,
     y: 28,
     color: "#ff43cf",
     kind: "game",
@@ -50,7 +52,7 @@ const locations: MapLocation[] = [
     subtitle: "Private trait lounge",
     hotkey: "3",
     x: 61,
-    y: 29,
+    y: 30,
     color: "#f4f1e8",
     kind: "game",
     game: "poker",
@@ -61,7 +63,7 @@ const locations: MapLocation[] = [
     label: "Prediction Tower",
     subtitle: "Up/Down terminal",
     hotkey: "4",
-    x: 82,
+    x: 83,
     y: 45,
     color: "#d7ff35",
     kind: "game",
@@ -73,7 +75,7 @@ const locations: MapLocation[] = [
     label: "Sort Sprint Depot",
     subtitle: "Transit sorting station",
     hotkey: "5",
-    x: 48,
+    x: 50,
     y: 62,
     color: "#35ff8f",
     kind: "game",
@@ -85,8 +87,8 @@ const locations: MapLocation[] = [
     label: "Chip Bank",
     subtitle: "Cashier and balances",
     hotkey: "C",
-    x: 22,
-    y: 76,
+    x: 24,
+    y: 79,
     color: "#f4f1e8",
     kind: "utility",
     icon: <Landmark size={22} />
@@ -95,8 +97,8 @@ const locations: MapLocation[] = [
     id: "leaderboard-wall",
     label: "Leaderboard Wall",
     subtitle: "Global rankings",
-    x: 72,
-    y: 75,
+    x: 75,
+    y: 79,
     color: "#ff43cf",
     kind: "utility",
     icon: <Trophy size={22} />
@@ -115,6 +117,7 @@ const routePairs = [
 
 export function ArcadeLobby() {
   useNormiePreload();
+  const [focusedLocationId, setFocusedLocationId] = useState<string | null>(null);
   const setActiveGame = useArcadeStore((state) => state.setActiveGame);
   const notify = useArcadeStore((state) => state.notify);
   const normies = useArcadeStore((state) => state.loadedNormies);
@@ -137,44 +140,45 @@ export function ArcadeLobby() {
   }
 
   return (
-    <section className="relative h-screen overflow-hidden bg-void pt-24 text-paper">
-      <div className="pointer-events-none absolute inset-0 opacity-70 [background-image:linear-gradient(rgba(244,241,232,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.055)_1px,transparent_1px)] [background-size:18px_18px]" />
-      <div className="pointer-events-none absolute inset-x-0 top-24 h-px bg-gradient-to-r from-transparent via-mint/60 to-transparent" />
+    <section className="relative h-screen overflow-hidden bg-void pt-20 text-paper">
+      <div className="pointer-events-none absolute inset-0 opacity-65 [background-image:linear-gradient(rgba(244,241,232,0.052)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.052)_1px,transparent_1px)] [background-size:18px_18px]" />
+      <div className="pointer-events-none absolute inset-x-0 top-20 h-px bg-gradient-to-r from-transparent via-mint/60 to-transparent" />
       <div className="pointer-events-none absolute bottom-0 left-1/4 h-44 w-44 bg-mint/18 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 right-1/5 h-52 w-52 bg-magenta/16 blur-3xl" />
 
-      <div className="relative flex h-full w-full flex-col px-4 pb-20 md:px-8">
-        <div className="mb-2 shrink-0">
+      <div className="relative flex h-full w-full flex-col px-4 pb-16 md:px-8">
+        <div className="mb-3 shrink-0">
           <div>
             <div className="terminal-hash text-[10px] uppercase tracking-[0.28em] text-pixel/70">City Map</div>
-            <h1 className="mt-1 font-display text-2xl uppercase tracking-[0.24em] text-paper neon-text md:text-5xl">
+            <h1 className="mt-1 font-display text-2xl uppercase tracking-[0.2em] text-paper neon-text md:text-4xl xl:text-5xl">
               Normie City Arcade
             </h1>
           </div>
         </div>
 
-        <div className="relative min-h-0 flex-1 overflow-hidden">
-          <div className="pointer-events-none absolute inset-0 opacity-75 [background-image:radial-gradient(circle_at_center,rgba(244,241,232,0.085)_0_1px,transparent_1px)] [background-size:24px_24px]" />
-          <DistrictZone left={7} top={26} width={24} height={24} color="#27f6e7" label="Expression Casino Block" />
-          <DistrictZone left={25} top={12} width={24} height={24} color="#ff43cf" label="Arena Quarter" />
-          <DistrictZone left={53} top={14} width={25} height={24} color="#f4f1e8" label="Private Lounge Row" />
-          <DistrictZone left={73} top={32} width={22} height={26} color="#d7ff35" label="Prediction Highrise" />
-          <DistrictZone left={39} top={50} width={25} height={24} color="#35ff8f" label="Transit Depot Yard" />
-          <DistrictZone left={13} top={66} width={24} height={22} color="#f4f1e8" label="Chip Bank Plaza" />
-          <DistrictZone left={64} top={65} width={25} height={22} color="#ff43cf" label="Leaderboard Wall" />
-          <CityBlocks />
+        <div className="relative min-h-0 flex-1 overflow-hidden border-y border-paper/10">
+          <div className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(circle_at_center,rgba(244,241,232,0.07)_0_1px,transparent_1px)] [background-size:24px_24px]" />
+          <DistrictZone id="roulette-district" focusedLocationId={focusedLocationId} left={5} top={25} width={27} height={27} color="#27f6e7" label="Roulette District" kind="casino" />
+          <DistrictZone id="rps-arena" focusedLocationId={focusedLocationId} left={23} top={9} width={30} height={28} color="#ff43cf" label="RPS Arena" kind="arena" />
+          <DistrictZone id="dna-poker-club" focusedLocationId={focusedLocationId} left={50} top={10} width={30} height={29} color="#f4f1e8" label="DNA Poker Club" kind="lounge" />
+          <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={73} top={25} width={23} height={36} color="#d7ff35" label="Prediction Tower" kind="tower" />
+          <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={47} width={31} height={29} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
+          <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={66} width={27} height={25} color="#f4f1e8" label="Chip Bank" kind="bank" />
+          <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={62} top={66} width={29} height={25} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
+          <CityBlocks isDimmed={Boolean(focusedLocationId)} />
           <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
             {routePairs.map(([fromId, toId]) => {
               const from = locationById.get(fromId)!;
               const to = locationById.get(toId)!;
+              const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : true;
               return (
-                <g key={`${fromId}-${toId}`}>
+                <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0.28}>
                 <line
                   x1={from.x}
                   y1={from.y}
                   x2={to.x}
                   y2={to.y}
-                  stroke="rgba(0,0,0,0.72)"
+                  stroke={isFocusedRoute ? "rgba(0,0,0,0.78)" : "rgba(0,0,0,0.5)"}
                   strokeWidth="2.1"
                   strokeLinecap="round"
                 />
@@ -183,8 +187,8 @@ export function ArcadeLobby() {
                   y1={from.y}
                   x2={to.x}
                   y2={to.y}
-                  stroke="rgba(244,241,232,0.68)"
-                  strokeWidth="0.7"
+                  stroke={isFocusedRoute ? "rgba(244,241,232,0.78)" : "rgba(244,241,232,0.34)"}
+                  strokeWidth={isFocusedRoute ? "0.85" : "0.55"}
                   strokeDasharray="1.8 1.5"
                   strokeLinecap="round"
                 />
@@ -199,6 +203,8 @@ export function ArcadeLobby() {
                 key={location.id}
                 location={location}
                 normie={normies[index]}
+                focusedLocationId={focusedLocationId}
+                onFocusChange={setFocusedLocationId}
                 onSelect={() => selectLocation(location)}
               />
             ))}
@@ -210,40 +216,149 @@ export function ArcadeLobby() {
 }
 
 function DistrictZone({
+  id,
+  focusedLocationId,
   left,
   top,
   width,
   height,
   color,
-  label
+  label,
+  kind
 }: {
+  id: string;
+  focusedLocationId: string | null;
   left: number;
   top: number;
   width: number;
   height: number;
   color: string;
   label: string;
+  kind: DistrictKind;
 }) {
+  const isFocused = focusedLocationId === id;
+  const isDimmed = Boolean(focusedLocationId) && !isFocused;
+
   return (
     <div
-      className="pointer-events-none absolute border bg-black/30 opacity-85"
+      className="pointer-events-none absolute overflow-hidden border bg-black/34 transition-all duration-200"
       style={{
         left: `${left}%`,
         top: `${top}%`,
         width: `${width}%`,
         height: `${height}%`,
         borderColor: `${color}55`,
-        boxShadow: `0 0 34px ${color}20 inset, 0 0 18px ${color}12`
+        opacity: isDimmed ? 0.38 : isFocused ? 1 : 0.78,
+        boxShadow: isFocused
+          ? `0 0 56px ${color}36 inset, 0 0 34px ${color}34`
+          : `0 0 34px ${color}18 inset, 0 0 16px ${color}10`
       }}
     >
-      <div className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate text-[8px] uppercase tracking-[0.22em] text-paper/32">
+      <div
+        className="absolute inset-0 opacity-55"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(244,241,232,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(244,241,232,0.08) 1px, transparent 1px)",
+          backgroundSize: "12px 12px"
+        }}
+      />
+      <div className="absolute left-3 top-2 z-10 max-w-[calc(100%-1.5rem)] truncate bg-black/60 px-1 text-[8px] uppercase tracking-[0.24em]" style={{ color }}>
         {label}
       </div>
+      <DistrictDetails kind={kind} color={color} />
     </div>
   );
 }
 
-function CityBlocks() {
+function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string }) {
+  if (kind === "casino") {
+    return (
+      <>
+        <div className="absolute bottom-4 left-5 h-12 w-32 rounded-full border-2 border-dashed opacity-80" style={{ borderColor: color }} />
+        {Array.from({ length: 12 }).map((_, index) => (
+          <span
+            key={index}
+            className="absolute h-1.5 w-1.5 rounded-full"
+            style={{
+              backgroundColor: color,
+              left: `${10 + index * 7}%`,
+              top: `${22 + (index % 2) * 48}%`,
+              boxShadow: `0 0 10px ${color}`
+            }}
+          />
+        ))}
+      </>
+    );
+  }
+
+  if (kind === "arena") {
+    return (
+      <>
+        <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 opacity-70" style={{ borderColor: color }} />
+        <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rotate-45 border opacity-55" style={{ borderColor: color }} />
+        <div className="absolute bottom-6 left-8 right-8 h-px" style={{ backgroundColor: `${color}88` }} />
+      </>
+    );
+  }
+
+  if (kind === "lounge") {
+    return (
+      <>
+        <div className="absolute bottom-5 left-6 right-6 h-16 border opacity-60" style={{ borderColor: color }} />
+        <div className="absolute right-8 top-8 h-24 w-16 border opacity-45" style={{ borderColor: color }} />
+        <div className="absolute inset-x-8 top-1/2 h-px rotate-[-8deg]" style={{ backgroundColor: `${color}66` }} />
+      </>
+    );
+  }
+
+  if (kind === "tower") {
+    return (
+      <>
+        <div className="absolute bottom-4 left-1/2 h-[78%] w-20 -translate-x-1/2 border-2 opacity-75" style={{ borderColor: color }} />
+        {Array.from({ length: 7 }).map((_, index) => (
+          <span key={index} className="absolute left-1/2 h-px w-16 -translate-x-1/2" style={{ top: `${22 + index * 9}%`, backgroundColor: `${color}88` }} />
+        ))}
+        <div className="absolute left-1/2 top-6 h-5 w-5 -translate-x-1/2 rotate-45 border" style={{ borderColor: color }} />
+      </>
+    );
+  }
+
+  if (kind === "depot") {
+    return (
+      <>
+        <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2" style={{ backgroundColor: `${color}77` }} />
+        <div className="absolute left-4 right-4 top-[58%] h-1" style={{ backgroundColor: `${color}55` }} />
+        {Array.from({ length: 9 }).map((_, index) => (
+          <span key={index} className="absolute top-[46%] h-10 w-px rotate-12" style={{ left: `${10 + index * 10}%`, backgroundColor: `${color}88` }} />
+        ))}
+      </>
+    );
+  }
+
+  if (kind === "bank") {
+    return (
+      <>
+        <div className="absolute bottom-5 left-8 right-8 h-3 border-t-2" style={{ borderColor: color }} />
+        {Array.from({ length: 4 }).map((_, index) => (
+          <span key={index} className="absolute bottom-8 h-16 w-3 border" style={{ left: `${25 + index * 14}%`, borderColor: color }} />
+        ))}
+        <div className="absolute bottom-[5.3rem] left-1/2 h-12 w-24 -translate-x-1/2 border-t-2" style={{ borderColor: color }} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="absolute bottom-5 left-7 right-7 top-10 border-2 opacity-70" style={{ borderColor: color }} />
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={index} className="absolute left-10 right-10 h-5 border" style={{ top: `${28 + index * 11}%`, borderColor: `${color}88` }} />
+      ))}
+      <div className="absolute right-8 top-7 h-3 w-3 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 14px ${color}` }} />
+    </>
+  );
+}
+
+function CityBlocks({ isDimmed }: { isDimmed: boolean }) {
   const blocks = [
     { left: 4, top: 18, width: 6, height: 18, color: "#27f6e7" },
     { left: 13, top: 18, width: 5, height: 10, color: "#f4f1e8" },
@@ -258,7 +373,7 @@ function CityBlocks() {
   ];
 
   return (
-    <>
+    <div className={isDimmed ? "opacity-35 transition-opacity duration-200" : "opacity-70 transition-opacity duration-200"}>
       {blocks.map((block, index) => (
         <div
           key={index}
@@ -274,33 +389,62 @@ function CityBlocks() {
           <div className="absolute inset-1 opacity-45 [background-image:linear-gradient(rgba(244,241,232,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.12)_1px,transparent_1px)] [background-size:8px_8px]" />
         </div>
       ))}
-    </>
+    </div>
   );
 }
 
-function MapStop({ location, normie, onSelect }: { location: MapLocation; normie?: { id: number; image: string }; onSelect: () => void }) {
+function MapStop({
+  location,
+  normie,
+  focusedLocationId,
+  onFocusChange,
+  onSelect
+}: {
+  location: MapLocation;
+  normie?: { id: number; image: string };
+  focusedLocationId: string | null;
+  onFocusChange: (id: string | null) => void;
+  onSelect: () => void;
+}) {
+  const isFocused = focusedLocationId === location.id;
+  const isDimmed = Boolean(focusedLocationId) && !isFocused;
+
   return (
     <button
       onClick={onSelect}
-      className="group absolute z-10 w-56 max-w-[42vw] -translate-x-1/2 -translate-y-1/2 text-left transition hover:-translate-y-[calc(50%+0.25rem)]"
+      onMouseEnter={() => onFocusChange(location.id)}
+      onMouseLeave={() => onFocusChange(null)}
+      onFocus={() => onFocusChange(location.id)}
+      onBlur={() => onFocusChange(null)}
+      className="group absolute z-10 w-52 max-w-[40vw] -translate-x-1/2 -translate-y-1/2 text-left transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
       style={{ left: `${location.x}%`, top: `${location.y}%` }}
     >
-      <span className="mx-auto mb-2 grid h-16 w-16 place-items-center rounded-full border-2 bg-black/90 shadow-neon transition group-hover:scale-110" style={{ borderColor: location.color, color: location.color }}>
+      <span
+        className="mx-auto mb-1.5 grid h-14 w-14 place-items-center rounded-full border-2 bg-black/90 shadow-neon transition group-hover:scale-110"
+        style={{ borderColor: location.color, color: location.color, opacity: isDimmed ? 0.45 : 1 }}
+      >
         {location.icon}
       </span>
-      <span className="block border-2 border-paper/75 bg-black/80 p-2 shadow-[4px_4px_0_#000] transition group-hover:border-mint">
+      <span
+        className="block border bg-black/86 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm transition group-hover:border-mint"
+        style={{
+          borderColor: isFocused ? location.color : "rgba(244,241,232,0.75)",
+          opacity: isDimmed ? 0.48 : 1,
+          boxShadow: isFocused ? `4px 4px 0 #000, 0 0 24px ${location.color}33` : "4px 4px 0 #000"
+        }}
+      >
         <span className="flex items-center gap-2">
           {normie ? (
-            <NormieImage src={normie.image} alt={`Normie guide ${normie.id}`} className="h-10 w-10 border border-paper/30 bg-paper object-contain" />
+            <NormieImage src={normie.image} alt={`Normie guide ${normie.id}`} className="h-9 w-9 border border-paper/30 bg-paper object-contain" />
           ) : (
-            <span className="grid h-10 w-10 place-items-center border border-paper/25 bg-black text-[8px] text-paper/45">0xN</span>
+            <span className="grid h-9 w-9 place-items-center border border-paper/25 bg-black text-[8px] text-paper/45">0xN</span>
           )}
           <span className="min-w-0">
-            <span className="block truncate text-xs uppercase tracking-[0.14em] text-paper">{location.label}</span>
-            <span className="mt-1 block truncate text-[10px] text-paper/50">{location.subtitle}</span>
+            <span className="block truncate text-[11px] uppercase tracking-[0.12em] text-paper">{location.label}</span>
+            <span className="mt-0.5 block truncate text-[9px] text-paper/50">{location.subtitle}</span>
           </span>
         </span>
-        <span className="mt-2 flex items-center justify-between border-t border-paper/15 pt-2">
+        <span className="mt-2 flex items-center justify-between border-t border-paper/15 pt-1.5">
           <span className="terminal-hash text-[8px] uppercase tracking-[0.2em] text-pixel/60">
             {location.kind === "game" ? "Station" : "Utility"}
           </span>
