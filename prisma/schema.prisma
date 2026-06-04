@@ -11,6 +11,7 @@ enum GameKind {
   RPS
   POKER
   UP_DOWN
+  SORT_SPRINT
 }
 
 enum GameOutcome {
@@ -18,6 +19,12 @@ enum GameOutcome {
   LOSS
   DRAW
   IN_PROGRESS
+}
+
+enum LeaderboardMode {
+  SOLO
+  PVP
+  SKILL
 }
 
 model User {
@@ -38,6 +45,7 @@ model User {
   chipAccount  ChipAccount?
   gameSessions GameSession[]
   leaderboard  LeaderboardEntry[]
+  leaderboardStats LeaderboardStat[]
 }
 
 model UserNormie {
@@ -99,15 +107,42 @@ model LeaderboardEntry {
   id        String   @id @default(cuid())
   userId    String
   game      GameKind
+  mode      LeaderboardMode @default(SOLO)
   score     Int
   chipsWon  Int      @default(0)
+  netChips  Int      @default(0)
+  outcome   GameOutcome?
   metadata  Json?
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([game, score])
+  @@index([game, mode, score])
+  @@index([game, mode, netChips])
   @@index([userId])
+}
+
+model LeaderboardStat {
+  id          String   @id @default(cuid())
+  userId      String
+  game        GameKind
+  mode        LeaderboardMode
+  netChips    Int      @default(0)
+  totalWins   Int      @default(0)
+  totalLosses Int      @default(0)
+  totalDraws  Int      @default(0)
+  totalPlays  Int      @default(0)
+  bestScore   Int      @default(0)
+  bestCombo   Int      @default(0)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, game, mode])
+  @@index([game, mode, netChips])
+  @@index([game, mode, bestScore])
 }
 
 model NormieCache {

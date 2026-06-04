@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordLeaderboardResult } from "@/lib/leaderboard";
 import { settleRpsWagerSchema } from "@/lib/pvpRpsSchema";
 import { assertPartyKitRequest, verifyPrivyToken } from "@/lib/privyServer";
 import { prisma } from "@/lib/prisma";
@@ -57,6 +58,23 @@ export async function POST(request: Request) {
             playerId: payload.playerId,
             score: payload.score
           }
+        }
+      });
+
+      await recordLeaderboardResult(tx, session.userId ?? "", {
+        privyToken: payload.privyToken,
+        game: "RPS",
+        mode: "PVP",
+        outcome: payload.outcome,
+        score: payload.outcome === "WIN" ? 1 : 0,
+        chipsWon: payout,
+        netChips: payout - payload.bet,
+        bestCombo: 0,
+        metadata: {
+          roomId: payload.roomId,
+          matchId: payload.matchId,
+          playerId: payload.playerId,
+          score: payload.score
         }
       });
 

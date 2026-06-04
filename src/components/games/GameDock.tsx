@@ -71,10 +71,10 @@ const instructions = {
   sort: {
     title: "Normie Sort Sprint",
     lines: [
-      "Choose a speed, place chips, then start the sorting shift.",
+      "Start a fixed 30-second sorting shift.",
       "Read the active rule and send each live Normie to the matching trait bin.",
-      "The rule changes during the run. Correct sorts build combo and wrong bins break it.",
-      "Hit the target score before the timer ends to earn the shift payout."
+      "The rule changes during the run. Correct sorts build combo and wrong bins reset it.",
+      "Your final score is the number of correct selections, ranked on the cabinet leaderboard."
     ]
   }
 } as const;

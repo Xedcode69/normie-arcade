@@ -7,6 +7,7 @@ import { NormieAPIService } from "@/services/NormieAPIService";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useChipStore } from "@/stores/chipStore";
 import { EXPRESSIONS, type Normie } from "@/types/normie";
+import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { BetControls } from "./BetControls";
 import { playTone } from "@/lib/audio";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
@@ -35,6 +36,7 @@ export function RouletteGame() {
   const win = useChipStore((state) => state.win);
   const lose = useChipStore((state) => state.lose);
   const notify = useArcadeStore((state) => state.notify);
+  const recordLeaderboardResult = useLeaderboardRecorder();
   const cardSlots = normies.length ? normies : Array.from({ length: difficulty[mode].count }, () => null);
 
   async function spin() {
@@ -71,11 +73,29 @@ export function RouletteGame() {
     if (won) {
       const payout = bet * config.payout;
       win(payout);
+      void recordLeaderboardResult({
+        game: "ROULETTE",
+        mode: "SOLO",
+        outcome: "WIN",
+        score: payout - bet,
+        chipsWon: payout,
+        netChips: payout - bet,
+        metadata: { difficulty: mode, bet, expressions }
+      });
       setResult(`Jackpot: all ${expressions[0]}. Paid ${payout} chips.`);
       setRoundResult(`WIN - all columns stopped on ${expressions[0]}. Paid ${payout} chips.`);
       playTone(760, 0.24, "triangle");
     } else {
       lose();
+      void recordLeaderboardResult({
+        game: "ROULETTE",
+        mode: "SOLO",
+        outcome: "LOSS",
+        score: 0,
+        chipsWon: 0,
+        netChips: -bet,
+        metadata: { difficulty: mode, bet, expressions }
+      });
       setResult(`No match: ${expressions.join(" / ")}.`);
       setRoundResult(`LOSE - stopped on ${expressions.join(" / ")}.`);
       playTone(180, 0.22, "square");
