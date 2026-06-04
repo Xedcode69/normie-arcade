@@ -84,6 +84,9 @@ export function useRpsPvp(room = "rps-quickplay") {
       }
       if (data.type === "full" || data.type === "error") {
         setError(data.message);
+        socket.close();
+        socketRef.current = null;
+        setConnected(false);
       }
     };
 

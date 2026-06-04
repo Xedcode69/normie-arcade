@@ -42,6 +42,7 @@ type RoundHistoryEntry = RoundReveal & {
 type MatchState = {
   phase: Phase;
   players: Player[];
+  stake?: number;
   round: number;
   history: RoundHistoryEntry[];
   reveal?: RoundReveal;
@@ -181,6 +182,7 @@ type PokerActionMessage = { type: "poker_action"; playerId: string; action: "che
 type PokerAnyClientMessage = PokerClientMessage | PokerNextHandMessage | PokerActionMessage;
 
 const picks: RPSType[] = ["Human", "Cat", "Alien"];
+const rpsQuickMatchStake = 250;
 const pokerTableBuyIn = 1000;
 const pokerHandAnte = 100;
 
@@ -208,6 +210,7 @@ export default class RPSParty {
   private state: MatchState = {
     phase: "waiting",
     players: [],
+    stake: undefined,
     round: 1,
     history: [],
     message: "Waiting for a second challenger."
@@ -1057,6 +1060,19 @@ export default class RPSParty {
       }
 
       this.state.players = this.state.players.filter((player) => player.connected);
+      const stake = this.rpsStakeForJoin(data.bet);
+      if (this.state.stake !== undefined && stake !== this.state.stake) {
+        connection.send(
+          JSON.stringify({
+            type: "full",
+            message: `This RPS room stake is ${this.state.stake} chips. Match that stake or create a new room.`,
+            stake: this.state.stake
+          })
+        );
+        return;
+      }
+
+      this.state.stake = this.state.stake ?? stake;
       const player: Player = {
         id: data.playerId,
         name: cleanPlayerName(data.name),
@@ -1066,7 +1082,7 @@ export default class RPSParty {
         isNormieHolder: data.isNormieHolder,
         selectedNormieId: data.selectedNormieId,
         avatarUrl: data.avatarUrl,
-        bet: data.bet,
+        bet: this.state.stake,
         privyToken: data.privyToken,
         reserved: false
       };
@@ -1169,8 +1185,10 @@ export default class RPSParty {
       this.revealTimer = undefined;
     }
     this.matchId = this.createMatchId();
+    const stake = this.state.stake;
     this.state.players = this.state.players.map((player) => ({
       ...player,
+      bet: stake ?? player.bet,
       score: 0,
       pick: undefined,
       reserved: false,
@@ -1222,9 +1240,10 @@ export default class RPSParty {
         score: matchInterrupted ? 0 : player.score,
         pick: undefined,
         reserved: matchInterrupted ? false : player.reserved
-      }));
+    }));
     if (matchInterrupted) {
       this.matchId = this.createMatchId();
+      this.state.stake = this.state.players.find((player) => player.connected)?.bet;
     }
     this.state.phase = this.state.players.length >= 2 ? "playing" : "waiting";
     this.state.round = matchInterrupted ? 1 : this.state.round;
@@ -1283,6 +1302,14 @@ export default class RPSParty {
 
   private createMatchId() {
     return `rps-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  private isQuickRpsRoom() {
+    return (this.room.id ?? "").toLowerCase() === "rps-quickplay";
+  }
+
+  private rpsStakeForJoin(requestedBet: number) {
+    return this.isQuickRpsRoom() ? rpsQuickMatchStake : Math.max(1, Math.round(requestedBet));
   }
 
   private createPokerMatchId() {

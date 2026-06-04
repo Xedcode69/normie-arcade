@@ -18,6 +18,7 @@ export type RPSPvPPlayer = {
 export type RPSPvPState = {
   phase: "waiting" | "playing" | "revealed" | "finished";
   players: RPSPvPPlayer[];
+  stake?: number;
   round: number;
   history: Array<{
     round: number;
@@ -39,6 +40,7 @@ export type RPSPvPState = {
 export const initialRpsPvpState: RPSPvPState = {
   phase: "waiting",
   players: [],
+  stake: undefined,
   round: 1,
   history: [],
   message: "Connect to quick match."
