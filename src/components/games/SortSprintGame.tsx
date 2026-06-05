@@ -272,109 +272,99 @@ export function SortSprintGame() {
   }
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 pt-1">
-      <div className="shrink-0 text-center">
+    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col px-4 pb-4 pt-1">
+      <header className="shrink-0 text-center">
         <h2 className="font-display text-lg uppercase tracking-[0.24em] text-paper">Normie Sort Sprint</h2>
         <p className="terminal-hash mx-auto mt-1 max-w-4xl truncate text-xs text-pixel/70">{message}</p>
-      </div>
+      </header>
 
-      <div className="mt-5 flex shrink-0 items-center justify-center">
-        <div className="pixel-card px-5 py-2 text-center text-xs uppercase tracking-[0.2em] text-paper/75">
-          30 seconds / ranked by correct selections
+      <section className="mx-auto mt-4 grid w-full max-w-6xl grid-cols-2 gap-2 md:grid-cols-[1.25fr_repeat(5,minmax(0,1fr))]">
+        <div className="col-span-2 border border-mint/55 bg-mint/10 px-3 py-2 md:col-span-1">
+          <div className="terminal-hash text-[9px] uppercase tracking-[0.2em] text-mint/75">Rule</div>
+          <div className="truncate font-display text-xl uppercase tracking-[0.14em] text-paper">{rule}</div>
         </div>
-      </div>
+        <Metric icon={<Timer size={15} />} label="Clock" value={`${timeLeft}s`} />
+        <Metric icon={<Trophy size={15} />} label="Correct" value={correct} />
+        <Metric label="Combo" value={combo} />
+        <Metric label="Best" value={bestCombo} />
+        <Metric label="Mistakes" value={mistakes} />
+      </section>
 
-      <div className="mt-5 grid min-h-0 flex-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_17rem]">
-        <section className="hud-panel flex min-h-0 flex-col justify-between p-4">
-          <div>
-            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint/70">Current Rule</div>
-            <div className="mt-2 font-display text-4xl uppercase text-paper neon-text">{rule}</div>
-            <div className="mt-3 text-sm text-paper/65">Send the active Normie to the bin matching its {rule} trait.</div>
+      <main className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(20rem,28rem)_minmax(0,1fr)]">
+        <section className="game-panel min-h-0 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">On The Belt</div>
+              <div className="mt-1 font-display text-2xl uppercase tracking-[0.08em] text-paper">
+                {current?.metadata?.name ?? (current ? `Normie #${current.id}` : "Sorter Ready")}
+              </div>
+            </div>
+            <button
+              onClick={phase === "idle" ? start : reset}
+              className="inline-flex shrink-0 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-4 py-2 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
+            >
+              {phase === "idle" ? <Send size={15} /> : <RotateCcw size={15} />}
+              {phase === "idle" ? "Start" : "Reset"}
+            </button>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-center">
-            <div className="pixel-card px-3 py-2">
-              <Timer className="mx-auto mb-1" size={16} />
-              <div className="text-xl text-paper">{timeLeft}s</div>
-              <div className="text-[9px] uppercase tracking-widest text-paper/45">Clock</div>
+
+          {current ? (
+            <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)] xl:grid-cols-1">
+              <NormieImage src={current.image} alt={`Normie ${current.id}`} className="mx-auto h-36 w-36 border border-paper/30 bg-paper object-cover" />
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {rules.map((item) => (
+                  <div key={item} className={`min-w-0 border px-3 py-2 ${item === rule ? "border-mint bg-mint/10 text-mint" : "border-paper/20 text-paper/65"}`}>
+                    <span className="block text-[9px] uppercase tracking-widest text-paper/40">{item}</span>
+                    <span className="block truncate">{displayTrait(current.traits[item])}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="pixel-card px-3 py-2">
-              <Trophy className="mx-auto mb-1" size={16} />
-              <div className="text-xl text-paper">{correct}</div>
-              <div className="text-[9px] uppercase tracking-widest text-paper/45">Correct</div>
+          ) : (
+            <div className="grid min-h-56 place-items-center border border-paper/15 bg-black/50 text-paper/55">
+              {phase === "loading" ? "Loading the belt..." : "Start a 30-second sorting shift."}
             </div>
+          )}
+
+          <div className="mt-4 border-t border-paper/20 pt-3">
+            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Last Sort</div>
+            <div className="mt-1 min-h-6 text-sm leading-relaxed text-paper/75">{lastResult}</div>
           </div>
         </section>
 
-        <section className="flex min-h-0 flex-col items-center justify-center gap-4">
-          <div className="grid w-full max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
+        <section className="min-h-0">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Sorting Bins</div>
+              <div className="text-sm text-paper/60">Choose the bin matching the highlighted trait.</div>
+            </div>
+            <div className="hidden border border-paper/20 bg-black/55 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-paper/50 md:block">
+              30 seconds / highest correct wins
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {bins.map((bin) => (
               <button
                 key={bin}
                 disabled={phase !== "running" || !current}
                 onClick={() => sortTo(bin)}
-                className="group min-h-24 border border-paper/30 bg-black/70 px-3 py-4 text-center transition hover:-translate-y-0.5 hover:border-paper/70 disabled:opacity-40"
+                className="group grid min-h-24 place-items-center border border-paper/30 bg-black/70 px-3 py-4 text-center transition hover:-translate-y-0.5 hover:border-mint/80 hover:bg-mint/10 disabled:opacity-40"
               >
-                <Send className="mx-auto mb-2 text-paper/70 transition group-hover:text-paper" size={18} />
-                <span className="block text-sm uppercase tracking-[0.12em] text-paper">{bin}</span>
+                <Send className="mb-2 text-paper/60 transition group-hover:text-mint" size={18} />
+                <span className="text-sm uppercase tracking-[0.12em] text-paper">{bin}</span>
               </button>
             ))}
           </div>
-
-          <div className="pixel-card w-full max-w-2xl p-4">
-            {current ? (
-              <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
-                <NormieImage src={current.image} alt={`Normie ${current.id}`} className="mx-auto h-36 w-36 object-cover" />
-                <div className="min-w-0">
-                  <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">On The Belt</div>
-                  <div className="mt-1 font-display text-3xl uppercase text-paper">{current.metadata?.name ?? `Normie #${current.id}`}</div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                    {rules.map((item) => (
-                      <div key={item} className={`border px-3 py-2 ${item === rule ? "border-mint text-mint" : "border-paper/20 text-paper/65"}`}>
-                        <span className="block text-[9px] uppercase tracking-widest text-paper/40">{item}</span>
-                        <span className="truncate">{displayTrait(current.traits[item])}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="grid h-48 place-items-center text-paper/55">{phase === "loading" ? "Loading the belt..." : "Start a shift to load Normies."}</div>
-            )}
-          </div>
         </section>
+      </main>
 
-        <section className="hud-panel flex min-h-0 flex-col justify-between p-4">
-          <div className="space-y-3">
-            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/70">Shift Stats</div>
-            <div className="grid gap-2">
-              <Stat label="Combo" value={combo} />
-              <Stat label="Best" value={bestCombo} />
-              <Stat label="Mistakes" value={mistakes} />
-              <Stat label="Queued" value={queue.length} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <button
-              onClick={phase === "idle" ? start : reset}
-              className="inline-flex w-full items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
-            >
-              {phase === "idle" ? <Send size={16} /> : <RotateCcw size={16} />}
-              {phase === "idle" ? "Start Shift" : "Reset"}
-            </button>
-            <div className="border-t border-paper/20 pt-3">
-              <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Last Sort</div>
-              <div className="mt-1 text-sm leading-relaxed text-paper/75">{lastResult}</div>
-            </div>
-          </div>
-        </section>
-      </div>
       <section className="mt-4 shrink-0 border-t border-paper/20 pt-3">
         <div className="mb-2 flex items-center justify-center gap-2 terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/70">
           <Trophy size={14} /> Sort Sprint Leaderboard
         </div>
         <div className="mx-auto grid w-full max-w-5xl gap-2 md:grid-cols-2">
           {leaderboard.length ? (
-            leaderboard.slice(0, 6).map((entry, index) => (
+            leaderboard.slice(0, 4).map((entry, index) => (
               <div key={entry.id} className="grid grid-cols-[2rem_minmax(0,1fr)_4rem_4rem_4rem] items-center gap-2 border border-paper/15 bg-black/60 px-3 py-2 text-sm">
                 <span className="text-pixel/70">#{index + 1}</span>
                 <span className="truncate text-paper">{entry.player}</span>
@@ -384,7 +374,7 @@ export function SortSprintGame() {
               </div>
             ))
           ) : (
-            <div className="col-span-full border border-paper/15 bg-black/50 px-3 py-4 text-center text-sm text-paper/55">
+            <div className="col-span-full border border-paper/15 bg-black/50 px-3 py-3 text-center text-sm text-paper/55">
               No runs posted yet.
             </div>
           )}
@@ -394,11 +384,14 @@ export function SortSprintGame() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function Metric({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string | number }) {
   return (
-    <div className="flex items-center justify-between border border-paper/15 bg-black/55 px-3 py-2">
-      <span className="text-[10px] uppercase tracking-widest text-paper/45">{label}</span>
-      <span className="text-sm text-paper">{value}</span>
+    <div className="flex min-h-14 items-center justify-between gap-2 border border-paper/20 bg-black/60 px-3 py-2">
+      <span className="text-paper/55">{icon}</span>
+      <span className="min-w-0 text-right">
+        <span className="block text-[9px] uppercase tracking-widest text-paper/40">{label}</span>
+        <span className="block truncate text-lg text-paper">{value}</span>
+      </span>
     </div>
   );
 }

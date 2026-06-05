@@ -155,3 +155,124 @@ img {
     filter: brightness(1);
   }
 }
+
+.city-casino-bulb {
+  animation: city-casino-bulb 1.9s steps(2, end) infinite;
+}
+
+@keyframes city-casino-bulb {
+  0%,
+  45% {
+    opacity: 0.35;
+    filter: brightness(0.8);
+  }
+
+  50%,
+  100% {
+    opacity: 1;
+    filter: brightness(1.45);
+  }
+}
+
+.city-arena-ring {
+  animation: city-arena-ring 2.6s ease-in-out infinite;
+}
+
+.city-arena-ring-delayed {
+  animation-delay: 650ms;
+}
+
+@keyframes city-arena-ring {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+
+  50% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+}
+
+.city-lounge-line {
+  animation: city-lounge-line 3.4s linear infinite;
+  transform-origin: center;
+}
+
+.city-lounge-line-delayed {
+  animation-delay: 1.2s;
+}
+
+@keyframes city-lounge-line {
+  0% {
+    opacity: 0;
+    transform: translateX(-22%) rotate(-8deg);
+  }
+
+  25%,
+  65% {
+    opacity: 0.8;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(22%) rotate(-8deg);
+  }
+}
+
+.city-tower-scan {
+  animation: city-tower-scan 2.8s linear infinite;
+}
+
+@keyframes city-tower-scan {
+  0% {
+    opacity: 0;
+    top: 78%;
+  }
+
+  12%,
+  82% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    top: 16%;
+  }
+}
+
+.city-depot-signal {
+  animation: city-depot-signal 1.45s steps(2, end) infinite;
+}
+
+@keyframes city-depot-signal {
+  0%,
+  48% {
+    opacity: 0.25;
+    filter: brightness(0.75);
+  }
+
+  50%,
+  100% {
+    opacity: 1;
+    filter: brightness(1.5);
+  }
+}
+
+.city-leaderboard-row {
+  animation: city-leaderboard-row 3.6s ease-in-out infinite;
+}
+
+@keyframes city-leaderboard-row {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: translateX(-6px);
+  }
+
+  50% {
+    opacity: 0.95;
+    transform: translateX(6px);
+  }
+}
