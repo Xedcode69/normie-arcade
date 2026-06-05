@@ -23,11 +23,13 @@ export type ArcadeNotification = {
 type ArcadeState = {
   activeGame: GameId;
   gameMenuOpen: boolean;
+  leaderboardOpen: boolean;
   dealers: Dealer[];
   loadedNormies: Normie[];
   notifications: ArcadeNotification[];
   setActiveGame: (game: GameId) => void;
   setGameMenuOpen: (open: boolean) => void;
+  setLeaderboardOpen: (open: boolean) => void;
   toggleGameMenu: () => void;
   setDealers: (dealers: Dealer[]) => void;
   setLoadedNormies: (normies: Normie[]) => void;
@@ -38,6 +40,7 @@ type ArcadeState = {
 export const useArcadeStore = create<ArcadeState>((set) => ({
   activeGame: "lobby",
   gameMenuOpen: false,
+  leaderboardOpen: false,
   dealers: [
     { role: "Expression Croupier", persona: "Serious dealer" },
     { role: "Arena Master", persona: "Chaotic dealer" },
@@ -51,6 +54,7 @@ export const useArcadeStore = create<ArcadeState>((set) => ({
   notifications: [],
   setActiveGame: (activeGame) => set({ activeGame, gameMenuOpen: false }),
   setGameMenuOpen: (gameMenuOpen) => set({ gameMenuOpen }),
+  setLeaderboardOpen: (leaderboardOpen) => set({ leaderboardOpen }),
   toggleGameMenu: () => set((state) => ({ gameMenuOpen: !state.gameMenuOpen })),
   setDealers: (dealers) => set({ dealers }),
   setLoadedNormies: (loadedNormies) => set({ loadedNormies }),
