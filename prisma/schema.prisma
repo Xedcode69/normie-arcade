@@ -12,6 +12,7 @@ enum GameKind {
   POKER
   UP_DOWN
   SORT_SPRINT
+  PIXEL_DETECTIVE
 }
 
 enum GameOutcome {

@@ -81,7 +81,7 @@ const instructions = {
   pixel: {
     title: "Pixel Detective",
     lines: [
-      "Start a 30-second investigation.",
+      "Start a 60-second investigation.",
       "The cabinet fetches a real Normie pixel payload and shows one cropped fragment.",
       "Pick the full Normie suspect that matches the fragment.",
       "Use keys 1-4 for quick suspect selection."
