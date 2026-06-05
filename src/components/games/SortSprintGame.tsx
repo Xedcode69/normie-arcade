@@ -115,6 +115,8 @@ export function SortSprintGame() {
   const [message, setMessage] = useState("Clock in, read the rule, and throw Normies into the right bin.");
   const [lastResult, setLastResult] = useState("Waiting for the sorting belt.");
   const loadingRef = useRef(false);
+  const currentRef = useRef<Normie | null>(null);
+  const loadGenerationRef = useRef(0);
   const notify = useArcadeStore((state) => state.notify);
   const displayName = useAccountStore((state) => state.displayName);
   const username = useAccountStore((state) => state.username);
@@ -126,25 +128,40 @@ export function SortSprintGame() {
     setLeaderboard(loadLeaderboard());
   }, []);
 
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
+
   const loadMore = useCallback(async () => {
     if (loadingRef.current) return;
+    const generation = loadGenerationRef.current;
     loadingRef.current = true;
     try {
       const normies = await NormieAPIService.getRandomNormies(6);
-      if (current) {
-        setQueue((items) => [...items, ...normies]);
-      } else {
-        setCurrent(normies[0] ?? null);
-        setQueue((items) => [...items, ...normies.slice(1)]);
-      }
+      if (generation !== loadGenerationRef.current) return;
+
+      setQueue((items) => {
+        const nextItems = [...items, ...normies];
+        if (currentRef.current) {
+          return nextItems;
+        }
+
+        const [next, ...rest] = nextItems;
+        currentRef.current = next ?? null;
+        setCurrent(next ?? null);
+        return rest;
+      });
     } finally {
-      loadingRef.current = false;
+      if (generation === loadGenerationRef.current) {
+        loadingRef.current = false;
+      }
     }
-  }, [current]);
+  }, []);
 
   const pullNext = useCallback(() => {
     setQueue((items) => {
       const [next, ...rest] = items;
+      currentRef.current = next ?? null;
       setCurrent(next ?? null);
       return rest;
     });
@@ -209,7 +226,8 @@ export function SortSprintGame() {
   function start() {
     if (phase === "running" || phase === "loading") return;
 
-    setPhase(current ? "running" : "loading");
+    const activeCurrent = currentRef.current;
+    setPhase(activeCurrent ? "running" : "loading");
     setTimeLeft(RUN_SECONDS);
     setRule("Expression");
     setSortsOnRule(0);
@@ -219,10 +237,13 @@ export function SortSprintGame() {
     setMistakes(0);
     setMessage("Sorting belt online. Score as many correct sorts as possible.");
     setLastResult("30-second shift started.");
-    if (!current || queue.length < 4) void loadMore();
+    if (!activeCurrent || queue.length < 4) void loadMore();
   }
 
   function reset() {
+    loadGenerationRef.current += 1;
+    loadingRef.current = false;
+    currentRef.current = null;
     setPhase("idle");
     setTimeLeft(RUN_SECONDS);
     setRule("Expression");
@@ -322,7 +343,7 @@ export function SortSprintGame() {
             </div>
           ) : (
             <div className="grid min-h-56 place-items-center border border-paper/15 bg-black/50 text-paper/55">
-              {phase === "loading" ? "Loading the belt..." : "Start a 30-second sorting shift."}
+              {phase === "loading" || phase === "running" ? "Loading the next Normie..." : "Start a 30-second sorting shift."}
             </div>
           )}
 
