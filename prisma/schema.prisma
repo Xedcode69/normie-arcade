@@ -28,6 +28,12 @@ enum LeaderboardMode {
   SKILL
 }
 
+enum CommunityGameStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id          String   @id @default(cuid())
   privyId    String   @unique
@@ -154,4 +160,20 @@ model NormieCache {
   owner     String?
   fetchedAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model CommunityGame {
+  id          String   @id @default(cuid())
+  name        String
+  creator     String
+  description String
+  tags        String[]
+  url         String
+  previewUrl  String?
+  contact     String?
+  status      CommunityGameStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, createdAt])
 }
