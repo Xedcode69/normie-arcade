@@ -8,6 +8,7 @@ const limiter = new RateLimiter(56, 60_000);
 const traitCache = new Map<number, NormieTraits>();
 const metadataCache = new Map<number, NormieMetadata>();
 const normieCache = new Map<number, Normie>();
+const pixelCache = new Map<number, string>();
 const inflight = new Map<string, Promise<unknown>>();
 
 type RawTraitsResponse =
@@ -29,6 +30,23 @@ async function fetchWithRetry<T>(url: string, attempts = 3): Promise<T> {
       const response = await limiter.enqueue(() => fetch(url));
       if (!response.ok) throw new Error(`Normies API ${response.status}: ${url}`);
       return (await response.json()) as T;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 350 * (index + 1)));
+    }
+  }
+
+  throw lastError;
+}
+
+async function fetchTextWithRetry(url: string, attempts = 3): Promise<string> {
+  let lastError: unknown;
+
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      const response = await limiter.enqueue(() => fetch(url));
+      if (!response.ok) throw new Error(`Normies API ${response.status}: ${url}`);
+      return response.text();
     } catch (error) {
       lastError = error;
       await new Promise((resolve) => setTimeout(resolve, 350 * (index + 1)));
@@ -102,6 +120,16 @@ export const NormieAPIService = {
 
   fetchNormieImage(id: number) {
     return this.imageUrl(id);
+  },
+
+  async fetchNormiePixels(id: number): Promise<string> {
+    if (pixelCache.has(id)) return pixelCache.get(id)!;
+
+    return dedupe(`pixels:${id}`, async () => {
+      const pixels = await fetchTextWithRetry(`${BASE_URL}/normie/${id}/pixels`);
+      pixelCache.set(id, pixels);
+      return pixels;
+    });
   },
 
   async fetchNormieMetadata(id: number): Promise<NormieMetadata> {

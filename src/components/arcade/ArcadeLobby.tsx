@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleDot, Dices, Landmark, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
+import { CircleDot, Dices, Landmark, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { useNormiePreload } from "@/hooks/useNormiePreload";
@@ -83,6 +83,18 @@ const locations: MapLocation[] = [
     icon: <Workflow size={22} />
   },
   {
+    id: "pixel-lab",
+    label: "Pixel Detective",
+    subtitle: "Fragment ID lab",
+    hotkey: "6",
+    x: 47,
+    y: 82,
+    color: "#27f6e7",
+    kind: "game",
+    game: "pixel",
+    icon: <Search size={22} />
+  },
+  {
     id: "chip-bank",
     label: "Chip Bank",
     subtitle: "Cashier and balances",
@@ -112,6 +124,8 @@ const routePairs = [
   ["roulette-district", "sort-depot"],
   ["sort-depot", "prediction-tower"],
   ["sort-depot", "chip-bank"],
+  ["sort-depot", "pixel-lab"],
+  ["pixel-lab", "leaderboard-wall"],
   ["sort-depot", "leaderboard-wall"]
 ];
 
@@ -163,6 +177,7 @@ export function ArcadeLobby() {
           <DistrictZone id="dna-poker-club" focusedLocationId={focusedLocationId} left={50} top={10} width={30} height={29} color="#f4f1e8" label="DNA Poker Club" kind="lounge" />
           <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={73} top={25} width={23} height={36} color="#d7ff35" label="Prediction Tower" kind="tower" />
           <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={47} width={31} height={29} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
+          <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={36} top={72} width={24} height={20} color="#27f6e7" label="Pixel Detective" kind="casino" />
           <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={66} width={27} height={25} color="#f4f1e8" label="Chip Bank" kind="bank" />
           <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={62} top={66} width={29} height={25} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
           <CityBlocks isDimmed={Boolean(focusedLocationId)} />
