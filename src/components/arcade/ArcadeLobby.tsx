@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleDot, Dices, Landmark, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
+import { CircleDot, Dices, Gamepad2, Landmark, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { useNormiePreload } from "@/hooks/useNormiePreload";
@@ -19,7 +19,7 @@ type MapLocation = {
   icon: React.ReactNode;
 };
 
-type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "bank" | "leaderboard";
+type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "bank" | "leaderboard" | "community";
 
 const locations: MapLocation[] = [
   {
@@ -114,6 +114,16 @@ const locations: MapLocation[] = [
     color: "#ff43cf",
     kind: "utility",
     icon: <Trophy size={22} />
+  },
+  {
+    id: "community-games",
+    label: "Community Games",
+    subtitle: "External arcade portals",
+    x: 50,
+    y: 95,
+    color: "#d7ff35",
+    kind: "utility",
+    icon: <Gamepad2 size={22} />
   }
 ];
 
@@ -126,7 +136,9 @@ const routePairs = [
   ["sort-depot", "chip-bank"],
   ["sort-depot", "pixel-lab"],
   ["pixel-lab", "leaderboard-wall"],
-  ["sort-depot", "leaderboard-wall"]
+  ["sort-depot", "leaderboard-wall"],
+  ["chip-bank", "community-games"],
+  ["leaderboard-wall", "community-games"]
 ];
 
 export function ArcadeLobby() {
@@ -134,6 +146,7 @@ export function ArcadeLobby() {
   const [focusedLocationId, setFocusedLocationId] = useState<string | null>(null);
   const setActiveGame = useArcadeStore((state) => state.setActiveGame);
   const setLeaderboardOpen = useArcadeStore((state) => state.setLeaderboardOpen);
+  const setCommunityGamesOpen = useArcadeStore((state) => state.setCommunityGamesOpen);
   const notify = useArcadeStore((state) => state.notify);
   const normies = useArcadeStore((state) => state.loadedNormies);
   const locationById = useMemo(() => new Map(locations.map((location) => [location.id, location])), []);
@@ -146,6 +159,11 @@ export function ArcadeLobby() {
 
     if (location.id === "leaderboard-wall") {
       setLeaderboardOpen(true);
+      return;
+    }
+
+    if (location.id === "community-games") {
+      setCommunityGamesOpen(true);
       return;
     }
 
@@ -182,8 +200,9 @@ export function ArcadeLobby() {
             <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={41} width={27} height={20} color="#d7ff35" label="Prediction Tower" kind="tower" />
             <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={38} width={29} height={22} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
             <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={41} width={26} height={20} color="#27f6e7" label="Pixel Detective" kind="casino" />
-            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={15} top={70} width={30} height={20} color="#f4f1e8" label="Chip Bank" kind="bank" />
-            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={56} top={70} width={31} height={20} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
+            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={15} top={67} width={30} height={18} color="#f4f1e8" label="Chip Bank" kind="bank" />
+            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={56} top={67} width={31} height={18} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
+            <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={31} top={89} width={38} height={9} color="#d7ff35" label="Community Games" kind="community" />
             <CityBlocks isDimmed={Boolean(focusedLocationId)} />
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               {routePairs.map(([fromId, toId]) => {
@@ -367,6 +386,26 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
           <span key={index} className="absolute bottom-8 h-16 w-3 border" style={{ left: `${25 + index * 14}%`, borderColor: color }} />
         ))}
         <div className="absolute bottom-[5.3rem] left-1/2 h-12 w-24 -translate-x-1/2 border-t-2" style={{ borderColor: color }} />
+      </>
+    );
+  }
+
+  if (kind === "community") {
+    return (
+      <>
+        <div className="absolute bottom-4 left-8 right-8 top-9 border-2 opacity-70" style={{ borderColor: color }} />
+        {Array.from({ length: 5 }).map((_, index) => (
+          <span
+            key={index}
+            className="absolute bottom-6 h-8 w-10 border bg-black/60"
+            style={{
+              left: `${18 + index * 15}%`,
+              borderColor: `${color}99`,
+              boxShadow: `0 0 14px ${color}22`
+            }}
+          />
+        ))}
+        <div className="absolute left-1/2 top-6 h-px w-2/3 -translate-x-1/2" style={{ backgroundColor: `${color}88` }} />
       </>
     );
   }

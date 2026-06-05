@@ -6,6 +6,7 @@ import { AudioBoot } from "@/components/audio/AudioBoot";
 import { ArcadeAuthGate } from "@/components/auth/ArcadeAuthGate";
 import { GameDock } from "@/components/games/GameDock";
 import { HUD } from "@/components/hud/HUD";
+import { CommunityGames } from "@/components/hud/CommunityGames";
 import { Leaderboard } from "@/components/hud/Leaderboard";
 import { LobbyControls } from "@/components/hud/LobbyControls";
 import { LobbyHotkeys } from "@/components/hud/LobbyHotkeys";
@@ -25,6 +26,7 @@ export function ArcadeExperience() {
         <ArcadeLobby />
       </Suspense>
       <HUD />
+      <CommunityGames />
       <Leaderboard />
       <LobbyControls />
       <PlayerControls />
