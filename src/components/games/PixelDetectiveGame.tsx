@@ -6,8 +6,9 @@ import { NormieImage } from "@/components/normies/NormieImage";
 import { playTone } from "@/lib/audio";
 import { NormieAPIService } from "@/services/NormieAPIService";
 import { useArcadeStore } from "@/stores/arcadeStore";
+import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 
-const RUN_SECONDS = 30;
+const RUN_SECONDS = 60;
 const MAX_ID = 9999;
 const FRAGMENT_SIZE = 10;
 
@@ -68,6 +69,7 @@ export function PixelDetectiveGame() {
   const loadingRef = useRef(false);
   const phaseRef = useRef<Phase>("idle");
   const notify = useArcadeStore((state) => state.notify);
+  const recordLeaderboardResult = useLeaderboardRecorder();
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -116,12 +118,22 @@ export function PixelDetectiveGame() {
     playTone(740, 0.2, "triangle");
     setMessage("Investigation closed.");
     setLastResult(`FINAL - ${score} correct, ${mistakes} misses, best streak ${bestStreak}.`);
+    void recordLeaderboardResult({
+      game: "PIXEL_DETECTIVE",
+      mode: "SKILL",
+      outcome: score > 0 ? "WIN" : "LOSS",
+      score,
+      chipsWon: 0,
+      netChips: 0,
+      bestCombo: bestStreak,
+      metadata: { mistakes, seconds: RUN_SECONDS }
+    });
     notify({
       kind: "info",
       title: "Pixel Detective closed",
       body: `${score} correct IDs in ${RUN_SECONDS} seconds.`
     });
-  }, [bestStreak, mistakes, notify, phase, score, timeLeft]);
+  }, [bestStreak, mistakes, notify, phase, recordLeaderboardResult, score, timeLeft]);
 
   useEffect(() => {
     if (phase !== "running") return undefined;
@@ -224,7 +236,7 @@ export function PixelDetectiveGame() {
             ) : (
               <div className="grid place-items-center gap-3 text-center text-paper/55">
                 <Crosshair size={38} />
-                <span>{phase === "loading" ? "Scanning pixels..." : "Start a 30-second pixel case."}</span>
+                <span>{phase === "loading" ? "Scanning pixels..." : "Start a 60-second pixel case."}</span>
               </div>
             )}
           </div>
