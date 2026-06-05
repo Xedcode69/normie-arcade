@@ -11,7 +11,8 @@ const boards: Array<{ label: string; game: LeaderboardGame; mode: LeaderboardMod
   { label: "RPS Solo", game: "RPS", mode: "SOLO" },
   { label: "RPS PvP", game: "RPS", mode: "PVP" },
   { label: "Poker PvP", game: "POKER", mode: "PVP" },
-  { label: "Sort", game: "SORT_SPRINT", mode: "SKILL" }
+  { label: "Sort", game: "SORT_SPRINT", mode: "SKILL" },
+  { label: "Pixel", game: "PIXEL_DETECTIVE", mode: "SKILL" }
 ];
 
 export function Leaderboard() {
