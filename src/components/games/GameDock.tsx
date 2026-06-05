@@ -11,6 +11,7 @@ import { RPSGame } from "./RPSGame";
 import { PokerGame } from "./PokerGame";
 import { UpDownGame } from "./UpDownGame";
 import { SortSprintGame } from "./SortSprintGame";
+import { PixelDetectiveGame } from "./PixelDetectiveGame";
 
 const instructions = {
   roulette: {
@@ -75,6 +76,15 @@ const instructions = {
       "Read the active rule and send each live Normie to the matching trait bin.",
       "The rule changes during the run. Correct sorts build combo and wrong bins reset it.",
       "Your final score is the number of correct selections, ranked on the cabinet leaderboard."
+    ]
+  },
+  pixel: {
+    title: "Pixel Detective",
+    lines: [
+      "Start a 30-second investigation.",
+      "The cabinet fetches a real Normie pixel payload and shows one cropped fragment.",
+      "Pick the full Normie suspect that matches the fragment.",
+      "Use keys 1-4 for quick suspect selection."
     ]
   }
 } as const;
@@ -145,6 +155,7 @@ export function GameDock() {
               {activeGame === "poker" ? <PokerGame /> : null}
               {activeGame === "updown" ? <UpDownGame /> : null}
               {activeGame === "sort" ? <SortSprintGame /> : null}
+              {activeGame === "pixel" ? <PixelDetectiveGame /> : null}
             </div>
             <AnimatePresence>
               {showInstructions ? (

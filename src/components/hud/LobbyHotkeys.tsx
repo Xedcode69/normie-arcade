@@ -37,6 +37,7 @@ export function LobbyHotkeys() {
       if (key === "3") setActiveGame("poker");
       if (key === "4") setActiveGame("updown");
       if (key === "5") setActiveGame("sort");
+      if (key === "6") setActiveGame("pixel");
       if (key === "c") {
         notify({
           kind: "info",
