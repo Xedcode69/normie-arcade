@@ -21,6 +21,12 @@ type PixelRound = {
   crop: { x: number; y: number; size: number };
 };
 
+type RevealedGuess = {
+  guessedId: number;
+  correctId: number;
+  wasCorrect: boolean;
+};
+
 function randomId() {
   return Math.floor(Math.random() * (MAX_ID + 1));
 }
@@ -56,6 +62,36 @@ function buildFragment(pixels: string) {
   return { rows, crop: { x, y, size: FRAGMENT_SIZE } };
 }
 
+function suspectStateClass(id: number, revealedGuess: RevealedGuess | null) {
+  if (!revealedGuess) return "";
+  if (id !== revealedGuess.correctId && id !== revealedGuess.guessedId) return "opacity-35";
+  return "";
+}
+
+function suspectStateStyle(id: number, revealedGuess: RevealedGuess | null): React.CSSProperties {
+  if (!revealedGuess) {
+    return { borderColor: "rgba(244,241,232,0.3)" };
+  }
+
+  if (id === revealedGuess.correctId) {
+    return {
+      borderColor: "#22c55e",
+      backgroundColor: "rgba(34,197,94,0.14)",
+      boxShadow: "0 0 0 2px rgba(34,197,94,0.95), 0 0 34px rgba(34,197,94,0.72)"
+    };
+  }
+
+  if (id === revealedGuess.guessedId) {
+    return {
+      borderColor: "#ef4444",
+      backgroundColor: "rgba(239,68,68,0.14)",
+      boxShadow: "0 0 0 2px rgba(239,68,68,0.95), 0 0 34px rgba(239,68,68,0.7)"
+    };
+  }
+
+  return { borderColor: "rgba(244,241,232,0.15)" };
+}
+
 export function PixelDetectiveGame() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [timeLeft, setTimeLeft] = useState(RUN_SECONDS);
@@ -64,6 +100,7 @@ export function PixelDetectiveGame() {
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [mistakes, setMistakes] = useState(0);
+  const [revealedGuess, setRevealedGuess] = useState<RevealedGuess | null>(null);
   const [message, setMessage] = useState("Inspect the pixel fragment and identify the matching Normie.");
   const [lastResult, setLastResult] = useState("Case board idle.");
   const loadingRef = useRef(false);
@@ -160,6 +197,7 @@ export function PixelDetectiveGame() {
     setBestStreak(0);
     setMistakes(0);
     setRound(null);
+    setRevealedGuess(null);
     setMessage("Pulling pixel evidence from the Normies API.");
     setLastResult("New investigation started.");
     void loadRound();
@@ -173,12 +211,13 @@ export function PixelDetectiveGame() {
     setBestStreak(0);
     setMistakes(0);
     setRound(null);
+    setRevealedGuess(null);
     setMessage("Inspect the pixel fragment and identify the matching Normie.");
     setLastResult("Case board idle.");
   }
 
   function guess(id: number) {
-    if (phase !== "running" || !round || loadingRef.current) return;
+    if (phase !== "running" || !round || loadingRef.current || revealedGuess) return;
 
     if (id === round.targetId) {
       const nextStreak = streak + 1;
@@ -194,7 +233,16 @@ export function PixelDetectiveGame() {
       playTone(180, 0.16, "square");
     }
 
-    void loadRound();
+    setRevealedGuess({
+      guessedId: id,
+      correctId: round.targetId,
+      wasCorrect: id === round.targetId
+    });
+
+    window.setTimeout(() => {
+      setRevealedGuess(null);
+      void loadRound();
+    }, 850);
   }
 
   return (
@@ -261,9 +309,10 @@ export function PixelDetectiveGame() {
             {(round?.options ?? [0, 1, 2, 3]).map((id, index) => (
               <button
                 key={`${id}-${index}`}
-                disabled={phase !== "running" || !round}
+                disabled={phase !== "running" || !round || Boolean(revealedGuess)}
                 onClick={() => guess(id)}
-                className="group grid min-h-72 grid-rows-[1fr_auto] border border-paper/30 bg-black/70 p-3 text-left transition hover:-translate-y-0.5 hover:border-mint/80 hover:bg-mint/10 disabled:opacity-40"
+                className={`group grid min-h-72 grid-rows-[1fr_auto] border-2 bg-black/70 p-3 text-left transition hover:-translate-y-0.5 hover:border-mint/80 hover:bg-mint/10 disabled:cursor-default ${suspectStateClass(id, revealedGuess)}`}
+                style={suspectStateStyle(id, revealedGuess)}
               >
                 {round ? (
                   <NormieImage src={NormieAPIService.imageUrl(id)} alt={`Normie suspect #${id}`} className="mx-auto h-44 w-44 border border-paper/30 bg-paper object-contain" />
