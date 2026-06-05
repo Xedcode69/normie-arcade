@@ -27,8 +27,8 @@ const locations: MapLocation[] = [
     label: "Roulette District",
     subtitle: "Neon expression casino",
     hotkey: "1",
-    x: 15,
-    y: 42,
+    x: 18,
+    y: 25,
     color: "#27f6e7",
     kind: "game",
     game: "roulette",
@@ -39,8 +39,8 @@ const locations: MapLocation[] = [
     label: "RPS Arena",
     subtitle: "Fixed-stake battle station",
     hotkey: "2",
-    x: 34,
-    y: 28,
+    x: 48,
+    y: 21,
     color: "#ff43cf",
     kind: "game",
     game: "rps",
@@ -51,8 +51,8 @@ const locations: MapLocation[] = [
     label: "DNA Poker Club",
     subtitle: "Private trait lounge",
     hotkey: "3",
-    x: 61,
-    y: 30,
+    x: 78,
+    y: 25,
     color: "#f4f1e8",
     kind: "game",
     game: "poker",
@@ -63,8 +63,8 @@ const locations: MapLocation[] = [
     label: "Prediction Tower",
     subtitle: "Up/Down terminal",
     hotkey: "4",
-    x: 83,
-    y: 45,
+    x: 19,
+    y: 52,
     color: "#d7ff35",
     kind: "game",
     game: "updown",
@@ -75,8 +75,8 @@ const locations: MapLocation[] = [
     label: "Sort Sprint Depot",
     subtitle: "Transit sorting station",
     hotkey: "5",
-    x: 50,
-    y: 62,
+    x: 51,
+    y: 50,
     color: "#35ff8f",
     kind: "game",
     game: "sort",
@@ -87,8 +87,8 @@ const locations: MapLocation[] = [
     label: "Pixel Detective",
     subtitle: "Fragment ID lab",
     hotkey: "6",
-    x: 47,
-    y: 82,
+    x: 82,
+    y: 52,
     color: "#27f6e7",
     kind: "game",
     game: "pixel",
@@ -99,8 +99,8 @@ const locations: MapLocation[] = [
     label: "Chip Bank",
     subtitle: "Cashier and balances",
     hotkey: "C",
-    x: 24,
-    y: 79,
+    x: 30,
+    y: 80,
     color: "#f4f1e8",
     kind: "utility",
     icon: <Landmark size={22} />
@@ -109,8 +109,8 @@ const locations: MapLocation[] = [
     id: "leaderboard-wall",
     label: "Leaderboard Wall",
     subtitle: "Global rankings",
-    x: 75,
-    y: 79,
+    x: 68,
+    y: 80,
     color: "#ff43cf",
     kind: "utility",
     icon: <Trophy size={22} />
@@ -133,6 +133,7 @@ export function ArcadeLobby() {
   useNormiePreload();
   const [focusedLocationId, setFocusedLocationId] = useState<string | null>(null);
   const setActiveGame = useArcadeStore((state) => state.setActiveGame);
+  const setLeaderboardOpen = useArcadeStore((state) => state.setLeaderboardOpen);
   const notify = useArcadeStore((state) => state.notify);
   const normies = useArcadeStore((state) => state.loadedNormies);
   const locationById = useMemo(() => new Map(locations.map((location) => [location.id, location])), []);
@@ -143,13 +144,15 @@ export function ArcadeLobby() {
       return;
     }
 
+    if (location.id === "leaderboard-wall") {
+      setLeaderboardOpen(true);
+      return;
+    }
+
     notify({
       kind: "info",
       title: location.label,
-      body:
-        location.id === "chip-bank"
-          ? "Chip purchase and withdraw support will arrive in a future update."
-          : "Open the trophy panel to inspect live global rankings."
+      body: "Chip purchase and withdraw support will arrive in a future update."
     });
   }
 
@@ -170,59 +173,61 @@ export function ArcadeLobby() {
           </div>
         </div>
 
-        <div className="relative min-h-0 flex-1 overflow-hidden border-y border-paper/10">
-          <div className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(circle_at_center,rgba(244,241,232,0.07)_0_1px,transparent_1px)] [background-size:24px_24px]" />
-          <DistrictZone id="roulette-district" focusedLocationId={focusedLocationId} left={5} top={25} width={27} height={27} color="#27f6e7" label="Roulette District" kind="casino" />
-          <DistrictZone id="rps-arena" focusedLocationId={focusedLocationId} left={23} top={9} width={30} height={28} color="#ff43cf" label="RPS Arena" kind="arena" />
-          <DistrictZone id="dna-poker-club" focusedLocationId={focusedLocationId} left={50} top={10} width={30} height={29} color="#f4f1e8" label="DNA Poker Club" kind="lounge" />
-          <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={73} top={25} width={23} height={36} color="#d7ff35" label="Prediction Tower" kind="tower" />
-          <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={47} width={31} height={29} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
-          <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={36} top={72} width={24} height={20} color="#27f6e7" label="Pixel Detective" kind="casino" />
-          <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={66} width={27} height={25} color="#f4f1e8" label="Chip Bank" kind="bank" />
-          <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={62} top={66} width={29} height={25} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
-          <CityBlocks isDimmed={Boolean(focusedLocationId)} />
-          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {routePairs.map(([fromId, toId]) => {
-              const from = locationById.get(fromId)!;
-              const to = locationById.get(toId)!;
-              const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : true;
-              return (
-                <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0.28}>
-                <line
-                  x1={from.x}
-                  y1={from.y}
-                  x2={to.x}
-                  y2={to.y}
-                  stroke={isFocusedRoute ? "rgba(0,0,0,0.78)" : "rgba(0,0,0,0.5)"}
-                  strokeWidth="2.1"
-                  strokeLinecap="round"
-                />
-                <line
-                  x1={from.x}
-                  y1={from.y}
-                  x2={to.x}
-                  y2={to.y}
-                  stroke={isFocusedRoute ? "rgba(244,241,232,0.78)" : "rgba(244,241,232,0.34)"}
-                  strokeWidth={isFocusedRoute ? "0.85" : "0.55"}
-                  strokeDasharray="1.8 1.5"
-                  strokeLinecap="round"
-                />
-                </g>
-              );
-            })}
-          </svg>
+        <div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-y border-paper/10 thin-scroll">
+          <div className="relative h-[1120px] min-w-0">
+            <div className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(circle_at_center,rgba(244,241,232,0.07)_0_1px,transparent_1px)] [background-size:24px_24px]" />
+            <DistrictZone id="roulette-district" focusedLocationId={focusedLocationId} left={5} top={13} width={26} height={19} color="#27f6e7" label="Roulette District" kind="casino" />
+            <DistrictZone id="rps-arena" focusedLocationId={focusedLocationId} left={35} top={9} width={28} height={20} color="#ff43cf" label="RPS Arena" kind="arena" />
+            <DistrictZone id="dna-poker-club" focusedLocationId={focusedLocationId} left={67} top={13} width={27} height={19} color="#f4f1e8" label="DNA Poker Club" kind="lounge" />
+            <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={41} width={27} height={20} color="#d7ff35" label="Prediction Tower" kind="tower" />
+            <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={38} width={29} height={22} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
+            <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={41} width={26} height={20} color="#27f6e7" label="Pixel Detective" kind="casino" />
+            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={15} top={70} width={30} height={20} color="#f4f1e8" label="Chip Bank" kind="bank" />
+            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={56} top={70} width={31} height={20} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
+            <CityBlocks isDimmed={Boolean(focusedLocationId)} />
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {routePairs.map(([fromId, toId]) => {
+                const from = locationById.get(fromId)!;
+                const to = locationById.get(toId)!;
+                const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : true;
+                return (
+                  <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0.28}>
+                  <line
+                    x1={from.x}
+                    y1={from.y}
+                    x2={to.x}
+                    y2={to.y}
+                    stroke={isFocusedRoute ? "rgba(0,0,0,0.78)" : "rgba(0,0,0,0.5)"}
+                    strokeWidth="2.1"
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={from.x}
+                    y1={from.y}
+                    x2={to.x}
+                    y2={to.y}
+                    stroke={isFocusedRoute ? "rgba(244,241,232,0.78)" : "rgba(244,241,232,0.34)"}
+                    strokeWidth={isFocusedRoute ? "0.85" : "0.55"}
+                    strokeDasharray="1.8 1.5"
+                    strokeLinecap="round"
+                  />
+                  </g>
+                );
+              })}
+            </svg>
 
-          <div className="absolute inset-0">
-            {locations.map((location, index) => (
-              <MapStop
-                key={location.id}
-                location={location}
-                normie={normies[index]}
-                focusedLocationId={focusedLocationId}
-                onFocusChange={setFocusedLocationId}
-                onSelect={() => selectLocation(location)}
-              />
-            ))}
+            <div className="absolute inset-0">
+              {locations.map((location, index) => (
+                <MapStop
+                  key={location.id}
+                  location={location}
+                  normie={normies[index]}
+                  focusedLocationId={focusedLocationId}
+                  onFocusChange={setFocusedLocationId}
+                  onSelect={() => selectLocation(location)}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -443,7 +448,7 @@ function MapStop({
       onMouseLeave={() => onFocusChange(null)}
       onFocus={() => onFocusChange(location.id)}
       onBlur={() => onFocusChange(null)}
-      className="group absolute z-10 w-52 max-w-[40vw] -translate-x-1/2 -translate-y-1/2 text-left transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
+      className="group absolute z-10 w-48 max-w-[38vw] -translate-x-1/2 -translate-y-1/2 text-left transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
       style={{ left: `${location.x}%`, top: `${location.y}%` }}
     >
       <span

@@ -4,6 +4,7 @@ import { Trophy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardGame, type LeaderboardMode } from "@/services/LeaderboardService";
+import { useArcadeStore } from "@/stores/arcadeStore";
 
 const boards: Array<{ label: string; game: LeaderboardGame; mode: LeaderboardMode }> = [
   { label: "Roulette", game: "ROULETTE", mode: "SOLO" },
@@ -16,7 +17,8 @@ const boards: Array<{ label: string; game: LeaderboardGame; mode: LeaderboardMod
 ];
 
 export function Leaderboard() {
-  const [open, setOpen] = useState(false);
+  const open = useArcadeStore((state) => state.leaderboardOpen);
+  const setOpen = useArcadeStore((state) => state.setLeaderboardOpen);
   const [selected, setSelected] = useState(boards[0]);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -52,7 +54,7 @@ export function Leaderboard() {
     <aside className="pointer-events-auto absolute right-3 top-32 z-40 md:right-5">
       <button
         aria-label="Toggle leaderboard"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         className="ml-auto grid h-11 w-11 place-items-center hud-panel text-paper transition hover:scale-105"
       >
         <Trophy size={17} />
