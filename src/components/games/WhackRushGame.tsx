@@ -61,6 +61,11 @@ export function WhackRushGame() {
   const targetSerial = useRef(0);
   const burnedIdsRef = useRef<number[]>([]);
   const timeLeftRef = useRef(RUN_SECONDS);
+  const scoreRef = useRef(0);
+  const hitsRef = useRef(0);
+  const burnedHitsRef = useRef(0);
+  const comboRef = useRef(0);
+  const bestComboRef = useRef(0);
   const recordLeaderboardResult = useLeaderboardRecorder();
   const notify = useArcadeStore((state) => state.notify);
 
@@ -76,30 +81,51 @@ export function WhackRushGame() {
     timeLeftRef.current = timeLeft;
   }, [timeLeft]);
 
+  useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+
+  useEffect(() => {
+    hitsRef.current = hits;
+  }, [hits]);
+
+  useEffect(() => {
+    burnedHitsRef.current = burnedHits;
+  }, [burnedHits]);
+
+  useEffect(() => {
+    bestComboRef.current = bestCombo;
+  }, [bestCombo]);
+
   const finishRun = useCallback(
     (reason: string) => {
       if (recordedRef.current) return;
       recordedRef.current = true;
+      phaseRef.current = "ended";
       setPhase("ended");
       setTargets([]);
       setMessage(reason);
+      const finalScore = scoreRef.current;
+      const finalHits = hitsRef.current;
+      const finalBurnedHits = burnedHitsRef.current;
+      const finalBestCombo = bestComboRef.current;
       void recordLeaderboardResult({
         game: "WHACK_RUSH",
         mode: "SKILL",
-        outcome: score > 0 ? "WIN" : "LOSS",
-        score,
+        outcome: finalScore > 0 ? "WIN" : "LOSS",
+        score: finalScore,
         chipsWon: 0,
         netChips: 0,
-        bestCombo,
-        metadata: { hits, burnedHits, seconds: RUN_SECONDS }
+        bestCombo: finalBestCombo,
+        metadata: { hits: finalHits, burnedHits: finalBurnedHits, seconds: RUN_SECONDS }
       });
       notify({
         kind: "info",
-        title: "Whack Rush posted",
-        body: `${score} points, ${hits} clean hits, ${burnedHits} burned mistakes.`
+        title: "Whack-A-Normie posted",
+        body: `${finalScore} points, ${finalHits} clean hits, ${finalBurnedHits} burned mistakes.`
       });
     },
-    [bestCombo, burnedHits, hits, notify, recordLeaderboardResult, score]
+    [notify, recordLeaderboardResult]
   );
 
   async function start() {
@@ -114,6 +140,11 @@ export function WhackRushGame() {
     setBurnedHits(0);
     setCombo(0);
     setBestCombo(0);
+    scoreRef.current = 0;
+    hitsRef.current = 0;
+    burnedHitsRef.current = 0;
+    comboRef.current = 0;
+    bestComboRef.current = 0;
     setBurnedIds([]);
     setMessage("Rush started. Burn feed loading in the background.");
     setBurnFeedLoading(true);
@@ -139,6 +170,11 @@ export function WhackRushGame() {
     setBurnedHits(0);
     setCombo(0);
     setBestCombo(0);
+    scoreRef.current = 0;
+    hitsRef.current = 0;
+    burnedHitsRef.current = 0;
+    comboRef.current = 0;
+    bestComboRef.current = 0;
     setMessage("Whack live Normies. Do not hit burned Normies.");
   }
 
@@ -169,20 +205,27 @@ export function WhackRushGame() {
     setTargets((items) => items.filter((item) => item.id !== target.id));
 
     if (target.burned) {
-      setBurnedHits((value) => value + 1);
+      burnedHitsRef.current += 1;
+      setBurnedHits(burnedHitsRef.current);
+      comboRef.current = 0;
       setCombo(0);
-      setScore((value) => Math.max(0, value - BURNED_PENALTY));
+      scoreRef.current = Math.max(0, scoreRef.current - BURNED_PENALTY);
+      setScore(scoreRef.current);
       setMessage(`Burned Normie #${target.normieId}. -${BURNED_PENALTY}.`);
       playTone(170, 0.16, "square");
       return;
     }
 
-    const nextCombo = combo + 1;
+    const nextCombo = comboRef.current + 1;
     const comboBonus = nextCombo > 1 ? Math.floor(nextCombo / 5) * 2 : 0;
-    setHits((value) => value + 1);
+    hitsRef.current += 1;
+    comboRef.current = nextCombo;
+    scoreRef.current += NORMAL_POINTS + comboBonus;
+    bestComboRef.current = Math.max(bestComboRef.current, nextCombo);
+    setHits(hitsRef.current);
     setCombo(nextCombo);
-    setBestCombo((value) => Math.max(value, nextCombo));
-    setScore((value) => value + NORMAL_POINTS + comboBonus);
+    setBestCombo(bestComboRef.current);
+    setScore(scoreRef.current);
     setMessage(`Clean whack. +${NORMAL_POINTS + comboBonus}. Combo ${nextCombo}.`);
     playTone(520 + Math.min(nextCombo, 12) * 18, 0.08, "triangle");
   }
@@ -219,7 +262,7 @@ export function WhackRushGame() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col px-4 pb-4 pt-1">
       <header className="shrink-0 text-center">
-        <h2 className="font-display text-lg uppercase tracking-[0.24em] text-paper">Normie Whack Rush</h2>
+        <h2 className="font-display text-lg uppercase tracking-[0.24em] text-paper">Whack-A-Normie</h2>
         <p className="terminal-hash mx-auto mt-1 max-w-4xl truncate text-xs text-pixel/70">{message}</p>
       </header>
 
@@ -298,8 +341,8 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
           className="absolute inset-x-6 bottom-7 top-3 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
         >
           <span
-            className={`relative grid h-[calc(100%-0.75rem)] w-32 place-items-end overflow-hidden border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-rise_160ms_ease-out_both] ${
-              target.burned ? "border-magenta shadow-[0_0_30px_rgba(255,67,207,0.35)]" : "border-mint shadow-neon"
+            className={`relative grid h-[calc(100%-0.75rem)] w-32 place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-rise_160ms_ease-out_both] ${
+              target.burned ? "border-paper/70 shadow-[0_0_24px_rgba(244,241,232,0.18)]" : "border-mint shadow-neon"
             }`}
           >
             <span className="absolute inset-0 grid place-items-center text-[9px] uppercase tracking-[0.18em] text-paper/25">0xN</span>
@@ -310,11 +353,11 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
             />
           </span>
           {target.burned ? (
-            <span className="absolute right-3 top-2 grid h-7 w-7 place-items-center border border-magenta bg-black/80 text-magenta">
+            <span className="absolute right-3 top-2 grid h-7 w-7 place-items-center border border-red-500 bg-black/80 text-red-500">
               <Flame size={15} />
             </span>
           ) : null}
-          <span className={`absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/80 px-2 py-0.5 text-[9px] uppercase tracking-[0.18em] ${target.burned ? "text-magenta" : "text-mint"}`}>
+          <span className={`absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/80 px-2 py-0.5 text-[9px] uppercase tracking-[0.18em] ${target.burned ? "text-paper/70" : "text-mint"}`}>
             #{target.normieId}
           </span>
         </button>
@@ -333,7 +376,7 @@ function Rule({ label, value, danger }: { label: string; value: string; danger?:
   return (
     <div className="flex items-center justify-between gap-3 border border-paper/15 bg-black/55 px-3 py-2">
       <span className="text-paper/45">{label}</span>
-      <span className={danger ? "text-magenta" : "text-mint"}>{value}</span>
+      <span className={danger ? "text-red-500" : "text-mint"}>{value}</span>
     </div>
   );
 }

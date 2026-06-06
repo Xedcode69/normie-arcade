@@ -96,7 +96,7 @@ const locations: MapLocation[] = [
   },
   {
     id: "whack-yard",
-    label: "Whack Rush",
+    label: "Whack-A-Normie",
     subtitle: "Burn yard whack grid",
     hotkey: "7",
     x: 50,
@@ -223,7 +223,7 @@ export function ArcadeLobby() {
             <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={37} width={27} height={19} color="#d7ff35" label="Prediction Tower" kind="tower" />
             <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={34} width={29} height={21} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
             <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={37} width={26} height={19} color="#27f6e7" label="Pixel Detective" kind="casino" />
-            <DistrictZone id="whack-yard" focusedLocationId={focusedLocationId} left={42} top={59} width={16} height={14} color="#ff7a43" label="Whack Rush" kind="burn" />
+            <DistrictZone id="whack-yard" focusedLocationId={focusedLocationId} left={42} top={59} width={16} height={14} color="#ff7a43" label="Whack-A-Normie" kind="burn" />
             <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={60} width={29} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
             <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={59} top={60} width={30} height={16} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
             <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={28} top={84} width={44} height={9} color="#d7ff35" label="Community Games" kind="community" />
