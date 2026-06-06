@@ -298,7 +298,7 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
           className="absolute inset-x-6 bottom-7 top-3 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
         >
           <span
-            className={`relative grid h-[calc(100%-0.75rem)] w-32 place-items-end overflow-hidden border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-rise_160ms_ease-out_both] ${
+            className={`relative grid h-[calc(100%-0.75rem)] w-32 place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-rise_160ms_ease-out_both] ${
               target.burned ? "border-magenta shadow-[0_0_30px_rgba(255,67,207,0.35)]" : "border-mint shadow-neon"
             }`}
           >
