@@ -12,6 +12,7 @@ import { PokerGame } from "./PokerGame";
 import { UpDownGame } from "./UpDownGame";
 import { SortSprintGame } from "./SortSprintGame";
 import { PixelDetectiveGame } from "./PixelDetectiveGame";
+import { WhackRushGame } from "./WhackRushGame";
 
 const instructions = {
   roulette: {
@@ -86,6 +87,15 @@ const instructions = {
       "Pick the full Normie suspect that matches the fragment.",
       "Use keys 1-4 for quick suspect selection."
     ]
+  },
+  whack: {
+    title: "Normie Whack Rush",
+    lines: [
+      "Start a 60-second rush.",
+      "Whack live Normies for points.",
+      "Avoid burned Normies. Hitting one deducts score and breaks combo.",
+      "Clean hits build combo and the best score posts to the skill leaderboard."
+    ]
   }
 } as const;
 
@@ -156,6 +166,7 @@ export function GameDock() {
               {activeGame === "updown" ? <UpDownGame /> : null}
               {activeGame === "sort" ? <SortSprintGame /> : null}
               {activeGame === "pixel" ? <PixelDetectiveGame /> : null}
+              {activeGame === "whack" ? <WhackRushGame /> : null}
             </div>
             <AnimatePresence>
               {showInstructions ? (

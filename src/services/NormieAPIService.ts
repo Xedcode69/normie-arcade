@@ -9,6 +9,7 @@ const traitCache = new Map<number, NormieTraits>();
 const metadataCache = new Map<number, NormieMetadata>();
 const normieCache = new Map<number, Normie>();
 const pixelCache = new Map<number, string>();
+const burnedTokenCache = new Map<string, number[]>();
 const inflight = new Map<string, Promise<unknown>>();
 
 type RawTraitsResponse =
@@ -92,6 +93,18 @@ function normalizeTraits(response: RawTraitsResponse, id: number): NormieTraits 
   return Object.keys(response).length ? (response as NormieTraits) : fallbackTraits(id);
 }
 
+function extractIds(value: unknown): number[] {
+  if (typeof value === "number" && Number.isFinite(value)) return [value];
+  if (typeof value === "string" && Number.isFinite(Number(value))) return [Number(value)];
+  if (Array.isArray(value)) return value.flatMap(extractIds);
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return extractIds(record.tokenId ?? record.id ?? record.normieId ?? record.token_id ?? record.tokens ?? record.burnedTokens ?? record.items ?? record.data);
+  }
+
+  return [];
+}
+
 export const NormieAPIService = {
   imageUrl(id: number) {
     return `${BASE_URL}/normie/${id}/image.png`;
@@ -99,6 +112,10 @@ export const NormieAPIService = {
 
   svgUrl(id: number) {
     return `${BASE_URL}/normie/${id}/image.svg`;
+  },
+
+  burnedImageUrl(id: number) {
+    return `${BASE_URL}/history/burned/${id}/image.png`;
   },
 
   async fetchNormieTraits(id: number): Promise<NormieTraits> {
@@ -129,6 +146,23 @@ export const NormieAPIService = {
       const pixels = await fetchTextWithRetry(`${BASE_URL}/normie/${id}/pixels`);
       pixelCache.set(id, pixels);
       return pixels;
+    });
+  },
+
+  async fetchBurnedNormieIds(limit = 80): Promise<number[]> {
+    const cacheKey = `burned:${limit}`;
+    if (burnedTokenCache.has(cacheKey)) return burnedTokenCache.get(cacheKey)!;
+
+    return dedupe(cacheKey, async () => {
+      try {
+        const response = await fetchWithRetry<unknown>(`${BASE_URL}/history/burned-tokens?limit=${limit}`);
+        const ids = [...new Set(extractIds(response).filter((id) => id >= 0 && id <= MAX_ID))];
+        burnedTokenCache.set(cacheKey, ids);
+        return ids;
+      } catch {
+        burnedTokenCache.set(cacheKey, []);
+        return [];
+      }
     });
   },
 

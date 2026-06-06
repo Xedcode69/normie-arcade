@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleDot, Dices, Gamepad2, Landmark, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
+import { CircleDot, Dices, Flame, Gamepad2, Landmark, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { useNormiePreload } from "@/hooks/useNormiePreload";
@@ -19,7 +19,7 @@ type MapLocation = {
   icon: React.ReactNode;
 };
 
-type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "bank" | "leaderboard" | "community";
+type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "burn" | "bank" | "leaderboard" | "community";
 
 const locations: MapLocation[] = [
   {
@@ -95,6 +95,18 @@ const locations: MapLocation[] = [
     icon: <Search size={22} />
   },
   {
+    id: "whack-yard",
+    label: "Whack Rush",
+    subtitle: "Burn yard whack grid",
+    hotkey: "7",
+    x: 50,
+    y: 66,
+    color: "#ff7a43",
+    kind: "game",
+    game: "whack",
+    icon: <Flame size={22} />
+  },
+  {
     id: "chip-bank",
     label: "Chip Bank",
     subtitle: "Cashier and balances",
@@ -132,6 +144,7 @@ const spineRoutePairs = [
   ["rps-arena", "dna-poker-club"],
   ["sort-depot", "prediction-tower"],
   ["sort-depot", "pixel-lab"],
+  ["sort-depot", "whack-yard"],
   ["chip-bank", "community-games"],
   ["leaderboard-wall", "community-games"]
 ];
@@ -139,7 +152,9 @@ const spineRoutePairs = [
 const hoverRoutePairs = [
   ["dna-poker-club", "prediction-tower"],
   ["roulette-district", "sort-depot"],
+  ["pixel-lab", "whack-yard"],
   ["sort-depot", "chip-bank"],
+  ["whack-yard", "community-games"],
   ["pixel-lab", "leaderboard-wall"],
   ["sort-depot", "leaderboard-wall"]
 ];
@@ -208,6 +223,7 @@ export function ArcadeLobby() {
             <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={37} width={27} height={19} color="#d7ff35" label="Prediction Tower" kind="tower" />
             <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={34} width={29} height={21} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
             <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={37} width={26} height={19} color="#27f6e7" label="Pixel Detective" kind="casino" />
+            <DistrictZone id="whack-yard" focusedLocationId={focusedLocationId} left={42} top={59} width={16} height={14} color="#ff7a43" label="Whack Rush" kind="burn" />
             <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={60} width={29} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
             <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={59} top={60} width={30} height={16} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
             <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={28} top={84} width={44} height={9} color="#d7ff35" label="Community Games" kind="community" />
@@ -438,6 +454,28 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
         {Array.from({ length: 9 }).map((_, index) => (
           <span key={index} className="absolute top-[46%] h-10 w-px rotate-12" style={{ left: `${10 + index * 10}%`, backgroundColor: `${color}88` }} />
         ))}
+      </>
+    );
+  }
+
+  if (kind === "burn") {
+    return (
+      <>
+        <div className="absolute bottom-5 left-5 right-5 top-10 border-2 opacity-70" style={{ borderColor: color }} />
+        {Array.from({ length: 6 }).map((_, index) => (
+          <span
+            key={index}
+            className="city-casino-bulb absolute h-3 w-3 rounded-full"
+            style={{
+              backgroundColor: color,
+              left: `${18 + (index % 3) * 28}%`,
+              top: `${34 + Math.floor(index / 3) * 28}%`,
+              boxShadow: `0 0 16px ${color}`,
+              animationDelay: `${index * 140}ms`
+            }}
+          />
+        ))}
+        <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed opacity-50" style={{ borderColor: color }} />
       </>
     );
   }

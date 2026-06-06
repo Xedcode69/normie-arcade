@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import type { Normie } from "@/types/normie";
 
-export type GameId = "lobby" | "roulette" | "rps" | "poker" | "updown" | "sort" | "pixel";
+export type GameId = "lobby" | "roulette" | "rps" | "poker" | "updown" | "sort" | "pixel" | "whack";
 
-type DealerRole = "Expression Croupier" | "Arena Master" | "DNA Card Sharp" | "Prediction Host" | "Sort Marshal" | "Pixel Sleuth" | "Cashier";
+type DealerRole = "Expression Croupier" | "Arena Master" | "DNA Card Sharp" | "Prediction Host" | "Sort Marshal" | "Pixel Sleuth" | "Whack Foreman" | "Cashier";
 
 export type Dealer = {
   role: DealerRole;
@@ -51,6 +51,7 @@ export const useArcadeStore = create<ArcadeState>((set) => ({
     { role: "Prediction Host", persona: "Robotic dealer" },
     { role: "Sort Marshal", persona: "Speed clerk" },
     { role: "Pixel Sleuth", persona: "Evidence tech" },
+    { role: "Whack Foreman", persona: "Burn yard boss" },
     { role: "Cashier", persona: "Lucky dealer" }
   ],
   loadedNormies: [],
