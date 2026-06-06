@@ -28,7 +28,7 @@ const locations: MapLocation[] = [
     subtitle: "Neon expression casino",
     hotkey: "1",
     x: 18,
-    y: 25,
+    y: 21,
     color: "#27f6e7",
     kind: "game",
     game: "roulette",
@@ -40,7 +40,7 @@ const locations: MapLocation[] = [
     subtitle: "Fixed-stake battle station",
     hotkey: "2",
     x: 48,
-    y: 21,
+    y: 17,
     color: "#ff43cf",
     kind: "game",
     game: "rps",
@@ -52,7 +52,7 @@ const locations: MapLocation[] = [
     subtitle: "Private trait lounge",
     hotkey: "3",
     x: 78,
-    y: 25,
+    y: 21,
     color: "#f4f1e8",
     kind: "game",
     game: "poker",
@@ -64,7 +64,7 @@ const locations: MapLocation[] = [
     subtitle: "Up/Down terminal",
     hotkey: "4",
     x: 19,
-    y: 52,
+    y: 48,
     color: "#d7ff35",
     kind: "game",
     game: "updown",
@@ -76,7 +76,7 @@ const locations: MapLocation[] = [
     subtitle: "Transit sorting station",
     hotkey: "5",
     x: 51,
-    y: 50,
+    y: 46,
     color: "#35ff8f",
     kind: "game",
     game: "sort",
@@ -88,7 +88,7 @@ const locations: MapLocation[] = [
     subtitle: "Fragment ID lab",
     hotkey: "6",
     x: 82,
-    y: 52,
+    y: 48,
     color: "#27f6e7",
     kind: "game",
     game: "pixel",
@@ -100,7 +100,7 @@ const locations: MapLocation[] = [
     subtitle: "Cashier and balances",
     hotkey: "C",
     x: 30,
-    y: 80,
+    y: 75,
     color: "#f4f1e8",
     kind: "utility",
     icon: <Landmark size={22} />
@@ -110,7 +110,7 @@ const locations: MapLocation[] = [
     label: "Leaderboard Wall",
     subtitle: "Global rankings",
     x: 68,
-    y: 80,
+    y: 75,
     color: "#ff43cf",
     kind: "utility",
     icon: <Trophy size={22} />
@@ -120,26 +120,34 @@ const locations: MapLocation[] = [
     label: "Community Games",
     subtitle: "External arcade portals",
     x: 50,
-    y: 95,
+    y: 91,
     color: "#d7ff35",
     kind: "utility",
     icon: <Gamepad2 size={22} />
   }
 ];
 
-const routePairs = [
+const spineRoutePairs = [
   ["roulette-district", "rps-arena"],
   ["rps-arena", "dna-poker-club"],
-  ["dna-poker-club", "prediction-tower"],
-  ["roulette-district", "sort-depot"],
   ["sort-depot", "prediction-tower"],
-  ["sort-depot", "chip-bank"],
   ["sort-depot", "pixel-lab"],
-  ["pixel-lab", "leaderboard-wall"],
-  ["sort-depot", "leaderboard-wall"],
   ["chip-bank", "community-games"],
   ["leaderboard-wall", "community-games"]
 ];
+
+const hoverRoutePairs = [
+  ["dna-poker-club", "prediction-tower"],
+  ["roulette-district", "sort-depot"],
+  ["sort-depot", "chip-bank"],
+  ["pixel-lab", "leaderboard-wall"],
+  ["sort-depot", "leaderboard-wall"]
+];
+
+function routePath(from: MapLocation, to: MapLocation) {
+  const midY = (from.y + to.y) / 2;
+  return `M ${from.x} ${from.y} V ${midY} H ${to.x} V ${to.y}`;
+}
 
 export function ArcadeLobby() {
   useNormiePreload();
@@ -192,44 +200,100 @@ export function ArcadeLobby() {
         </div>
 
         <div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-y border-paper/10 thin-scroll">
-          <div className="relative h-[1120px] min-w-0">
+          <div className="relative h-[1580px] min-w-0">
             <div className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(circle_at_center,rgba(244,241,232,0.07)_0_1px,transparent_1px)] [background-size:24px_24px]" />
-            <DistrictZone id="roulette-district" focusedLocationId={focusedLocationId} left={5} top={13} width={26} height={19} color="#27f6e7" label="Roulette District" kind="casino" />
-            <DistrictZone id="rps-arena" focusedLocationId={focusedLocationId} left={35} top={9} width={28} height={20} color="#ff43cf" label="RPS Arena" kind="arena" />
-            <DistrictZone id="dna-poker-club" focusedLocationId={focusedLocationId} left={67} top={13} width={27} height={19} color="#f4f1e8" label="DNA Poker Club" kind="lounge" />
-            <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={41} width={27} height={20} color="#d7ff35" label="Prediction Tower" kind="tower" />
-            <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={38} width={29} height={22} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
-            <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={41} width={26} height={20} color="#27f6e7" label="Pixel Detective" kind="casino" />
-            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={15} top={67} width={30} height={18} color="#f4f1e8" label="Chip Bank" kind="bank" />
-            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={56} top={67} width={31} height={18} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
-            <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={31} top={89} width={38} height={9} color="#d7ff35" label="Community Games" kind="community" />
+            <DistrictZone id="roulette-district" focusedLocationId={focusedLocationId} left={5} top={9} width={26} height={18} color="#27f6e7" label="Roulette District" kind="casino" />
+            <DistrictZone id="rps-arena" focusedLocationId={focusedLocationId} left={35} top={5} width={28} height={19} color="#ff43cf" label="RPS Arena" kind="arena" />
+            <DistrictZone id="dna-poker-club" focusedLocationId={focusedLocationId} left={67} top={9} width={27} height={18} color="#f4f1e8" label="DNA Poker Club" kind="lounge" />
+            <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={37} width={27} height={19} color="#d7ff35" label="Prediction Tower" kind="tower" />
+            <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={34} width={29} height={21} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
+            <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={37} width={26} height={19} color="#27f6e7" label="Pixel Detective" kind="casino" />
+            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={60} width={29} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
+            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={59} top={60} width={30} height={16} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
+            <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={28} top={84} width={44} height={9} color="#d7ff35" label="Community Games" kind="community" />
             <CityBlocks isDimmed={Boolean(focusedLocationId)} />
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {routePairs.map(([fromId, toId]) => {
+              {spineRoutePairs.map(([fromId, toId]) => {
                 const from = locationById.get(fromId)!;
                 const to = locationById.get(toId)!;
                 const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : true;
                 return (
                   <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0.28}>
-                  <line
-                    x1={from.x}
-                    y1={from.y}
-                    x2={to.x}
-                    y2={to.y}
-                    stroke={isFocusedRoute ? "rgba(0,0,0,0.78)" : "rgba(0,0,0,0.5)"}
-                    strokeWidth="2.1"
-                    strokeLinecap="round"
-                  />
-                  <line
-                    x1={from.x}
-                    y1={from.y}
-                    x2={to.x}
-                    y2={to.y}
-                    stroke={isFocusedRoute ? "rgba(244,241,232,0.78)" : "rgba(244,241,232,0.34)"}
-                    strokeWidth={isFocusedRoute ? "0.85" : "0.55"}
-                    strokeDasharray="1.8 1.5"
-                    strokeLinecap="round"
-                  />
+                    <path
+                      d={routePath(from, to)}
+                      fill="none"
+                      stroke="rgba(0,0,0,0.7)"
+                      strokeWidth="0.36"
+                      strokeDasharray="0.82 0.72"
+                      strokeLinecap="butt"
+                      strokeLinejoin="miter"
+                    />
+                    <path
+                      d={routePath(from, to)}
+                      fill="none"
+                      stroke={isFocusedRoute ? "rgba(39,246,231,0.82)" : "rgba(244,241,232,0.24)"}
+                      strokeWidth={isFocusedRoute ? "0.22" : "0.14"}
+                      strokeDasharray="0.48 0.88"
+                      strokeLinecap="butt"
+                      strokeLinejoin="miter"
+                    />
+                  </g>
+                );
+              })}
+              {hoverRoutePairs.map(([fromId, toId]) => {
+                const from = locationById.get(fromId)!;
+                const to = locationById.get(toId)!;
+                const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : false;
+                return (
+                  <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0}>
+                    <path
+                      d={routePath(from, to)}
+                      fill="none"
+                      stroke="rgba(0,0,0,0.72)"
+                      strokeWidth="0.36"
+                      strokeDasharray="0.82 0.72"
+                      strokeLinecap="butt"
+                      strokeLinejoin="miter"
+                    />
+                    <path
+                      d={routePath(from, to)}
+                      fill="none"
+                      stroke="rgba(39,246,231,0.84)"
+                      strokeWidth="0.22"
+                      strokeDasharray="0.48 0.88"
+                      strokeLinecap="butt"
+                      strokeLinejoin="miter"
+                    />
+                  </g>
+                );
+              })}
+              {locations.map((location) => {
+                const connectedToFocus = focusedLocationId
+                  ? location.id === focusedLocationId ||
+                    [...spineRoutePairs, ...hoverRoutePairs].some(
+                      ([fromId, toId]) =>
+                        (fromId === focusedLocationId && toId === location.id) ||
+                        (toId === focusedLocationId && fromId === location.id)
+                    )
+                  : true;
+                return (
+                  <g key={`dot-${location.id}`} className="transition-opacity duration-200" opacity={connectedToFocus ? 1 : 0.24}>
+                    <rect
+                      x={location.x - 0.35}
+                      y={location.y - 0.35}
+                      width="0.7"
+                      height="0.7"
+                      fill={connectedToFocus ? location.color : "rgba(244,241,232,0.42)"}
+                    />
+                    <rect
+                      x={location.x - 0.72}
+                      y={location.y - 0.72}
+                      width="1.44"
+                      height="1.44"
+                      fill="none"
+                      stroke={connectedToFocus ? location.color : "rgba(244,241,232,0.18)"}
+                      strokeWidth="0.12"
+                    />
                   </g>
                 );
               })}
@@ -487,20 +551,30 @@ function MapStop({
       onMouseLeave={() => onFocusChange(null)}
       onFocus={() => onFocusChange(location.id)}
       onBlur={() => onFocusChange(null)}
-      className="group absolute z-10 w-48 max-w-[38vw] -translate-x-1/2 -translate-y-1/2 text-left transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
+      className="group absolute z-10 w-48 max-w-[38vw] -translate-x-1/2 -translate-y-1/2 text-center transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
       style={{ left: `${location.x}%`, top: `${location.y}%` }}
     >
       <span
-        className="mx-auto mb-1.5 grid h-14 w-14 place-items-center rounded-full border-2 bg-black/90 shadow-neon transition group-hover:scale-110"
-        style={{ borderColor: location.color, color: location.color, opacity: isDimmed ? 0.45 : 1 }}
+        className="relative mx-auto grid h-14 w-14 place-items-center rounded-full border-2 bg-black/90 shadow-neon transition group-hover:scale-110"
+        style={{
+          borderColor: location.color,
+          color: location.color,
+          opacity: isDimmed ? 0.45 : 1,
+          boxShadow: isFocused ? `0 0 24px ${location.color}55` : undefined
+        }}
       >
         {location.icon}
       </span>
       <span
-        className="block border bg-black/86 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm transition group-hover:border-mint"
+        className="mt-1 block truncate bg-black/70 px-2 py-1 text-[9px] uppercase tracking-[0.16em] transition group-hover:opacity-0 group-focus-visible:opacity-0"
+        style={{ color: location.color, opacity: isDimmed ? 0.35 : 1 }}
+      >
+        {location.label.replace(" District", "").replace(" Tower", "").replace(" Depot", "").replace(" Wall", "")}
+      </span>
+      <span
+        className="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] block w-48 -translate-x-1/2 border bg-black/90 p-2 text-left opacity-0 shadow-[4px_4px_0_#000] backdrop-blur-sm transition duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-visible:pointer-events-auto group-focus-visible:opacity-100"
         style={{
           borderColor: isFocused ? location.color : "rgba(244,241,232,0.75)",
-          opacity: isDimmed ? 0.48 : 1,
           boxShadow: isFocused ? `4px 4px 0 #000, 0 0 24px ${location.color}33` : "4px 4px 0 #000"
         }}
       >
