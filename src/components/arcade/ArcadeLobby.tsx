@@ -551,20 +551,30 @@ function MapStop({
       onMouseLeave={() => onFocusChange(null)}
       onFocus={() => onFocusChange(location.id)}
       onBlur={() => onFocusChange(null)}
-      className="group absolute z-10 w-48 max-w-[38vw] -translate-x-1/2 -translate-y-1/2 text-left transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
+      className="group absolute z-10 w-48 max-w-[38vw] -translate-x-1/2 -translate-y-1/2 text-center transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
       style={{ left: `${location.x}%`, top: `${location.y}%` }}
     >
       <span
-        className="mx-auto mb-1.5 grid h-14 w-14 place-items-center rounded-full border-2 bg-black/90 shadow-neon transition group-hover:scale-110"
-        style={{ borderColor: location.color, color: location.color, opacity: isDimmed ? 0.45 : 1 }}
+        className="relative mx-auto grid h-14 w-14 place-items-center rounded-full border-2 bg-black/90 shadow-neon transition group-hover:scale-110"
+        style={{
+          borderColor: location.color,
+          color: location.color,
+          opacity: isDimmed ? 0.45 : 1,
+          boxShadow: isFocused ? `0 0 24px ${location.color}55` : undefined
+        }}
       >
         {location.icon}
       </span>
       <span
-        className="block border bg-black/86 p-2 shadow-[4px_4px_0_#000] backdrop-blur-sm transition group-hover:border-mint"
+        className="mt-1 block truncate bg-black/70 px-2 py-1 text-[9px] uppercase tracking-[0.16em] transition group-hover:opacity-0 group-focus-visible:opacity-0"
+        style={{ color: location.color, opacity: isDimmed ? 0.35 : 1 }}
+      >
+        {location.label.replace(" District", "").replace(" Tower", "").replace(" Depot", "").replace(" Wall", "")}
+      </span>
+      <span
+        className="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] block w-48 -translate-x-1/2 border bg-black/90 p-2 text-left opacity-0 shadow-[4px_4px_0_#000] backdrop-blur-sm transition duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-visible:pointer-events-auto group-focus-visible:opacity-100"
         style={{
           borderColor: isFocused ? location.color : "rgba(244,241,232,0.75)",
-          opacity: isDimmed ? 0.48 : 1,
           boxShadow: isFocused ? `4px 4px 0 #000, 0 0 24px ${location.color}33` : "4px 4px 0 #000"
         }}
       >
