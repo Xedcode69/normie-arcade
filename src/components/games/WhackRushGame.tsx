@@ -121,7 +121,7 @@ export function WhackRushGame() {
       });
       notify({
         kind: "info",
-        title: "Whack Rush posted",
+        title: "Whack-A-Normie posted",
         body: `${finalScore} points, ${finalHits} clean hits, ${finalBurnedHits} burned mistakes.`
       });
     },
@@ -262,7 +262,7 @@ export function WhackRushGame() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col px-4 pb-4 pt-1">
       <header className="shrink-0 text-center">
-        <h2 className="font-display text-lg uppercase tracking-[0.24em] text-paper">Normie Whack Rush</h2>
+        <h2 className="font-display text-lg uppercase tracking-[0.24em] text-paper">Whack-A-Normie</h2>
         <p className="terminal-hash mx-auto mt-1 max-w-4xl truncate text-xs text-pixel/70">{message}</p>
       </header>
 
@@ -342,7 +342,7 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
         >
           <span
             className={`relative grid h-[calc(100%-0.75rem)] w-32 place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-rise_160ms_ease-out_both] ${
-              target.burned ? "border-magenta shadow-[0_0_30px_rgba(255,67,207,0.35)]" : "border-mint shadow-neon"
+              target.burned ? "border-paper/70 shadow-[0_0_24px_rgba(244,241,232,0.18)]" : "border-mint shadow-neon"
             }`}
           >
             <span className="absolute inset-0 grid place-items-center text-[9px] uppercase tracking-[0.18em] text-paper/25">0xN</span>
@@ -353,11 +353,11 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
             />
           </span>
           {target.burned ? (
-            <span className="absolute right-3 top-2 grid h-7 w-7 place-items-center border border-magenta bg-black/80 text-magenta">
+            <span className="absolute right-3 top-2 grid h-7 w-7 place-items-center border border-red-500 bg-black/80 text-red-500">
               <Flame size={15} />
             </span>
           ) : null}
-          <span className={`absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/80 px-2 py-0.5 text-[9px] uppercase tracking-[0.18em] ${target.burned ? "text-magenta" : "text-mint"}`}>
+          <span className={`absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/80 px-2 py-0.5 text-[9px] uppercase tracking-[0.18em] ${target.burned ? "text-paper/70" : "text-mint"}`}>
             #{target.normieId}
           </span>
         </button>
@@ -376,7 +376,7 @@ function Rule({ label, value, danger }: { label: string; value: string; danger?:
   return (
     <div className="flex items-center justify-between gap-3 border border-paper/15 bg-black/55 px-3 py-2">
       <span className="text-paper/45">{label}</span>
-      <span className={danger ? "text-magenta" : "text-mint"}>{value}</span>
+      <span className={danger ? "text-red-500" : "text-mint"}>{value}</span>
     </div>
   );
 }

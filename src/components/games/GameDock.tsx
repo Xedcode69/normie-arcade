@@ -89,7 +89,7 @@ const instructions = {
     ]
   },
   whack: {
-    title: "Normie Whack Rush",
+    title: "Whack-A-Normie",
     lines: [
       "Start a 60-second rush.",
       "Whack live Normies for points.",
