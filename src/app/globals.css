@@ -156,6 +156,18 @@ img {
   }
 }
 
+@keyframes whack-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(56%);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .city-casino-bulb {
   animation: city-casino-bulb 1.9s steps(2, end) infinite;
 }

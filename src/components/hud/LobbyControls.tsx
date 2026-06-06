@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CircleDot, Dices, Gamepad2, Joystick, Search, Shapes, TrendingUp, X } from "lucide-react";
+import { CircleDot, Dices, Flame, Gamepad2, Joystick, Search, Shapes, TrendingUp, X } from "lucide-react";
 import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
 
 const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; shortcut: string; icon: ReactNode; description: string }> = [
@@ -10,7 +10,8 @@ const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; shortcut: s
   { id: "poker", label: "DNA Poker Club", shortcut: "3", icon: <Dices size={16} />, description: "Private trait lounge" },
   { id: "updown", label: "Prediction Tower", shortcut: "4", icon: <TrendingUp size={16} />, description: "Up/Down terminal" },
   { id: "sort", label: "Sort Sprint Depot", shortcut: "5", icon: <Shapes size={16} />, description: "Transit sorting station" },
-  { id: "pixel", label: "Pixel Detective", shortcut: "6", icon: <Search size={16} />, description: "Fragment ID lab" }
+  { id: "pixel", label: "Pixel Detective", shortcut: "6", icon: <Search size={16} />, description: "Fragment ID lab" },
+  { id: "whack", label: "Whack Rush", shortcut: "7", icon: <Flame size={16} />, description: "Burn yard whack grid" }
 ];
 
 export function LobbyControls() {

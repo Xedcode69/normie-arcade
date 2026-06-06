@@ -13,6 +13,7 @@ enum GameKind {
   UP_DOWN
   SORT_SPRINT
   PIXEL_DETECTIVE
+  WHACK_RUSH
 }
 
 enum GameOutcome {
