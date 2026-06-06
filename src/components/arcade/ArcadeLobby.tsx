@@ -28,7 +28,7 @@ const locations: MapLocation[] = [
     subtitle: "Neon expression casino",
     hotkey: "1",
     x: 18,
-    y: 25,
+    y: 21,
     color: "#27f6e7",
     kind: "game",
     game: "roulette",
@@ -40,7 +40,7 @@ const locations: MapLocation[] = [
     subtitle: "Fixed-stake battle station",
     hotkey: "2",
     x: 48,
-    y: 21,
+    y: 17,
     color: "#ff43cf",
     kind: "game",
     game: "rps",
@@ -52,7 +52,7 @@ const locations: MapLocation[] = [
     subtitle: "Private trait lounge",
     hotkey: "3",
     x: 78,
-    y: 25,
+    y: 21,
     color: "#f4f1e8",
     kind: "game",
     game: "poker",
@@ -64,7 +64,7 @@ const locations: MapLocation[] = [
     subtitle: "Up/Down terminal",
     hotkey: "4",
     x: 19,
-    y: 52,
+    y: 48,
     color: "#d7ff35",
     kind: "game",
     game: "updown",
@@ -76,7 +76,7 @@ const locations: MapLocation[] = [
     subtitle: "Transit sorting station",
     hotkey: "5",
     x: 51,
-    y: 50,
+    y: 46,
     color: "#35ff8f",
     kind: "game",
     game: "sort",
@@ -88,7 +88,7 @@ const locations: MapLocation[] = [
     subtitle: "Fragment ID lab",
     hotkey: "6",
     x: 82,
-    y: 52,
+    y: 48,
     color: "#27f6e7",
     kind: "game",
     game: "pixel",
@@ -100,7 +100,7 @@ const locations: MapLocation[] = [
     subtitle: "Cashier and balances",
     hotkey: "C",
     x: 30,
-    y: 80,
+    y: 75,
     color: "#f4f1e8",
     kind: "utility",
     icon: <Landmark size={22} />
@@ -110,7 +110,7 @@ const locations: MapLocation[] = [
     label: "Leaderboard Wall",
     subtitle: "Global rankings",
     x: 68,
-    y: 80,
+    y: 75,
     color: "#ff43cf",
     kind: "utility",
     icon: <Trophy size={22} />
@@ -120,7 +120,7 @@ const locations: MapLocation[] = [
     label: "Community Games",
     subtitle: "External arcade portals",
     x: 50,
-    y: 95,
+    y: 91,
     color: "#d7ff35",
     kind: "utility",
     icon: <Gamepad2 size={22} />
@@ -192,17 +192,17 @@ export function ArcadeLobby() {
         </div>
 
         <div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-y border-paper/10 thin-scroll">
-          <div className="relative h-[1120px] min-w-0">
+          <div className="relative h-[1580px] min-w-0">
             <div className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(circle_at_center,rgba(244,241,232,0.07)_0_1px,transparent_1px)] [background-size:24px_24px]" />
-            <DistrictZone id="roulette-district" focusedLocationId={focusedLocationId} left={5} top={13} width={26} height={19} color="#27f6e7" label="Roulette District" kind="casino" />
-            <DistrictZone id="rps-arena" focusedLocationId={focusedLocationId} left={35} top={9} width={28} height={20} color="#ff43cf" label="RPS Arena" kind="arena" />
-            <DistrictZone id="dna-poker-club" focusedLocationId={focusedLocationId} left={67} top={13} width={27} height={19} color="#f4f1e8" label="DNA Poker Club" kind="lounge" />
-            <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={41} width={27} height={20} color="#d7ff35" label="Prediction Tower" kind="tower" />
-            <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={38} width={29} height={22} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
-            <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={41} width={26} height={20} color="#27f6e7" label="Pixel Detective" kind="casino" />
-            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={15} top={67} width={30} height={18} color="#f4f1e8" label="Chip Bank" kind="bank" />
-            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={56} top={67} width={31} height={18} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
-            <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={31} top={89} width={38} height={9} color="#d7ff35" label="Community Games" kind="community" />
+            <DistrictZone id="roulette-district" focusedLocationId={focusedLocationId} left={5} top={9} width={26} height={18} color="#27f6e7" label="Roulette District" kind="casino" />
+            <DistrictZone id="rps-arena" focusedLocationId={focusedLocationId} left={35} top={5} width={28} height={19} color="#ff43cf" label="RPS Arena" kind="arena" />
+            <DistrictZone id="dna-poker-club" focusedLocationId={focusedLocationId} left={67} top={9} width={27} height={18} color="#f4f1e8" label="DNA Poker Club" kind="lounge" />
+            <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={37} width={27} height={19} color="#d7ff35" label="Prediction Tower" kind="tower" />
+            <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={34} width={29} height={21} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
+            <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={37} width={26} height={19} color="#27f6e7" label="Pixel Detective" kind="casino" />
+            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={60} width={29} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
+            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={59} top={60} width={30} height={16} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
+            <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={28} top={84} width={44} height={9} color="#d7ff35" label="Community Games" kind="community" />
             <CityBlocks isDimmed={Boolean(focusedLocationId)} />
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               {routePairs.map(([fromId, toId]) => {
