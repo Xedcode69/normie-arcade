@@ -14,11 +14,25 @@ export function useLeaderboardRecorder() {
   const notify = useArcadeStore((state) => state.notify);
 
   return async function recordResult(result: LeaderboardResult) {
-    if (!authenticated) return;
+    if (!authenticated) {
+      notify({
+        kind: "info",
+        title: "Leaderboard skipped",
+        body: "Sign in to post ranked runs."
+      });
+      return;
+    }
 
     try {
       const privyToken = await getAccessToken();
-      if (!privyToken) return;
+      if (!privyToken) {
+        notify({
+          kind: "info",
+          title: "Leaderboard skipped",
+          body: "Could not get an auth token for this run."
+        });
+        return;
+      }
       await recordLeaderboard({ ...result, bestCombo: result.bestCombo ?? 0, privyToken });
     } catch {
       notify({

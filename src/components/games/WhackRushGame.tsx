@@ -61,6 +61,11 @@ export function WhackRushGame() {
   const targetSerial = useRef(0);
   const burnedIdsRef = useRef<number[]>([]);
   const timeLeftRef = useRef(RUN_SECONDS);
+  const scoreRef = useRef(0);
+  const hitsRef = useRef(0);
+  const burnedHitsRef = useRef(0);
+  const comboRef = useRef(0);
+  const bestComboRef = useRef(0);
   const recordLeaderboardResult = useLeaderboardRecorder();
   const notify = useArcadeStore((state) => state.notify);
 
@@ -76,30 +81,51 @@ export function WhackRushGame() {
     timeLeftRef.current = timeLeft;
   }, [timeLeft]);
 
+  useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+
+  useEffect(() => {
+    hitsRef.current = hits;
+  }, [hits]);
+
+  useEffect(() => {
+    burnedHitsRef.current = burnedHits;
+  }, [burnedHits]);
+
+  useEffect(() => {
+    bestComboRef.current = bestCombo;
+  }, [bestCombo]);
+
   const finishRun = useCallback(
     (reason: string) => {
       if (recordedRef.current) return;
       recordedRef.current = true;
+      phaseRef.current = "ended";
       setPhase("ended");
       setTargets([]);
       setMessage(reason);
+      const finalScore = scoreRef.current;
+      const finalHits = hitsRef.current;
+      const finalBurnedHits = burnedHitsRef.current;
+      const finalBestCombo = bestComboRef.current;
       void recordLeaderboardResult({
         game: "WHACK_RUSH",
         mode: "SKILL",
-        outcome: score > 0 ? "WIN" : "LOSS",
-        score,
+        outcome: finalScore > 0 ? "WIN" : "LOSS",
+        score: finalScore,
         chipsWon: 0,
         netChips: 0,
-        bestCombo,
-        metadata: { hits, burnedHits, seconds: RUN_SECONDS }
+        bestCombo: finalBestCombo,
+        metadata: { hits: finalHits, burnedHits: finalBurnedHits, seconds: RUN_SECONDS }
       });
       notify({
         kind: "info",
         title: "Whack Rush posted",
-        body: `${score} points, ${hits} clean hits, ${burnedHits} burned mistakes.`
+        body: `${finalScore} points, ${finalHits} clean hits, ${finalBurnedHits} burned mistakes.`
       });
     },
-    [bestCombo, burnedHits, hits, notify, recordLeaderboardResult, score]
+    [notify, recordLeaderboardResult]
   );
 
   async function start() {
@@ -114,6 +140,11 @@ export function WhackRushGame() {
     setBurnedHits(0);
     setCombo(0);
     setBestCombo(0);
+    scoreRef.current = 0;
+    hitsRef.current = 0;
+    burnedHitsRef.current = 0;
+    comboRef.current = 0;
+    bestComboRef.current = 0;
     setBurnedIds([]);
     setMessage("Rush started. Burn feed loading in the background.");
     setBurnFeedLoading(true);
@@ -139,6 +170,11 @@ export function WhackRushGame() {
     setBurnedHits(0);
     setCombo(0);
     setBestCombo(0);
+    scoreRef.current = 0;
+    hitsRef.current = 0;
+    burnedHitsRef.current = 0;
+    comboRef.current = 0;
+    bestComboRef.current = 0;
     setMessage("Whack live Normies. Do not hit burned Normies.");
   }
 
@@ -169,20 +205,27 @@ export function WhackRushGame() {
     setTargets((items) => items.filter((item) => item.id !== target.id));
 
     if (target.burned) {
-      setBurnedHits((value) => value + 1);
+      burnedHitsRef.current += 1;
+      setBurnedHits(burnedHitsRef.current);
+      comboRef.current = 0;
       setCombo(0);
-      setScore((value) => Math.max(0, value - BURNED_PENALTY));
+      scoreRef.current = Math.max(0, scoreRef.current - BURNED_PENALTY);
+      setScore(scoreRef.current);
       setMessage(`Burned Normie #${target.normieId}. -${BURNED_PENALTY}.`);
       playTone(170, 0.16, "square");
       return;
     }
 
-    const nextCombo = combo + 1;
+    const nextCombo = comboRef.current + 1;
     const comboBonus = nextCombo > 1 ? Math.floor(nextCombo / 5) * 2 : 0;
-    setHits((value) => value + 1);
+    hitsRef.current += 1;
+    comboRef.current = nextCombo;
+    scoreRef.current += NORMAL_POINTS + comboBonus;
+    bestComboRef.current = Math.max(bestComboRef.current, nextCombo);
+    setHits(hitsRef.current);
     setCombo(nextCombo);
-    setBestCombo((value) => Math.max(value, nextCombo));
-    setScore((value) => value + NORMAL_POINTS + comboBonus);
+    setBestCombo(bestComboRef.current);
+    setScore(scoreRef.current);
     setMessage(`Clean whack. +${NORMAL_POINTS + comboBonus}. Combo ${nextCombo}.`);
     playTone(520 + Math.min(nextCombo, 12) * 18, 0.08, "triangle");
   }
