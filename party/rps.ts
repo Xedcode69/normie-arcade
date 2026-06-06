@@ -181,10 +181,66 @@ type PokerNextHandMessage = { type: "poker_next_hand"; playerId: string };
 type PokerActionMessage = { type: "poker_action"; playerId: string; action: "check" | "call" | "raise" | "fold"; raiseTo?: number };
 type PokerAnyClientMessage = PokerClientMessage | PokerNextHandMessage | PokerActionMessage;
 
+type TcgPlayer = {
+  id: string;
+  name: string;
+  seat: 0 | 1;
+  connected: boolean;
+  deck: number[];
+  hand: number[];
+  score: number;
+  privyToken: string;
+  isNormieHolder?: boolean;
+  selectedNormieId?: number | null;
+  avatarUrl?: string | null;
+  pendingPlay?: { cardId: number; lane: number };
+};
+
+type TcgLane = {
+  playerA: number[];
+  playerB: number[];
+};
+
+type TcgReveal = {
+  turn: number;
+  playerA?: { cardId: number; lane: number; power: number };
+  playerB?: { cardId: number; lane: number; power: number };
+  laneWinner?: "playerA" | "playerB" | "draw";
+  message: string;
+};
+
+type TcgState = {
+  phase: "waiting" | "playing" | "revealed" | "finished";
+  players: TcgPlayer[];
+  turn: number;
+  maxTurns: number;
+  lanes: TcgLane[];
+  reveal?: TcgReveal;
+  winnerId?: string;
+  history: TcgReveal[];
+  message: string;
+};
+
+type TcgClientMessage =
+  | {
+      type: "tcg_join";
+      playerId: string;
+      name?: string;
+      privyToken: string;
+      isNormieHolder?: boolean;
+      selectedNormieId?: number | null;
+      avatarUrl?: string | null;
+    }
+  | { type: "tcg_play"; playerId: string; cardId: number; lane: number }
+  | { type: "tcg_rematch"; playerId: string };
+
 const picks: RPSType[] = ["Human", "Cat", "Alien"];
 const rpsQuickMatchStake = 250;
 const pokerTableBuyIn = 1000;
 const pokerHandAnte = 100;
+const tcgDeckSize = 12;
+const tcgStartingHand = 3;
+const tcgMaxTurns = 5;
 
 function rpsWinner(a: RPSType, b: RPSType) {
   if (a === b) return "draw";
@@ -202,6 +258,8 @@ export default class RPSParty {
   private connections = new Map<string, string>();
   private pokerConnections = new Map<string, string>();
   private pokerConnectionObjects = new Map<string, PartyConnection>();
+  private tcgConnections = new Map<string, string>();
+  private tcgConnectionObjects = new Map<string, PartyConnection>();
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
@@ -230,10 +288,24 @@ export default class RPSParty {
     actionLog: [],
     message: "Waiting for players to sit at the DNA Poker table."
   };
+  private tcgState: TcgState = {
+    phase: "waiting",
+    players: [],
+    turn: 1,
+    maxTurns: tcgMaxTurns,
+    lanes: this.emptyTcgLanes(),
+    history: [],
+    message: "Waiting for a second challenger."
+  };
 
   constructor(readonly room: PartyRoom) {}
 
   onConnect(connection: PartyConnection) {
+    if (this.isTcgRoom()) {
+      connection.send(JSON.stringify({ type: "tcg_state", state: this.publicTcgState() }));
+      return;
+    }
+
     if (this.isPokerRoom()) {
       connection.send(JSON.stringify({ type: "poker_state", state: this.publicPokerState() }));
       return;
@@ -243,6 +315,24 @@ export default class RPSParty {
   }
 
   async onClose(connection: PartyConnection) {
+    const tcgPlayerId = this.tcgConnections.get(connection.id);
+    if (tcgPlayerId) {
+      this.tcgConnections.delete(connection.id);
+      this.tcgConnectionObjects.delete(connection.id);
+      const tcgPlayer = this.tcgState.players.find((player) => player.id === tcgPlayerId);
+      if (tcgPlayer) {
+        if (this.tcgState.phase === "waiting") {
+          this.tcgState.players = this.tcgState.players.filter((player) => player.id !== tcgPlayer.id);
+          this.tcgState.message = `${tcgPlayer.name} left the Circuit table.`;
+        } else {
+          tcgPlayer.connected = false;
+          this.tcgState.message = `${tcgPlayer.name} disconnected. Their seat can reconnect.`;
+        }
+        this.broadcastTcg();
+      }
+      return;
+    }
+
     const pokerPlayerId = this.pokerConnections.get(connection.id);
     if (pokerPlayerId) {
       this.pokerConnections.delete(connection.id);
@@ -290,6 +380,12 @@ export default class RPSParty {
   }
 
   async onMessage(message: string, connection: PartyConnection) {
+    const tcgData = this.parseTcgMessage(message);
+    if (tcgData) {
+      this.handleTcgMessage(tcgData, connection);
+      return;
+    }
+
     const pokerData = this.parsePokerMessage(message);
     if (pokerData) {
       await this.handlePokerMessage(pokerData, connection);
@@ -312,6 +408,219 @@ export default class RPSParty {
     if (data.type === "reset") {
       await this.reset(data.playerId);
     }
+  }
+
+  private parseTcgMessage(message: string): TcgClientMessage | null {
+    try {
+      const data = JSON.parse(message) as TcgClientMessage;
+      if (data.type === "tcg_join" && typeof data.playerId === "string" && typeof data.privyToken === "string") {
+        return {
+          ...data,
+          isNormieHolder: Boolean(data.isNormieHolder),
+          selectedNormieId: typeof data.selectedNormieId === "number" ? data.selectedNormieId : null,
+          avatarUrl: typeof data.avatarUrl === "string" ? data.avatarUrl.slice(0, 240) : null
+        };
+      }
+      if (
+        data.type === "tcg_play" &&
+        typeof data.playerId === "string" &&
+        typeof data.cardId === "number" &&
+        typeof data.lane === "number"
+      ) {
+        return {
+          ...data,
+          lane: Math.max(0, Math.min(2, Math.round(data.lane))),
+          cardId: Math.max(0, Math.round(data.cardId))
+        };
+      }
+      if (data.type === "tcg_rematch" && typeof data.playerId === "string") return data;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private handleTcgMessage(data: TcgClientMessage, connection: PartyConnection) {
+    if (data.type === "tcg_join") {
+      this.joinTcg(data, connection);
+      return;
+    }
+
+    if (data.type === "tcg_play") {
+      this.playTcgCard(data);
+      return;
+    }
+
+    if (data.type === "tcg_rematch") {
+      this.rematchTcg(data.playerId);
+    }
+  }
+
+  private joinTcg(data: Extract<TcgClientMessage, { type: "tcg_join" }>, connection: PartyConnection) {
+    const existing = this.tcgState.players.find((player) => player.id === data.playerId);
+
+    if (existing) {
+      existing.connected = true;
+      existing.name = cleanPlayerName(data.name);
+      existing.privyToken = data.privyToken;
+      existing.isNormieHolder = data.isNormieHolder;
+      existing.selectedNormieId = data.selectedNormieId;
+      existing.avatarUrl = data.avatarUrl;
+      this.tcgConnections.set(connection.id, existing.id);
+      this.tcgConnectionObjects.set(connection.id, connection);
+      this.broadcastTcg();
+      return;
+    }
+
+    if (this.tcgState.players.length >= 2) {
+      connection.send(JSON.stringify({ type: "full", message: "This Circuit Clash room is full. Create a new room or join another invite." }));
+      return;
+    }
+
+    const seat = this.tcgState.players.length as 0 | 1;
+    const deck = this.createTcgDeck(`${this.room.id ?? "tcg"}-${data.playerId}-${seat}`);
+    const player: TcgPlayer = {
+      id: data.playerId,
+      name: cleanPlayerName(data.name),
+      seat,
+      connected: true,
+      deck: deck.slice(tcgStartingHand),
+      hand: deck.slice(0, tcgStartingHand),
+      score: 0,
+      privyToken: data.privyToken,
+      isNormieHolder: data.isNormieHolder,
+      selectedNormieId: data.selectedNormieId,
+      avatarUrl: data.avatarUrl
+    };
+
+    this.tcgState.players.push(player);
+    this.tcgConnections.set(connection.id, player.id);
+    this.tcgConnectionObjects.set(connection.id, connection);
+
+    if (this.tcgState.players.length >= 2) {
+      this.tcgState.phase = "playing";
+      this.tcgState.message = "Circuit Clash started. Play one Normie card into a lane.";
+    } else {
+      this.tcgState.phase = "waiting";
+      this.tcgState.message = "Waiting for a second challenger.";
+    }
+
+    this.broadcastTcg();
+  }
+
+  private playTcgCard(data: Extract<TcgClientMessage, { type: "tcg_play" }>) {
+    if (this.tcgState.phase !== "playing") return;
+
+    const player = this.tcgState.players.find((item) => item.id === data.playerId && item.connected);
+    if (!player || player.pendingPlay || !player.hand.includes(data.cardId)) return;
+
+    player.pendingPlay = { cardId: data.cardId, lane: data.lane };
+    this.tcgState.message = `${player.name} locked a card into lane ${data.lane + 1}.`;
+
+    const activePlayers = this.tcgState.players.filter((item) => item.connected);
+    if (activePlayers.length >= 2 && activePlayers.every((item) => item.pendingPlay)) {
+      this.resolveTcgTurn();
+      return;
+    }
+
+    this.broadcastTcg();
+  }
+
+  private resolveTcgTurn() {
+    const playerA = this.tcgState.players.find((player) => player.seat === 0);
+    const playerB = this.tcgState.players.find((player) => player.seat === 1);
+    if (!playerA?.pendingPlay || !playerB?.pendingPlay) return;
+
+    const playA = playerA.pendingPlay;
+    const playB = playerB.pendingPlay;
+    const powerA = this.tcgCardPower(playA.cardId);
+    const powerB = this.tcgCardPower(playB.cardId);
+    let laneWinner: "playerA" | "playerB" | "draw" = "draw";
+
+    this.tcgState.lanes[playA.lane].playerA.push(playA.cardId);
+    this.tcgState.lanes[playB.lane].playerB.push(playB.cardId);
+    playerA.hand = playerA.hand.filter((id) => id !== playA.cardId);
+    playerB.hand = playerB.hand.filter((id) => id !== playB.cardId);
+
+    if (playA.lane === playB.lane) {
+      if (powerA > powerB) {
+        playerA.score += 1;
+        laneWinner = "playerA";
+      } else if (powerB > powerA) {
+        playerB.score += 1;
+        laneWinner = "playerB";
+      }
+    } else {
+      playerA.score += 1;
+      playerB.score += 1;
+      laneWinner = "draw";
+    }
+
+    this.drawTcgCard(playerA);
+    this.drawTcgCard(playerB);
+    playerA.pendingPlay = undefined;
+    playerB.pendingPlay = undefined;
+
+    const reveal: TcgReveal = {
+      turn: this.tcgState.turn,
+      playerA: { ...playA, power: powerA },
+      playerB: { ...playB, power: powerB },
+      laneWinner,
+      message:
+        playA.lane === playB.lane
+          ? laneWinner === "draw"
+            ? `Lane ${playA.lane + 1} tied.`
+            : `${laneWinner === "playerA" ? playerA.name : playerB.name} won lane ${playA.lane + 1}.`
+          : "Both players claimed separate lanes."
+    };
+
+    this.tcgState.reveal = reveal;
+    this.tcgState.history.push(reveal);
+    this.tcgState.message = reveal.message;
+
+    if (this.tcgState.turn >= this.tcgState.maxTurns) {
+      this.tcgState.phase = "finished";
+      this.tcgState.winnerId = playerA.score === playerB.score ? undefined : playerA.score > playerB.score ? playerA.id : playerB.id;
+      this.tcgState.message = this.tcgState.winnerId
+        ? `${this.tcgState.winnerId === playerA.id ? playerA.name : playerB.name} wins Circuit Clash.`
+        : "Circuit Clash ends in a draw.";
+      this.broadcastTcg();
+      return;
+    }
+
+    this.tcgState.turn += 1;
+    this.tcgState.phase = "revealed";
+    this.broadcastTcg();
+    setTimeout(() => {
+      if (this.tcgState.phase === "revealed") {
+        this.tcgState.phase = "playing";
+        this.tcgState.message = `Turn ${this.tcgState.turn}. Play one card into a lane.`;
+        this.broadcastTcg();
+      }
+    }, 1800);
+  }
+
+  private rematchTcg(playerId: string) {
+    if (!this.tcgState.players.some((player) => player.id === playerId)) return;
+
+    this.tcgState.players = this.tcgState.players.map((player) => {
+      const deck = this.createTcgDeck(`${this.room.id ?? "tcg"}-${player.id}-${Date.now()}`);
+      return {
+        ...player,
+        deck: deck.slice(tcgStartingHand),
+        hand: deck.slice(0, tcgStartingHand),
+        score: 0,
+        pendingPlay: undefined
+      };
+    });
+    this.tcgState.turn = 1;
+    this.tcgState.lanes = this.emptyTcgLanes();
+    this.tcgState.reveal = undefined;
+    this.tcgState.winnerId = undefined;
+    this.tcgState.history = [];
+    this.tcgState.phase = this.tcgState.players.filter((player) => player.connected).length >= 2 ? "playing" : "waiting";
+    this.tcgState.message = this.tcgState.phase === "playing" ? "Rematch started. Play one Normie card into a lane." : "Waiting for both players to reconnect.";
+    this.broadcastTcg();
   }
 
   private parsePokerMessage(message: string): PokerAnyClientMessage | null {
@@ -1268,6 +1577,24 @@ export default class RPSParty {
     };
   }
 
+  private publicTcgState(playerId?: string) {
+    const privatePlayer = playerId ? this.tcgState.players.find((player) => player.id === playerId) : undefined;
+
+    return {
+      ...this.tcgState,
+      privateHand: privatePlayer?.hand,
+      players: this.tcgState.players.map((player) => ({
+        ...player,
+        privyToken: undefined,
+        deck: undefined,
+        hand: undefined,
+        handCount: player.hand.length,
+        deckCount: player.deck.length,
+        pendingPlay: player.pendingPlay ? { cardId: 0, lane: player.pendingPlay.lane } : undefined
+      }))
+    };
+  }
+
   private publicPokerState(playerId?: string) {
     const privatePlayer = playerId ? this.pokerState.players.find((player) => player.id === playerId) : undefined;
 
@@ -1288,6 +1615,14 @@ export default class RPSParty {
     this.room.broadcast(JSON.stringify({ type: "state", state: this.publicState() }));
   }
 
+  private broadcastTcg() {
+    this.tcgConnectionObjects.forEach((connection, connectionId) => {
+      const playerId = this.tcgConnections.get(connectionId);
+      if (!playerId) return;
+      connection.send(JSON.stringify({ type: "tcg_state", state: this.publicTcgState(playerId) }));
+    });
+  }
+
   private broadcastPoker() {
     this.pokerConnectionObjects.forEach((connection, connectionId) => {
       const playerId = this.pokerConnections.get(connectionId);
@@ -1298,6 +1633,38 @@ export default class RPSParty {
 
   private isPokerRoom() {
     return (this.room.id ?? "").startsWith("poker-");
+  }
+
+  private isTcgRoom() {
+    return (this.room.id ?? "").startsWith("tcg-");
+  }
+
+  private emptyTcgLanes(): TcgLane[] {
+    return [
+      { playerA: [], playerB: [] },
+      { playerA: [], playerB: [] },
+      { playerA: [], playerB: [] }
+    ];
+  }
+
+  private createTcgDeck(seed: string) {
+    let state = Array.from(seed).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 2166136261);
+    const next = () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state;
+    };
+    const ids = new Set<number>();
+    while (ids.size < tcgDeckSize) ids.add(next() % 10_000);
+    return [...ids];
+  }
+
+  private tcgCardPower(id: number) {
+    return 5 + (id % 9) + (String(id).split("").reduce((sum, digit) => sum + Number(digit), 0) % 5);
+  }
+
+  private drawTcgCard(player: TcgPlayer) {
+    const next = player.deck.shift();
+    if (typeof next === "number") player.hand.push(next);
   }
 
   private createMatchId() {
