@@ -127,19 +127,27 @@ const locations: MapLocation[] = [
   }
 ];
 
-const routePairs = [
+const spineRoutePairs = [
   ["roulette-district", "rps-arena"],
   ["rps-arena", "dna-poker-club"],
-  ["dna-poker-club", "prediction-tower"],
-  ["roulette-district", "sort-depot"],
   ["sort-depot", "prediction-tower"],
-  ["sort-depot", "chip-bank"],
   ["sort-depot", "pixel-lab"],
-  ["pixel-lab", "leaderboard-wall"],
-  ["sort-depot", "leaderboard-wall"],
   ["chip-bank", "community-games"],
   ["leaderboard-wall", "community-games"]
 ];
+
+const hoverRoutePairs = [
+  ["dna-poker-club", "prediction-tower"],
+  ["roulette-district", "sort-depot"],
+  ["sort-depot", "chip-bank"],
+  ["pixel-lab", "leaderboard-wall"],
+  ["sort-depot", "leaderboard-wall"]
+];
+
+function routePath(from: MapLocation, to: MapLocation) {
+  const midY = (from.y + to.y) / 2;
+  return `M ${from.x} ${from.y} V ${midY} H ${to.x} V ${to.y}`;
+}
 
 export function ArcadeLobby() {
   useNormiePreload();
@@ -205,31 +213,87 @@ export function ArcadeLobby() {
             <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={28} top={84} width={44} height={9} color="#d7ff35" label="Community Games" kind="community" />
             <CityBlocks isDimmed={Boolean(focusedLocationId)} />
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {routePairs.map(([fromId, toId]) => {
+              {spineRoutePairs.map(([fromId, toId]) => {
                 const from = locationById.get(fromId)!;
                 const to = locationById.get(toId)!;
                 const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : true;
                 return (
                   <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0.28}>
-                  <line
-                    x1={from.x}
-                    y1={from.y}
-                    x2={to.x}
-                    y2={to.y}
-                    stroke={isFocusedRoute ? "rgba(0,0,0,0.78)" : "rgba(0,0,0,0.5)"}
-                    strokeWidth="2.1"
-                    strokeLinecap="round"
-                  />
-                  <line
-                    x1={from.x}
-                    y1={from.y}
-                    x2={to.x}
-                    y2={to.y}
-                    stroke={isFocusedRoute ? "rgba(244,241,232,0.78)" : "rgba(244,241,232,0.34)"}
-                    strokeWidth={isFocusedRoute ? "0.85" : "0.55"}
-                    strokeDasharray="1.8 1.5"
-                    strokeLinecap="round"
-                  />
+                    <path
+                      d={routePath(from, to)}
+                      fill="none"
+                      stroke="rgba(0,0,0,0.7)"
+                      strokeWidth="0.36"
+                      strokeDasharray="0.82 0.72"
+                      strokeLinecap="butt"
+                      strokeLinejoin="miter"
+                    />
+                    <path
+                      d={routePath(from, to)}
+                      fill="none"
+                      stroke={isFocusedRoute ? "rgba(39,246,231,0.82)" : "rgba(244,241,232,0.24)"}
+                      strokeWidth={isFocusedRoute ? "0.22" : "0.14"}
+                      strokeDasharray="0.48 0.88"
+                      strokeLinecap="butt"
+                      strokeLinejoin="miter"
+                    />
+                  </g>
+                );
+              })}
+              {hoverRoutePairs.map(([fromId, toId]) => {
+                const from = locationById.get(fromId)!;
+                const to = locationById.get(toId)!;
+                const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : false;
+                return (
+                  <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0}>
+                    <path
+                      d={routePath(from, to)}
+                      fill="none"
+                      stroke="rgba(0,0,0,0.72)"
+                      strokeWidth="0.36"
+                      strokeDasharray="0.82 0.72"
+                      strokeLinecap="butt"
+                      strokeLinejoin="miter"
+                    />
+                    <path
+                      d={routePath(from, to)}
+                      fill="none"
+                      stroke="rgba(39,246,231,0.84)"
+                      strokeWidth="0.22"
+                      strokeDasharray="0.48 0.88"
+                      strokeLinecap="butt"
+                      strokeLinejoin="miter"
+                    />
+                  </g>
+                );
+              })}
+              {locations.map((location) => {
+                const connectedToFocus = focusedLocationId
+                  ? location.id === focusedLocationId ||
+                    [...spineRoutePairs, ...hoverRoutePairs].some(
+                      ([fromId, toId]) =>
+                        (fromId === focusedLocationId && toId === location.id) ||
+                        (toId === focusedLocationId && fromId === location.id)
+                    )
+                  : true;
+                return (
+                  <g key={`dot-${location.id}`} className="transition-opacity duration-200" opacity={connectedToFocus ? 1 : 0.24}>
+                    <rect
+                      x={location.x - 0.35}
+                      y={location.y - 0.35}
+                      width="0.7"
+                      height="0.7"
+                      fill={connectedToFocus ? location.color : "rgba(244,241,232,0.42)"}
+                    />
+                    <rect
+                      x={location.x - 0.72}
+                      y={location.y - 0.72}
+                      width="1.44"
+                      height="1.44"
+                      fill="none"
+                      stroke={connectedToFocus ? location.color : "rgba(244,241,232,0.18)"}
+                      strokeWidth="0.12"
+                    />
                   </g>
                 );
               })}
