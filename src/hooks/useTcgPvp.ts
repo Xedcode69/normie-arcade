@@ -108,6 +108,14 @@ export function useTcgPvp(room = "tcg-quickplay") {
     [playerId, send]
   );
 
+  const draftPick = useCallback(
+    (cardId: number) => {
+      if (!playerId) return;
+      send({ type: "tcg_draft_pick", playerId, cardId });
+    },
+    [playerId, send]
+  );
+
   const rematch = useCallback(() => {
     if (!playerId) return;
     send({ type: "tcg_rematch", playerId });
@@ -121,6 +129,7 @@ export function useTcgPvp(room = "tcg-quickplay") {
     clearError,
     disconnect,
     error,
+    draftPick,
     playerId,
     playCard,
     rematch,

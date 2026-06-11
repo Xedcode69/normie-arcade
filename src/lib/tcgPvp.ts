@@ -9,6 +9,7 @@ export type TcgPvpPlayer = {
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
+  draftedCount?: number;
   pendingPlay?: {
     cardId: number;
     lane: number;
@@ -22,19 +23,23 @@ export type TcgLane = {
 
 export type TcgReveal = {
   turn: number;
-  playerA?: { cardId: number; lane: number; power: number };
-  playerB?: { cardId: number; lane: number; power: number };
+  playerA?: { cardId: number; lane: number; power: number; effects?: string[] };
+  playerB?: { cardId: number; lane: number; power: number; effects?: string[] };
   laneWinner?: "playerA" | "playerB" | "draw";
   message: string;
 };
 
 export type TcgPvpState = {
-  phase: "waiting" | "playing" | "revealed" | "finished";
+  phase: "waiting" | "drafting" | "playing" | "revealed" | "finished";
   players: TcgPvpPlayer[];
   turn: number;
   maxTurns: number;
   lanes: TcgLane[];
   privateHand?: number[];
+  privateDrafted?: number[];
+  draftPool?: number[];
+  draftTurnPlayerId?: string;
+  draftTarget?: number;
   reveal?: TcgReveal;
   winnerId?: string;
   history: TcgReveal[];

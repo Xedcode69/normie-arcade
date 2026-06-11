@@ -188,12 +188,15 @@ type TcgPlayer = {
   connected: boolean;
   deck: number[];
   hand: number[];
+  drafted: number[];
   score: number;
   privyToken: string;
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
   pendingPlay?: { cardId: number; lane: number };
+  lastTypeBonus?: number;
+  peaceShield?: boolean;
 };
 
 type TcgLane = {
@@ -203,18 +206,21 @@ type TcgLane = {
 
 type TcgReveal = {
   turn: number;
-  playerA?: { cardId: number; lane: number; power: number };
-  playerB?: { cardId: number; lane: number; power: number };
+  playerA?: { cardId: number; lane: number; power: number; effects: string[] };
+  playerB?: { cardId: number; lane: number; power: number; effects: string[] };
   laneWinner?: "playerA" | "playerB" | "draw";
   message: string;
 };
 
 type TcgState = {
-  phase: "waiting" | "playing" | "revealed" | "finished";
+  phase: "waiting" | "drafting" | "playing" | "revealed" | "finished";
   players: TcgPlayer[];
   turn: number;
   maxTurns: number;
   lanes: TcgLane[];
+  draftPool: number[];
+  draftTurnPlayerId?: string;
+  draftTarget: number;
   reveal?: TcgReveal;
   winnerId?: string;
   history: TcgReveal[];
@@ -231,6 +237,7 @@ type TcgClientMessage =
       selectedNormieId?: number | null;
       avatarUrl?: string | null;
     }
+  | { type: "tcg_draft_pick"; playerId: string; cardId: number }
   | { type: "tcg_play"; playerId: string; cardId: number; lane: number }
   | { type: "tcg_rematch"; playerId: string };
 
@@ -238,7 +245,8 @@ const picks: RPSType[] = ["Human", "Cat", "Alien"];
 const rpsQuickMatchStake = 250;
 const pokerTableBuyIn = 1000;
 const pokerHandAnte = 100;
-const tcgDeckSize = 12;
+const tcgDeckSize = 8;
+const tcgDraftPoolSize = 16;
 const tcgStartingHand = 3;
 const tcgMaxTurns = 5;
 
@@ -260,6 +268,9 @@ export default class RPSParty {
   private pokerConnectionObjects = new Map<string, PartyConnection>();
   private tcgConnections = new Map<string, string>();
   private tcgConnectionObjects = new Map<string, PartyConnection>();
+  private tcgTraitCache = new Map<number, NormieTraits>();
+  private tcgBurnedIds?: Set<number>;
+  private tcgScorches: Array<{ seat: 0 | 1; lane: number; turn: number }> = [];
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
@@ -294,6 +305,8 @@ export default class RPSParty {
     turn: 1,
     maxTurns: tcgMaxTurns,
     lanes: this.emptyTcgLanes(),
+    draftPool: [],
+    draftTarget: tcgDeckSize,
     history: [],
     message: "Waiting for a second challenger."
   };
@@ -433,6 +446,9 @@ export default class RPSParty {
           cardId: Math.max(0, Math.round(data.cardId))
         };
       }
+      if (data.type === "tcg_draft_pick" && typeof data.playerId === "string" && typeof data.cardId === "number") {
+        return { ...data, cardId: Math.max(0, Math.round(data.cardId)) };
+      }
       if (data.type === "tcg_rematch" && typeof data.playerId === "string") return data;
       return null;
     } catch {
@@ -448,6 +464,11 @@ export default class RPSParty {
 
     if (data.type === "tcg_play") {
       this.playTcgCard(data);
+      return;
+    }
+
+    if (data.type === "tcg_draft_pick") {
+      this.draftTcgCard(data);
       return;
     }
 
@@ -478,14 +499,14 @@ export default class RPSParty {
     }
 
     const seat = this.tcgState.players.length as 0 | 1;
-    const deck = this.createTcgDeck(`${this.room.id ?? "tcg"}-${data.playerId}-${seat}`);
     const player: TcgPlayer = {
       id: data.playerId,
       name: cleanPlayerName(data.name),
       seat,
       connected: true,
-      deck: deck.slice(tcgStartingHand),
-      hand: deck.slice(0, tcgStartingHand),
+      deck: [],
+      hand: [],
+      drafted: [],
       score: 0,
       privyToken: data.privyToken,
       isNormieHolder: data.isNormieHolder,
@@ -498,14 +519,78 @@ export default class RPSParty {
     this.tcgConnectionObjects.set(connection.id, connection);
 
     if (this.tcgState.players.length >= 2) {
-      this.tcgState.phase = "playing";
-      this.tcgState.message = "Circuit Clash started. Play one Normie card into a lane.";
+      this.startTcgDraft();
     } else {
       this.tcgState.phase = "waiting";
       this.tcgState.message = "Waiting for a second challenger.";
     }
 
     this.broadcastTcg();
+  }
+
+  private startTcgDraft() {
+    this.tcgState.phase = "drafting";
+    this.tcgState.turn = 1;
+    this.tcgState.lanes = this.emptyTcgLanes();
+    this.tcgState.reveal = undefined;
+    this.tcgState.winnerId = undefined;
+    this.tcgState.history = [];
+    this.tcgScorches = [];
+    this.tcgState.draftPool = this.createTcgDeck(`${this.room.id ?? "tcg"}-draft-${Date.now()}`, tcgDraftPoolSize);
+    this.tcgState.draftTarget = tcgDeckSize;
+    this.tcgState.draftTurnPlayerId = this.tcgState.players.find((player) => player.seat === 0)?.id;
+    this.tcgState.players = this.tcgState.players.map((player) => ({
+      ...player,
+      deck: [],
+      hand: [],
+      drafted: [],
+      score: 0,
+      pendingPlay: undefined,
+      lastTypeBonus: 0,
+      peaceShield: false
+    }));
+    this.tcgState.message = "Draft phase. Pick Normies from the shared pool one at a time.";
+  }
+
+  private draftTcgCard(data: Extract<TcgClientMessage, { type: "tcg_draft_pick" }>) {
+    if (this.tcgState.phase !== "drafting" || this.tcgState.draftTurnPlayerId !== data.playerId) return;
+
+    const player = this.tcgState.players.find((item) => item.id === data.playerId && item.connected);
+    if (!player || player.drafted.length >= this.tcgState.draftTarget || !this.tcgState.draftPool.includes(data.cardId)) return;
+
+    player.drafted.push(data.cardId);
+    this.tcgState.draftPool = this.tcgState.draftPool.filter((id) => id !== data.cardId);
+
+    const draftComplete = this.tcgState.players.length >= 2 && this.tcgState.players.every((item) => item.drafted.length >= this.tcgState.draftTarget);
+    if (draftComplete) {
+      this.startTcgBattle();
+      this.broadcastTcg();
+      return;
+    }
+
+    const nextPlayer = this.tcgState.players
+      .filter((item) => item.connected && item.drafted.length < this.tcgState.draftTarget)
+      .sort((a, b) => a.drafted.length - b.drafted.length || a.seat - b.seat)[0];
+    this.tcgState.draftTurnPlayerId = nextPlayer?.id;
+    this.tcgState.message = `${player.name} drafted Normie #${data.cardId}.`;
+    this.broadcastTcg();
+  }
+
+  private startTcgBattle() {
+    this.tcgState.players = this.tcgState.players.map((player) => {
+      const deck = this.shuffleTcgDeck(player.drafted, `${this.room.id ?? "tcg"}-${player.id}-${Date.now()}`);
+      return {
+        ...player,
+        deck: deck.slice(tcgStartingHand),
+        hand: deck.slice(0, tcgStartingHand),
+        pendingPlay: undefined,
+        lastTypeBonus: 0,
+        peaceShield: false
+      };
+    });
+    this.tcgState.phase = "playing";
+    this.tcgState.draftTurnPlayerId = undefined;
+    this.tcgState.message = "Draft locked. Turn 1: play one Normie into a lane.";
   }
 
   private playTcgCard(data: Extract<TcgClientMessage, { type: "tcg_play" }>) {
@@ -519,23 +604,26 @@ export default class RPSParty {
 
     const activePlayers = this.tcgState.players.filter((item) => item.connected);
     if (activePlayers.length >= 2 && activePlayers.every((item) => item.pendingPlay)) {
-      this.resolveTcgTurn();
+      void this.resolveTcgTurn();
       return;
     }
 
     this.broadcastTcg();
   }
 
-  private resolveTcgTurn() {
+  private async resolveTcgTurn() {
     const playerA = this.tcgState.players.find((player) => player.seat === 0);
     const playerB = this.tcgState.players.find((player) => player.seat === 1);
     if (!playerA?.pendingPlay || !playerB?.pendingPlay) return;
 
     const playA = playerA.pendingPlay;
     const playB = playerB.pendingPlay;
-    const powerA = this.tcgCardPower(playA.cardId);
-    const powerB = this.tcgCardPower(playB.cardId);
+    const evalA = await this.evaluateTcgCard(playerA, playerB, playA, playB);
+    const evalB = await this.evaluateTcgCard(playerB, playerA, playB, playA);
+    const powerA = evalA.power;
+    const powerB = evalB.power;
     let laneWinner: "playerA" | "playerB" | "draw" = "draw";
+    let burnedPenalty = "";
 
     this.tcgState.lanes[playA.lane].playerA.push(playA.cardId);
     this.tcgState.lanes[playB.lane].playerB.push(playB.cardId);
@@ -546,9 +634,11 @@ export default class RPSParty {
       if (powerA > powerB) {
         playerA.score += 1;
         laneWinner = "playerA";
+        burnedPenalty = this.applyTcgBurnedAftermath(playerB, playA, playB, evalA, evalB, powerA - powerB);
       } else if (powerB > powerA) {
         playerB.score += 1;
         laneWinner = "playerB";
+        burnedPenalty = this.applyTcgBurnedAftermath(playerA, playB, playA, evalB, evalA, powerB - powerA);
       }
     } else {
       playerA.score += 1;
@@ -560,18 +650,19 @@ export default class RPSParty {
     this.drawTcgCard(playerB);
     playerA.pendingPlay = undefined;
     playerB.pendingPlay = undefined;
+    this.tcgScorches = this.tcgScorches.filter((item) => item.turn > this.tcgState.turn);
 
     const reveal: TcgReveal = {
       turn: this.tcgState.turn,
-      playerA: { ...playA, power: powerA },
-      playerB: { ...playB, power: powerB },
+      playerA: { ...playA, power: powerA, effects: evalA.effects },
+      playerB: { ...playB, power: powerB, effects: evalB.effects },
       laneWinner,
       message:
-        playA.lane === playB.lane
+        (playA.lane === playB.lane
           ? laneWinner === "draw"
             ? `Lane ${playA.lane + 1} tied.`
             : `${laneWinner === "playerA" ? playerA.name : playerB.name} won lane ${playA.lane + 1}.`
-          : "Both players claimed separate lanes."
+          : "Both players claimed separate lanes.") + (burnedPenalty ? ` ${burnedPenalty}` : "")
     };
 
     this.tcgState.reveal = reveal;
@@ -604,13 +695,15 @@ export default class RPSParty {
     if (!this.tcgState.players.some((player) => player.id === playerId)) return;
 
     this.tcgState.players = this.tcgState.players.map((player) => {
-      const deck = this.createTcgDeck(`${this.room.id ?? "tcg"}-${player.id}-${Date.now()}`);
       return {
         ...player,
-        deck: deck.slice(tcgStartingHand),
-        hand: deck.slice(0, tcgStartingHand),
+        deck: [],
+        hand: [],
+        drafted: [],
         score: 0,
-        pendingPlay: undefined
+        pendingPlay: undefined,
+        lastTypeBonus: 0,
+        peaceShield: false
       };
     });
     this.tcgState.turn = 1;
@@ -618,8 +711,14 @@ export default class RPSParty {
     this.tcgState.reveal = undefined;
     this.tcgState.winnerId = undefined;
     this.tcgState.history = [];
-    this.tcgState.phase = this.tcgState.players.filter((player) => player.connected).length >= 2 ? "playing" : "waiting";
-    this.tcgState.message = this.tcgState.phase === "playing" ? "Rematch started. Play one Normie card into a lane." : "Waiting for both players to reconnect.";
+    this.tcgState.draftPool = [];
+    this.tcgScorches = [];
+    if (this.tcgState.players.filter((player) => player.connected).length >= 2) {
+      this.startTcgDraft();
+    } else {
+      this.tcgState.phase = "waiting";
+      this.tcgState.message = "Waiting for both players to reconnect.";
+    }
     this.broadcastTcg();
   }
 
@@ -1182,11 +1281,26 @@ export default class RPSParty {
       const response = await fetch(`https://api.normies.art/normie/${id}/traits`, {
         headers: { accept: "application/json" }
       });
-      if (!response.ok) return {};
-      return this.normalizeNormieTraits((await response.json()) as RawNormieTraitsResponse);
+      if (!response.ok) return this.fallbackNormieTraits(id);
+      const traits = this.normalizeNormieTraits((await response.json()) as RawNormieTraitsResponse);
+      return Object.keys(traits).length ? traits : this.fallbackNormieTraits(id);
     } catch {
-      return {};
+      return this.fallbackNormieTraits(id);
     }
+  }
+
+  private fallbackNormieTraits(id: number): NormieTraits {
+    const types = ["Human", "Cat", "Alien", "Agent"];
+    const expressions = ["Neutral", "Slight Smile", "Friendly", "Content", "Confident", "Peaceful"];
+    return {
+      Type: types[id % types.length],
+      Expression: expressions[id % expressions.length],
+      Age: ["Young", "Middle-Aged", "Old"][id % 3],
+      "Hair Style": "Fallback Fade",
+      "Facial Feature": "Pixel Smile",
+      Eyes: "Bright",
+      Accessory: "Neon Pass"
+    };
   }
 
   private normalizeNormieTraits(response: RawNormieTraitsResponse): NormieTraits {
@@ -1583,11 +1697,14 @@ export default class RPSParty {
     return {
       ...this.tcgState,
       privateHand: privatePlayer?.hand,
+      privateDrafted: privatePlayer?.drafted,
       players: this.tcgState.players.map((player) => ({
         ...player,
         privyToken: undefined,
         deck: undefined,
         hand: undefined,
+        drafted: undefined,
+        draftedCount: player.drafted.length,
         handCount: player.hand.length,
         deckCount: player.deck.length,
         pendingPlay: player.pendingPlay ? { cardId: 0, lane: player.pendingPlay.lane } : undefined
@@ -1647,19 +1764,187 @@ export default class RPSParty {
     ];
   }
 
-  private createTcgDeck(seed: string) {
+  private createTcgDeck(seed: string, count = tcgDeckSize) {
     let state = Array.from(seed).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 2166136261);
     const next = () => {
       state = (state * 1664525 + 1013904223) >>> 0;
       return state;
     };
     const ids = new Set<number>();
-    while (ids.size < tcgDeckSize) ids.add(next() % 10_000);
+    while (ids.size < count) ids.add(next() % 10_000);
     return [...ids];
+  }
+
+  private shuffleTcgDeck(ids: number[], seed: string) {
+    let state = Array.from(seed).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 2166136261);
+    const next = () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state;
+    };
+    const deck = [...ids];
+    for (let index = deck.length - 1; index > 0; index -= 1) {
+      const swap = next() % (index + 1);
+      [deck[index], deck[swap]] = [deck[swap], deck[index]];
+    }
+    return deck;
   }
 
   private tcgCardPower(id: number) {
     return 5 + (id % 9) + (String(id).split("").reduce((sum, digit) => sum + Number(digit), 0) % 5);
+  }
+
+  private async fetchTcgTraits(id: number) {
+    if (this.tcgTraitCache.has(id)) return this.tcgTraitCache.get(id)!;
+    const traits = await this.fetchNormieTraits(id);
+    this.tcgTraitCache.set(id, traits);
+    return traits;
+  }
+
+  private cleanTcgTrait(value: unknown) {
+    return String(value ?? "").trim();
+  }
+
+  private async evaluateTcgCard(player: TcgPlayer, opponent: TcgPlayer, play: { cardId: number; lane: number }, opponentPlay: { cardId: number; lane: number }) {
+    const base = this.tcgCardPower(play.cardId);
+    const traits = await this.fetchTcgTraits(play.cardId);
+    const expression = this.cleanTcgTrait(traits.Expression);
+    const type = this.cleanTcgTrait(traits.Type);
+    const boardCards = this.tcgBoardCards(player.seat);
+    const boardTraits = await Promise.all(boardCards.map((id) => this.fetchTcgTraits(id)));
+    const effects: string[] = [];
+    let power = base;
+    let typeBonus = 0;
+    let negative = 0;
+
+    if (expression === "Neutral" && play.lane === opponentPlay.lane) {
+      power += 1;
+      effects.push("Neutral: wins a tied lane by +1 virtual power.");
+    } else if (expression === "Slight Smile" && this.hasTcgAdjacentCard(player.seat, play.lane)) {
+      power += 2;
+      effects.push("Slight Smile: +2 near an allied adjacent lane.");
+    } else if (expression === "Friendly" && this.tcgLaneCount(player.seat, play.lane) < this.tcgLaneCount(opponent.seat, play.lane)) {
+      power += 2;
+      effects.push("Friendly: +2 when played into a lane where you trail.");
+    } else if (expression === "Content") {
+      power += 1;
+      effects.push("Content: +1 and ignores penalties below base.");
+    } else if (expression === "Confident" && play.lane === opponentPlay.lane) {
+      power += 3;
+      effects.push("Confident: +3 in a contested lane.");
+    } else if (expression === "Peaceful") {
+      player.peaceShield = true;
+      effects.push("Peaceful: cancels one burned score penalty.");
+    } else if (expression) {
+      power += 1;
+      effects.push(`${expression}: +1 wildcard expression bonus.`);
+    }
+
+    if (type === "Human") {
+      typeBonus = boardTraits.filter((item) => this.cleanTcgTrait(item.Type) === "Human").length;
+      if (typeBonus) effects.push(`Human: +${typeBonus} for other Human cards on board.`);
+    } else if (type === "Cat" && this.tcgLaneCount(player.seat, play.lane) + this.tcgLaneCount(opponent.seat, play.lane) === 0) {
+      typeBonus = 3;
+      effects.push("Cat: +3 into an empty lane.");
+    } else if (type === "Alien" && play.lane !== opponentPlay.lane) {
+      typeBonus = 2;
+      effects.push("Alien: +2 when opponent chooses another lane.");
+    } else if (type === "Agent") {
+      typeBonus = player.lastTypeBonus ?? 0;
+      effects.push(`Agent: copies previous type bonus${typeBonus ? ` (+${typeBonus})` : ""}.`);
+    }
+    power += typeBonus;
+
+    const expressionCount = boardTraits.filter((item) => this.cleanTcgTrait(item.Expression) === expression).length;
+    if (expression && expressionCount >= 1) {
+      power += 2;
+      effects.push("2 combo: same Expression pair gives +2.");
+    }
+
+    const types = new Set([...boardTraits.map((item) => this.cleanTcgTrait(item.Type)), type]);
+    if (types.has("Human") && types.has("Cat") && types.has("Alien")) {
+      power += 3;
+      effects.push("2 combo: Human/Cat/Alien spread gives +3.");
+    }
+
+    if (await this.isTcgBurned(play.cardId)) {
+      power += 6;
+      effects.push("Burned: +6, but losing a contested lane costs score.");
+    }
+
+    const scorch = this.tcgScorches.find((item) => item.seat === player.seat && item.lane === play.lane && item.turn === this.tcgState.turn);
+    if (scorch) {
+      negative -= 2;
+      effects.push("Scorched lane: -2 this turn.");
+    }
+
+    player.lastTypeBonus = typeBonus;
+    power += negative;
+    if (expression === "Content" && power < base) power = base;
+
+    return { power, effects, burned: await this.isTcgBurned(play.cardId), expression };
+  }
+
+  private applyTcgBurnedAftermath(
+    loser: TcgPlayer,
+    winningPlay: { lane: number },
+    losingPlay: { lane: number },
+    winningEval: { burned: boolean },
+    losingEval: { burned: boolean; expression: string },
+    margin: number
+  ) {
+    let message = "";
+    if (winningEval.burned) {
+      this.tcgScorches.push({ seat: loser.seat, lane: winningPlay.lane, turn: this.tcgState.turn + 1 });
+      message = "Burned winner scorched that lane.";
+    }
+    if (losingEval.burned && winningPlay.lane === losingPlay.lane) {
+      const penalty = margin >= 5 ? 2 : 1;
+      if (loser.peaceShield || losingEval.expression === "Peaceful") {
+        loser.peaceShield = false;
+        return message ? `${message} Peaceful shield blocked burned backlash.` : "Peaceful shield blocked burned backlash.";
+      }
+      loser.score = Math.max(0, loser.score - penalty);
+      return `${message ? `${message} ` : ""}Burned loser lost ${penalty} score.`;
+    }
+    return message;
+  }
+
+  private tcgBoardCards(seat: 0 | 1) {
+    const key = seat === 0 ? "playerA" : "playerB";
+    return this.tcgState.lanes.flatMap((lane) => lane[key]);
+  }
+
+  private tcgLaneCount(seat: 0 | 1, lane: number) {
+    const key = seat === 0 ? "playerA" : "playerB";
+    return this.tcgState.lanes[lane]?.[key].length ?? 0;
+  }
+
+  private hasTcgAdjacentCard(seat: 0 | 1, lane: number) {
+    return [lane - 1, lane + 1].some((index) => index >= 0 && index <= 2 && this.tcgLaneCount(seat, index) > 0);
+  }
+
+  private async isTcgBurned(id: number) {
+    if (!this.tcgBurnedIds) {
+      try {
+        const response = await fetch("https://api.normies.art/history/burned-tokens?limit=500", { headers: { accept: "application/json" } });
+        const data = response.ok ? await response.json() : [];
+        this.tcgBurnedIds = new Set(this.extractNormieIds(data));
+      } catch {
+        this.tcgBurnedIds = new Set();
+      }
+    }
+    return this.tcgBurnedIds.has(id);
+  }
+
+  private extractNormieIds(value: unknown): number[] {
+    if (typeof value === "number" && Number.isFinite(value)) return [value];
+    if (typeof value === "string" && Number.isFinite(Number(value))) return [Number(value)];
+    if (Array.isArray(value)) return value.flatMap((item) => this.extractNormieIds(item));
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      return this.extractNormieIds(record.tokenId ?? record.id ?? record.normieId ?? record.token_id ?? record.tokens ?? record.burnedTokens ?? record.items ?? record.data);
+    }
+    return [];
   }
 
   private drawTcgCard(player: TcgPlayer) {
