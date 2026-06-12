@@ -288,3 +288,29 @@ img {
     transform: translateX(6px);
   }
 }
+
+@keyframes tcg-draw {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes tcg-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+    filter: brightness(1.5);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}

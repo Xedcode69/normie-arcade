@@ -34,5 +34,5 @@ export type Normie = {
   metadata?: NormieMetadata;
 };
 
-export const EXPRESSIONS = ["Smile", "Frown", "Angry", "Surprised", "Neutral", "Smirk", "Sleepy"] as const;
+export const EXPRESSIONS = ["Neutral", "Slight Smile", "Friendly", "Content", "Confident", "Peaceful"] as const;
 export const RPS_TYPES: RPSType[] = ["Human", "Cat", "Alien"];

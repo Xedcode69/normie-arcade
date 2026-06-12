@@ -17,7 +17,9 @@ export async function GET(request: Request) {
   }
 
   const orderBy =
-    payload.data.mode === "SKILL"
+    payload.data.game === "TCG"
+      ? [{ totalWins: "desc" as const }, { bestScore: "desc" as const }, { totalPlays: "asc" as const }]
+      : payload.data.mode === "SKILL"
       ? [{ bestScore: "desc" as const }, { bestCombo: "desc" as const }, { totalPlays: "asc" as const }]
       : [{ netChips: "desc" as const }, { totalWins: "desc" as const }, { totalPlays: "asc" as const }];
 
@@ -69,6 +71,10 @@ export async function POST(request: Request) {
 
   if (!payload.success) {
     return NextResponse.json({ error: "Invalid leaderboard payload", issues: payload.error.flatten() }, { status: 400 });
+  }
+
+  if (payload.data.game === "TCG") {
+    return NextResponse.json({ error: "TCG PvP results are settled server-side." }, { status: 403 });
   }
 
   try {

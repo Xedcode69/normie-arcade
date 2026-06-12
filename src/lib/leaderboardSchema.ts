@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const leaderboardGameSchema = z.enum(["ROULETTE", "RPS", "POKER", "UP_DOWN", "SORT_SPRINT", "PIXEL_DETECTIVE", "WHACK_RUSH"]);
+export const leaderboardGameSchema = z.enum(["ROULETTE", "RPS", "POKER", "UP_DOWN", "SORT_SPRINT", "PIXEL_DETECTIVE", "WHACK_RUSH", "TCG"]);
 export const leaderboardModeSchema = z.enum(["SOLO", "PVP", "SKILL"]);
 export const leaderboardOutcomeSchema = z.enum(["WIN", "LOSS", "DRAW"]);
 

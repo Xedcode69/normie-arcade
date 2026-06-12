@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleDot, Dices, Flame, Gamepad2, Landmark, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
+import { CircleDot, Dices, Flame, Gamepad2, Landmark, Layers3, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { useNormiePreload } from "@/hooks/useNormiePreload";
@@ -19,7 +19,7 @@ type MapLocation = {
   icon: React.ReactNode;
 };
 
-type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "burn" | "bank" | "leaderboard" | "community";
+type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "burn" | "tcg" | "bank" | "leaderboard" | "community";
 
 const locations: MapLocation[] = [
   {
@@ -107,6 +107,18 @@ const locations: MapLocation[] = [
     icon: <Flame size={22} />
   },
   {
+    id: "circuit-clash",
+    label: "Circuit Clash",
+    subtitle: "PvP Normie TCG",
+    hotkey: "8",
+    x: 78,
+    y: 67,
+    color: "#9fb7ff",
+    kind: "game",
+    game: "tcg",
+    icon: <Layers3 size={22} />
+  },
+  {
     id: "chip-bank",
     label: "Chip Bank",
     subtitle: "Cashier and balances",
@@ -145,6 +157,7 @@ const spineRoutePairs = [
   ["sort-depot", "prediction-tower"],
   ["sort-depot", "pixel-lab"],
   ["sort-depot", "whack-yard"],
+  ["pixel-lab", "circuit-clash"],
   ["chip-bank", "community-games"],
   ["leaderboard-wall", "community-games"]
 ];
@@ -153,6 +166,7 @@ const hoverRoutePairs = [
   ["dna-poker-club", "prediction-tower"],
   ["roulette-district", "sort-depot"],
   ["pixel-lab", "whack-yard"],
+  ["whack-yard", "circuit-clash"],
   ["sort-depot", "chip-bank"],
   ["whack-yard", "community-games"],
   ["pixel-lab", "leaderboard-wall"],
@@ -224,6 +238,7 @@ export function ArcadeLobby() {
             <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={34} width={29} height={21} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
             <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={37} width={26} height={19} color="#27f6e7" label="Pixel Detective" kind="casino" />
             <DistrictZone id="whack-yard" focusedLocationId={focusedLocationId} left={42} top={59} width={16} height={14} color="#ff7a43" label="Whack-A-Normie" kind="burn" />
+            <DistrictZone id="circuit-clash" focusedLocationId={focusedLocationId} left={68} top={59} width={24} height={14} color="#9fb7ff" label="Circuit Clash" kind="tcg" />
             <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={60} width={29} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
             <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={59} top={60} width={30} height={16} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
             <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={28} top={84} width={44} height={9} color="#d7ff35" label="Community Games" kind="community" />
@@ -476,6 +491,27 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
           />
         ))}
         <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed opacity-50" style={{ borderColor: color }} />
+      </>
+    );
+  }
+
+  if (kind === "tcg") {
+    return (
+      <>
+        <div className="absolute bottom-4 left-5 right-5 top-10 border-2 opacity-70" style={{ borderColor: color }} />
+        {Array.from({ length: 5 }).map((_, index) => (
+          <span
+            key={index}
+            className="absolute top-[38%] h-16 w-10 border bg-black/65"
+            style={{
+              left: `${15 + index * 16}%`,
+              borderColor: `${color}aa`,
+              transform: `rotate(${(index - 2) * 5}deg)`,
+              boxShadow: `0 0 16px ${color}22`
+            }}
+          />
+        ))}
+        <div className="city-lounge-line absolute left-8 right-8 top-[70%] h-px" style={{ backgroundColor: `${color}77` }} />
       </>
     );
   }

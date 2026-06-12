@@ -13,6 +13,7 @@ import { UpDownGame } from "./UpDownGame";
 import { SortSprintGame } from "./SortSprintGame";
 import { PixelDetectiveGame } from "./PixelDetectiveGame";
 import { WhackRushGame } from "./WhackRushGame";
+import { TcgClashGame } from "./TcgClashGame";
 
 const instructions = {
   roulette: {
@@ -96,6 +97,15 @@ const instructions = {
       "Avoid burned Normies. Hitting one deducts score and breaks combo.",
       "Clean hits build combo and the best score posts to the skill leaderboard."
     ]
+  },
+  tcg: {
+    title: "Normie Circuit Clash",
+    lines: [
+      "PvP 1v1 lane battler using real Normie cards.",
+      "Each player gets a private 12-card Normie deck and a 3-card hand.",
+      "Play one card into one of three lanes each turn.",
+      "Same-lane cards compare power. Separate lanes both score. Highest score after five turns wins."
+    ]
   }
 } as const;
 
@@ -167,6 +177,7 @@ export function GameDock() {
               {activeGame === "sort" ? <SortSprintGame /> : null}
               {activeGame === "pixel" ? <PixelDetectiveGame /> : null}
               {activeGame === "whack" ? <WhackRushGame /> : null}
+              {activeGame === "tcg" ? <TcgClashGame /> : null}
             </div>
             <AnimatePresence>
               {showInstructions ? (

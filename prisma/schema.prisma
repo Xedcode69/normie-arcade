@@ -14,6 +14,7 @@ enum GameKind {
   SORT_SPRINT
   PIXEL_DETECTIVE
   WHACK_RUSH
+  TCG
 }
 
 enum GameOutcome {
