@@ -275,6 +275,7 @@ export default class RPSParty {
   private tcgBurnedIds?: Set<number>;
   private tcgScorches: Array<{ seat: 0 | 1; lane: number; turn: number }> = [];
   private tcgDraftTimer?: ReturnType<typeof setTimeout>;
+  private tcgLeaderboardSettled = false;
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
@@ -541,6 +542,7 @@ export default class RPSParty {
     this.tcgState.winnerId = undefined;
     this.tcgState.history = [];
     this.tcgScorches = [];
+    this.tcgLeaderboardSettled = false;
     this.tcgState.draftPool = this.createTcgDeck(`${this.room.id ?? "tcg"}-draft-${Date.now()}`, tcgDraftPoolSize);
     this.tcgState.draftTarget = tcgDeckSize;
     this.tcgState.draftPickSeconds = tcgDraftPickMs / 1000;
@@ -721,6 +723,7 @@ export default class RPSParty {
       this.tcgState.message = this.tcgState.winnerId
         ? `${this.tcgState.winnerId === playerA.id ? playerA.name : playerB.name} wins Circuit Clash.`
         : "Circuit Clash ends in a draw.";
+      void this.settleTcgLeaderboard(playerA, playerB);
       this.broadcastTcg();
       return;
     }
@@ -759,6 +762,7 @@ export default class RPSParty {
     this.tcgState.history = [];
     this.tcgState.draftPool = [];
     this.tcgScorches = [];
+    this.tcgLeaderboardSettled = false;
     if (this.tcgState.players.filter((player) => player.connected).length >= 2) {
       this.startTcgDraft();
     } else {
@@ -1991,6 +1995,45 @@ export default class RPSParty {
       return this.extractNormieIds(record.tokenId ?? record.id ?? record.normieId ?? record.token_id ?? record.tokens ?? record.burnedTokens ?? record.items ?? record.data);
     }
     return [];
+  }
+
+  private async settleTcgLeaderboard(playerA: TcgPlayer, playerB: TcgPlayer) {
+    if (this.tcgLeaderboardSettled) return;
+    this.tcgLeaderboardSettled = true;
+
+    const players = [playerA, playerB];
+    await Promise.allSettled(
+      players.map((player) => {
+        const opponent = player.id === playerA.id ? playerB : playerA;
+        return fetch(`${this.apiBaseUrl()}/api/internal/leaderboard`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partykit-secret": this.internalSecret()
+          },
+          body: JSON.stringify({
+            privyToken: player.privyToken,
+            game: "TCG",
+            mode: "PVP",
+            outcome: playerA.score === playerB.score ? "DRAW" : player.score > opponent.score ? "WIN" : "LOSS",
+            score: player.score,
+            chipsWon: 0,
+            netChips: 0,
+            bestCombo: this.tcgState.history.length,
+            metadata: {
+              roomId: this.room.id ?? "tcg-room",
+              turns: this.tcgState.history.length,
+              playerId: player.id,
+              opponentId: opponent.id,
+              opponentScore: opponent.score,
+              draftedCards: player.drafted.length,
+              finalScore: `${player.score}-${opponent.score}`,
+              winnerId: this.tcgState.winnerId ?? null
+            }
+          })
+        });
+      })
+    );
   }
 
   private drawTcgCard(player: TcgPlayer) {

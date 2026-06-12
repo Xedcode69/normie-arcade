@@ -73,6 +73,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid leaderboard payload", issues: payload.error.flatten() }, { status: 400 });
   }
 
+  if (payload.data.game === "TCG") {
+    return NextResponse.json({ error: "TCG PvP results are settled server-side." }, { status: 403 });
+  }
+
   try {
     const privyId = await verifyPrivyToken(payload.data.privyToken);
 

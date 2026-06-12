@@ -1,12 +1,11 @@
 "use client";
 
-import { Copy, Dices, LogIn, RefreshCw, Swords, Trophy, Users } from "lucide-react";
+import { AlertTriangle, Copy, Dices, Flame, GitBranch, Info, LogIn, Plus, RefreshCw, Shield, Swords, Trophy, Users } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { createTcgRoomCode, normalizeTcgRoomCode, tcgCardPower } from "@/lib/tcgPvp";
 import { useTcgPvp } from "@/hooks/useTcgPvp";
-import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { NormieAPIService } from "@/services/NormieAPIService";
 import type { NormieTraits } from "@/types/normie";
 import { useAccountStore } from "@/stores/accountStore";
@@ -17,6 +16,7 @@ type ProjectedLanePower = {
   power: number;
   effects: string[];
 };
+type TcgEffectKind = "buff" | "penalty" | "burned" | "combo" | "shield" | "info";
 type TcgMatchSummary = {
   result: "Victory" | "Defeat" | "Draw";
   finalScore: string;
@@ -42,8 +42,6 @@ export function TcgClashGame() {
   const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
   const notify = useArcadeStore((store) => store.notify);
   const setLeaderboardOpen = useArcadeStore((store) => store.setLeaderboardOpen);
-  const recordLeaderboardResult = useLeaderboardRecorder();
-  const recordedLeaderboardKeyRef = useRef<string | null>(null);
   const { connected, connect, disconnect, draftPick, error, playerId, playCard, rematch, state } = useTcgPvp(`tcg-${roomCode.toLowerCase()}`);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
@@ -139,34 +137,6 @@ export function TcgClashGame() {
     window.dispatchEvent(new CustomEvent("normie:select-leaderboard", { detail: { game: "TCG", mode: "PVP" } }));
   }
 
-  useEffect(() => {
-    if (state.phase !== "finished") {
-      recordedLeaderboardKeyRef.current = null;
-      return;
-    }
-    if (!playerId || !you || !opponent) return;
-
-    const resultKey = `${roomCode}:${state.history.length}:${state.winnerId ?? "draw"}:${you.score}:${opponent.score}`;
-    if (recordedLeaderboardKeyRef.current === resultKey) return;
-    recordedLeaderboardKeyRef.current = resultKey;
-
-    void recordLeaderboardResult({
-      game: "TCG",
-      mode: "PVP",
-      outcome: !state.winnerId ? "DRAW" : state.winnerId === playerId ? "WIN" : "LOSS",
-      score: you.score,
-      chipsWon: 0,
-      netChips: 0,
-      bestCombo: state.history.length,
-      metadata: {
-        roomCode,
-        turns: state.history.length,
-        opponentScore: opponent.score,
-        draftedCards: drafted.length
-      }
-    });
-  }, [drafted.length, opponent, playerId, recordLeaderboardResult, roomCode, state.history.length, state.phase, state.winnerId, you]);
-
   return (
     <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col px-4 pb-4 pt-1">
       <header className="shrink-0 text-center">
@@ -234,6 +204,8 @@ export function TcgClashGame() {
               Five turns. Play one Normie into one of three lanes. Same-lane cards compare power. Separate lanes both score.
             </p>
           </div>
+
+          <EffectGlossary />
         </aside>
 
         <main className="min-h-0">
@@ -329,7 +301,13 @@ function RevealEffects({ label, reveal }: { label: string; reveal?: { cardId: nu
         <span className="text-mint">Power {reveal.power}</span>
       </div>
       <div className="mt-1 space-y-1 text-[10px] leading-snug text-paper/50">
-        {reveal.effects?.length ? reveal.effects.slice(0, 4).map((effect) => <div key={effect}>{effect}</div>) : <div>No trait bonus triggered.</div>}
+        {reveal.effects?.length ? (
+          <div className="flex flex-wrap gap-1">
+            {reveal.effects.slice(0, 4).map((effect) => <EffectPill key={effect} effect={effect} triggered />)}
+          </div>
+        ) : (
+          <div>No trait bonus triggered.</div>
+        )}
       </div>
     </div>
   );
@@ -384,6 +362,78 @@ function ResultStat({ label, value, detail }: { label: string; value: string; de
       <div className="mt-1 text-xs text-paper/50">{detail}</div>
     </div>
   );
+}
+
+function EffectGlossary() {
+  return (
+    <div className="mt-5 border border-paper/15 bg-black/60 p-3">
+      <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Effect Key</div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <EffectLegend kind="buff" label="Buff" detail="Power gain or positive modifier." />
+        <EffectLegend kind="combo" label="Combo" detail="Board synergy bonus." />
+        <EffectLegend kind="burned" label="Burned" detail="High-risk burned effect." />
+        <EffectLegend kind="penalty" label="Penalty" detail="Score or power drawback." />
+        <EffectLegend kind="shield" label="Shield" detail="Blocks burned backlash." />
+      </div>
+    </div>
+  );
+}
+
+function EffectLegend({ kind, label, detail }: { kind: TcgEffectKind; label: string; detail: string }) {
+  return (
+    <span title={detail} className={`inline-flex items-center gap-1 border px-2 py-1 text-[9px] uppercase tracking-widest ${effectClass(kind, false)}`}>
+      <EffectIcon kind={kind} size={11} />
+      {label}
+    </span>
+  );
+}
+
+function EffectPill({ effect, triggered, compact }: { effect: string; triggered?: boolean; compact?: boolean }) {
+  const kind = classifyEffect(effect);
+  return (
+    <span
+      title={effect}
+      className={`inline-flex max-w-full items-center gap-1 border text-left leading-snug ${compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-1 text-[10px]"} ${
+        effectClass(kind, Boolean(triggered))
+      }`}
+    >
+      <EffectIcon kind={kind} size={compact ? 10 : 12} />
+      <span className="truncate">{shortEffectLabel(effect)}</span>
+    </span>
+  );
+}
+
+function EffectIcon({ kind, size }: { kind: TcgEffectKind; size: number }) {
+  if (kind === "burned") return <Flame size={size} />;
+  if (kind === "combo") return <GitBranch size={size} />;
+  if (kind === "penalty") return <AlertTriangle size={size} />;
+  if (kind === "shield") return <Shield size={size} />;
+  if (kind === "buff") return <Plus size={size} />;
+  return <Info size={size} />;
+}
+
+function classifyEffect(effect: string): TcgEffectKind {
+  const value = effect.toLowerCase();
+  if (value.includes("shield") || value.includes("peaceful") || value.includes("blocks")) return "shield";
+  if (value.includes("burned") || value.includes("scorched")) return "burned";
+  if (value.includes("combo") || value.includes("spread") || value.includes("same expression")) return "combo";
+  if (value.includes("penalty") || value.includes("lost") || value.includes("backlash") || value.includes("-")) return "penalty";
+  if (value.includes("+")) return "buff";
+  return "info";
+}
+
+function effectClass(kind: TcgEffectKind, triggered: boolean) {
+  const glow = triggered ? " shadow-[0_0_14px_currentColor]" : "";
+  if (kind === "burned") return `border-red-400/60 bg-red-500/10 text-red-300${glow}`;
+  if (kind === "combo") return `border-cyan-300/60 bg-cyan-400/10 text-cyan-200${glow}`;
+  if (kind === "penalty") return `border-magenta/60 bg-magenta/10 text-magenta${glow}`;
+  if (kind === "shield") return `border-paper/55 bg-paper/10 text-paper${glow}`;
+  if (kind === "buff") return `border-mint/60 bg-mint/10 text-mint${glow}`;
+  return `border-paper/25 bg-black/55 text-paper/60${glow}`;
+}
+
+function shortEffectLabel(effect: string) {
+  return effect.replace("2 combo:", "Combo:").replace("wins a tied lane by", "tie lane").replace("virtual power", "power");
 }
 
 function PlayerPlate({ label, name, score, connected, avatarUrl, draftActive }: { label: string; name?: string; score: number; connected: boolean; avatarUrl?: string | null; draftActive?: boolean }) {
@@ -514,7 +564,7 @@ function LanePanel({
           </div>
           <div className="mt-1 space-y-0.5 text-[10px] leading-snug text-paper/55">
             {preview.effects.slice(0, 3).map((effect) => (
-              <div key={effect}>{effect}</div>
+              <EffectPill key={effect} effect={effect} compact />
             ))}
           </div>
         </div>
@@ -587,9 +637,9 @@ function TcgCard({
           {traits?.Expression ?? "Expression"} / {traits?.Type ?? "Type"}{burned ? " / Burned" : ""}
         </span>
       </span>
-      <span className="mt-2 space-y-1 text-[10px] leading-snug text-paper/55">
+      <span className="mt-2 flex flex-wrap gap-1 text-[10px] leading-snug">
         {effects.slice(0, 3).map((effect) => (
-          <span key={effect} className="block">{effect}</span>
+          <EffectPill key={effect} effect={effect} compact />
         ))}
       </span>
       {actionLabel ? (
