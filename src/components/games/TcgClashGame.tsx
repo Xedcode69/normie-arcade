@@ -415,12 +415,14 @@ function EffectPill({ effect, triggered, compact }: { effect: string; triggered?
   return (
     <span
       title={effect}
-      className={`inline-flex max-w-full items-center gap-1 border text-left leading-snug ${compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-1 text-[10px]"} ${
+      className={`inline-flex max-w-full min-w-0 items-center gap-1 overflow-hidden border text-left leading-snug ${compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-1 text-[10px]"} ${
         effectClass(kind, Boolean(triggered))
       }`}
     >
-      <EffectIcon kind={kind} size={compact ? 10 : 12} />
-      <span className="truncate">{shortEffectLabel(effect)}</span>
+      <span className="shrink-0">
+        <EffectIcon kind={kind} size={compact ? 10 : 12} />
+      </span>
+      <span className="min-w-0 truncate">{shortEffectLabel(effect)}</span>
     </span>
   );
 }
@@ -679,7 +681,7 @@ function TcgCard({
     <button
       disabled={disabled}
       onClick={onClick}
-      className={`grid min-h-64 animate-[tcg-draw_260ms_ease-out] grid-rows-[auto_1fr_auto] border bg-black/70 p-3 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 ${
+      className={`grid min-h-64 min-w-0 animate-[tcg-draw_260ms_ease-out] grid-rows-[auto_1fr_auto] overflow-hidden border bg-black/70 p-3 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 ${
         selected ? "-translate-y-1 border-mint bg-mint/5 shadow-[0_0_24px_rgba(0,255,194,0.28)]" : "border-paper/25 hover:border-paper/70"
       }`}
     >
@@ -694,7 +696,7 @@ function TcgCard({
           {traits?.Expression ?? "Expression"} / {traits?.Type ?? "Type"}{burned ? " / Burned" : ""}
         </span>
       </span>
-      <span className="mt-2 flex flex-wrap gap-1 text-[10px] leading-snug">
+      <span className="mt-2 flex min-w-0 flex-wrap gap-1 overflow-hidden text-[10px] leading-snug">
         {effects.slice(0, 3).map((effect) => (
           <EffectPill key={effect} effect={effect} compact />
         ))}
