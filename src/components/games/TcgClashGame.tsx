@@ -636,9 +636,9 @@ function CardStack({ label, cards }: { label: string; cards: number[] }) {
       {previous.length ? (
         <div className="mt-2 flex gap-1 border-t border-paper/10 pt-2">
           {previous.map((id, index) => (
-            <div key={`${id}-${index}`} title={`Played Normie #${id}`} className="grid h-7 w-7 place-items-center border border-paper/15 bg-paper text-[9px] text-black/70">
-              #{String(id).slice(-2)}
-            </div>
+            <span key={`${id}-${index}`} title={`Played Normie #${id}`}>
+              <NormieImage src={NormieAPIService.imageUrl(id)} alt={`Played Normie #${id}`} className="h-8 w-8 border border-paper/20 bg-paper object-contain opacity-75" />
+            </span>
           ))}
         </div>
       ) : null}
