@@ -16,11 +16,18 @@ import { RPS_TYPES } from "@/types/normie";
 import { playTone } from "@/lib/audio";
 import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { BetControls } from "./BetControls";
+import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 type Score = { player: number; npc: number };
 type FighterPick = { type: RPSType };
 type MatchMode = "solo" | "pvp";
 type RoomMode = "quick" | "create" | "join";
+type SoloRpsSummary = {
+  outcome: "win" | "loss";
+  finalScore: string;
+  chips: string;
+  bestMoment: string;
+};
 const RPS_RECONNECT_KEY = "normie-rps-active-room";
 const RPS_QUICK_MATCH_STAKE = 250;
 
@@ -51,6 +58,7 @@ export function RPSGame() {
   const [message, setMessage] = useState("Best of 3. Human beats Cat, Cat beats Alien, Alien beats Human.");
   const [roundResult, setRoundResult] = useState("Choose a type to start the arena match.");
   const [locked, setLocked] = useState(false);
+  const [soloSummary, setSoloSummary] = useState<SoloRpsSummary | null>(null);
   const wager = useChipStore((state) => state.wager);
   const win = useChipStore((state) => state.win);
   const lose = useChipStore((state) => state.lose);
@@ -58,7 +66,7 @@ export function RPSGame() {
   const recordLeaderboardResult = useLeaderboardRecorder();
 
   async function playRound(playerType: RPSType) {
-    if (locked) return;
+    if (locked || soloSummary) return;
     const roundStart = score.player === 0 && score.npc === 0;
     if (roundStart && !wager(bet)) {
       notify({ kind: "loss", title: "Table rejected", body: "You need more chips for that match." });
@@ -104,6 +112,12 @@ export function RPSGame() {
           metadata: { bet, finalScore: `${nextScore.player}-${nextScore.npc}` }
         });
         setRoundResult(`MATCH WIN - final score ${nextScore.player}-${nextScore.npc}. 2.4x payout awarded.`);
+        setSoloSummary({
+          outcome: "win",
+          finalScore: `${nextScore.player} - ${nextScore.npc}`,
+          chips: `+${payout - bet} net / ${payout} paid`,
+          bestMoment: `${playerType} beat ${npcType} to close the match.`
+        });
       } else {
         lose();
         void recordLeaderboardResult({
@@ -116,11 +130,25 @@ export function RPSGame() {
           metadata: { bet, finalScore: `${nextScore.player}-${nextScore.npc}` }
         });
         setRoundResult(`MATCH LOSS - final score ${nextScore.player}-${nextScore.npc}. The dealer keeps the wager.`);
+        setSoloSummary({
+          outcome: "loss",
+          finalScore: `${nextScore.player} - ${nextScore.npc}`,
+          chips: `-${bet} chips`,
+          bestMoment: `${npcType} beat ${playerType} in the final round.`
+        });
       }
-      setTimeout(() => setScore({ player: 0, npc: 0 }), 900);
     }
 
     setLocked(false);
+  }
+
+  function resetSoloMatch() {
+    setScore({ player: 0, npc: 0 });
+    setPlayerFighter(null);
+    setNpcFighter(null);
+    setSoloSummary(null);
+    setMessage("Best of 3. Human beats Cat, Cat beats Alien, Alien beats Human.");
+    setRoundResult("Choose a type to start the arena match.");
   }
 
   return (
@@ -153,6 +181,8 @@ export function RPSGame() {
           npcFighter={npcFighter}
           locked={locked}
           roundResult={roundResult}
+          matchSummary={soloSummary}
+          resetMatch={resetSoloMatch}
           playRound={playRound}
         />
       )}
@@ -168,6 +198,8 @@ function RPSSolo({
   npcFighter,
   locked,
   roundResult,
+  matchSummary,
+  resetMatch,
   playRound
 }: {
   bet: number;
@@ -177,10 +209,25 @@ function RPSSolo({
   npcFighter: FighterPick | null;
   locked: boolean;
   roundResult: string;
+  matchSummary: SoloRpsSummary | null;
+  resetMatch: () => void;
   playRound: (type: RPSType) => void;
 }) {
   return (
     <>
+      <div className="mx-auto mt-4 w-full max-w-5xl shrink-0">
+        <GameResultPanel
+          visible={Boolean(matchSummary)}
+          title="Type RPS"
+          result={matchSummary?.outcome ?? "complete"}
+          finalScore={matchSummary?.finalScore ?? ""}
+          chips={matchSummary?.chips}
+          bestMoment={matchSummary?.bestMoment ?? ""}
+          leaderboard={{ game: "RPS", mode: "SOLO", label: "RPS Leaderboard" }}
+          playAgainLabel="New Match"
+          onPlayAgain={resetMatch}
+        />
+      </div>
       <div className="mt-8 grid shrink-0 grid-cols-1 justify-center gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,22rem)]">
         <Fighter label="You" fighter={playerFighter} />
         <Fighter label="NPC" fighter={npcFighter} />
@@ -190,7 +237,7 @@ function RPSSolo({
           <button
             key={type}
             onClick={() => playRound(type)}
-            disabled={locked}
+            disabled={locked || Boolean(matchSummary)}
             className="inline-flex min-w-32 items-center justify-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15 disabled:opacity-50"
           >
             <Swords size={15} /> {type}

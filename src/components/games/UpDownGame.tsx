@@ -9,6 +9,7 @@ import { playTone } from "@/lib/audio";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { BetControls } from "./BetControls";
+import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const modes = {
   easy: { label: "Easy", target: 5, payout: 2 },
@@ -17,6 +18,12 @@ const modes = {
 } as const;
 
 type Mode = keyof typeof modes;
+type UpDownSummary = {
+  outcome: "win" | "loss";
+  finalScore: string;
+  chips: string;
+  bestMoment: string;
+};
 
 export function UpDownGame() {
   const [mode, setMode] = useState<Mode>("medium");
@@ -28,6 +35,7 @@ export function UpDownGame() {
   const [lastNormie, setLastNormie] = useState<Normie | null>(null);
   const [message, setMessage] = useState("Choose a mode, place chips, then predict higher or lower.");
   const [roundResult, setRoundResult] = useState("Ready for the prediction terminal.");
+  const [summary, setSummary] = useState<UpDownSummary | null>(null);
   const wager = useChipStore((state) => state.wager);
   const win = useChipStore((state) => state.win);
   const lose = useChipStore((state) => state.lose);
@@ -43,6 +51,7 @@ export function UpDownGame() {
         return;
       }
       setStarted(true);
+      setSummary(null);
       setRoundResult("Run started.");
     }
 
@@ -69,6 +78,12 @@ export function UpDownGame() {
         });
         setMessage(`Terminal cleared. Normie #${normie.id} completed the final read.`);
         setRoundResult(`WIN - survived ${target} predictions. Paid ${payout} chips.`);
+        setSummary({
+          outcome: "win",
+          finalScore: `${target}/${target} survived`,
+          chips: `+${payout - bet} net / ${payout} paid`,
+          bestMoment: `Final read landed on Normie #${normie.id}.`
+        });
       } else {
         setRound(nextRound);
         setMessage(`Correct. Normie #${normie.id} becomes the new base.`);
@@ -89,6 +104,12 @@ export function UpDownGame() {
       playTone(170, 0.25, "square");
       setMessage(`Wrong read. Normie #${normie.id} ended the run.`);
       setRoundResult(`LOSE - ${direction} failed against Normie #${normie.id}.`);
+      setSummary({
+        outcome: "loss",
+        finalScore: `${Math.max(0, round - 1)}/${target} survived`,
+        chips: `-${bet} chips`,
+        bestMoment: `Run ended on Normie #${normie.id} after ${Math.max(0, round - 1)} correct prediction${round - 1 === 1 ? "" : "s"}.`
+      });
     }
   }
 
@@ -100,6 +121,7 @@ export function UpDownGame() {
     setLastNormie(null);
     setMessage("Choose a mode, place chips, then predict higher or lower.");
     setRoundResult("Ready for the prediction terminal.");
+    setSummary(null);
   }
 
   return (
@@ -167,6 +189,19 @@ export function UpDownGame() {
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Round Result</div>
           <div className="truncate text-sm text-paper">{roundResult}</div>
         </div>
+      </div>
+      <div className="mx-auto mt-4 w-full max-w-5xl shrink-0">
+        <GameResultPanel
+          visible={Boolean(summary)}
+          title="Up or Down"
+          result={summary?.outcome ?? "complete"}
+          finalScore={summary?.finalScore ?? ""}
+          chips={summary?.chips}
+          bestMoment={summary?.bestMoment ?? ""}
+          leaderboard={{ game: "UP_DOWN", mode: "SOLO", label: "Up/Down Leaderboard" }}
+          playAgainLabel="New Run"
+          onPlayAgain={reset}
+        />
       </div>
     </div>
   );

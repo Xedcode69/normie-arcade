@@ -7,6 +7,7 @@ import { playTone } from "@/lib/audio";
 import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { NormieAPIService } from "@/services/NormieAPIService";
 import { useArcadeStore } from "@/stores/arcadeStore";
+import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 60;
 const HOLE_COUNT = 9;
@@ -273,6 +274,19 @@ export function WhackRushGame() {
         <Metric icon={<Zap size={15} />} label="Combo" value={combo} />
         <Metric icon={<Flame size={15} />} label="Burned" value={burnedHits} />
       </section>
+
+      <div className="mx-auto mt-4 w-full max-w-5xl">
+        <GameResultPanel
+          visible={phase === "ended"}
+          title="Whack-A-Normie"
+          result={score > 0 ? "complete" : "loss"}
+          finalScore={`${score} points`}
+          bestMoment={`${hits} clean hit${hits === 1 ? "" : "s"}, best combo x${bestCombo}. ${burnedHits} burned mistake${burnedHits === 1 ? "" : "s"}.`}
+          leaderboard={{ game: "WHACK_RUSH", mode: "SKILL", label: "Whack Leaderboard" }}
+          playAgainLabel="Start Rush"
+          onPlayAgain={start}
+        />
+      </div>
 
       <main className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
         <aside className="game-panel p-4">
