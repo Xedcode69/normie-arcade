@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, IdCard, Loader2, LogIn, UserRound, Wallet } from "lucide-react";
+import { ArrowRight, Check, IdCard, Loader2, LogIn, LogOut, UserRound, Wallet } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
@@ -57,7 +57,7 @@ function NoPrivyOnboarding() {
 
 function PrivyOnboarding() {
   const router = useRouter();
-  const { ready, authenticated, user, login, getAccessToken } = usePrivy();
+  const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
   const isNormieHolder = useAccountStore((store) => store.isNormieHolder);
@@ -142,130 +142,148 @@ function PrivyOnboarding() {
 
   return (
     <main className="bitmap-bg h-screen overflow-y-auto bg-void px-4 py-6 text-paper">
-      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-7xl items-center gap-5 lg:grid-cols-[1fr_26rem]">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-5xl flex-col justify-center">
         <OnboardingShell>
           <section className="game-panel p-5 md:p-8">
-            <div className="terminal-hash text-[10px] uppercase tracking-[0.28em] text-pixel/65">On-chain Neon Casino</div>
-            <h1 className="mt-3 font-display text-3xl uppercase tracking-[0.26em] text-paper neon-text md:text-6xl">Normie Arcade</h1>
-            <p className="mt-5 max-w-3xl text-sm leading-6 text-paper/72">
-              Sign in, verify your Normies, set your player card, then enter the 3D casino with chip games and PvP tables.
-            </p>
+            <header className="flex flex-col gap-5 border-b border-paper/20 pb-6 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="terminal-hash text-[10px] uppercase tracking-[0.28em] text-pixel/65">0xNormie // Arcade Pass Terminal</div>
+                <h1 className="mt-3 font-display text-3xl uppercase tracking-[0.26em] text-paper neon-text md:text-6xl">Normie Arcade</h1>
+                <p className="mt-4 max-w-3xl text-sm leading-6 text-paper/72">
+                  Sign in, set your player card, then enter the city arcade with chip games, PvP tables, and leaderboards.
+                </p>
+              </div>
 
-            <div className="mt-8 grid gap-3 md:grid-cols-3">
+              <div className="flex flex-wrap gap-2">
+                {!ready ? (
+                  <button className="inline-flex min-w-36 items-center justify-center gap-2 border border-paper/50 px-4 py-3 text-xs uppercase tracking-widest text-paper/55" disabled>
+                    <Loader2 size={16} className="animate-spin" /> Loading
+                  </button>
+                ) : !authenticated ? (
+                  <button
+                    onClick={login}
+                    className="inline-flex min-w-44 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
+                  >
+                    <LogIn size={16} /> Sign Up / Login
+                  </button>
+                ) : (
+                  <button
+                    onClick={logout}
+                    className="inline-flex min-w-36 items-center justify-center gap-2 border border-magenta/55 bg-magenta/10 px-4 py-3 text-xs uppercase tracking-widest text-magenta transition hover:bg-magenta/15"
+                  >
+                    <LogOut size={16} /> Logout
+                  </button>
+                )}
+              </div>
+            </header>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-3">
               <StepTile active={!authenticated} complete={authenticated} label="Login" detail="Privy wallet or email" />
-              <StepTile active={authenticated && !profileComplete} complete={profileComplete} label="Profile" detail="Username and avatar" />
-              <StepTile active={authenticated && profileComplete} complete={false} label="Enter" detail="Open arcade dashboard" />
+              <StepTile active={authenticated && !profileComplete} complete={profileComplete} label="Identity" detail="Username and avatar" />
+              <StepTile active={authenticated && profileComplete} complete={false} label="Enter" detail="Open city map" />
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              {!ready ? (
-                <button className="inline-flex min-w-40 items-center justify-center gap-2 border border-paper/50 px-5 py-3 text-xs uppercase tracking-widest text-paper/55" disabled>
-                  <Loader2 size={16} className="animate-spin" /> Loading
-                </button>
-              ) : !authenticated ? (
-                <button
-                  onClick={login}
-                  className="inline-flex min-w-44 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
-                >
-                  <LogIn size={16} /> Sign Up / Login
-                </button>
-              ) : (
-                <button
-                  onClick={enterArcade}
-                  className="inline-flex min-w-44 items-center justify-center gap-2 border border-mint/70 bg-mint/10 px-5 py-3 text-xs uppercase tracking-widest text-mint shadow-neon transition hover:bg-mint/15"
-                >
-                  Enter Arcade <ArrowRight size={16} />
-                </button>
-              )}
+            <div className="mt-6 grid gap-5 lg:grid-cols-[13rem_1fr]">
+              <div className="border border-paper/25 bg-black/55 p-4">
+                <div className="terminal-hash text-[10px] uppercase tracking-[0.24em] text-pixel/60">Player Card</div>
+                <div className="mt-4 grid place-items-center border border-paper/35 bg-paper p-3">
+                  {activeAvatar ? (
+                    <Image src={activeAvatar} alt="Selected Normie avatar" width={150} height={150} className="h-36 w-36 object-contain" unoptimized />
+                  ) : (
+                    <div className="grid h-36 w-36 place-items-center">
+                      <UserRound size={46} className="text-black/60" />
+                    </div>
+                  )}
+                </div>
+                <div className="mt-4 inline-flex border border-mint/50 px-2 py-1 text-[10px] uppercase tracking-widest text-mint">
+                  {isNormieHolder ? `0xN Holder${draftNormieId !== null ? ` #${draftNormieId}` : ""}` : "No verified Normie yet"}
+                </div>
+              </div>
+
+              <div className="grid gap-4">
+                <div className="flex items-center justify-between gap-3 border border-paper/25 bg-black/55 px-3 py-2 text-sm text-paper/75">
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <Wallet size={16} className="shrink-0" />
+                    <span className="truncate">{authenticated ? shortWallet(user?.wallet?.address) : "Login to connect account"}</span>
+                  </span>
+                  {authenticated ? <span className="terminal-hash text-[10px] uppercase tracking-widest text-mint">Connected</span> : null}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Username</span>
+                    <input
+                      value={draftUsername}
+                      onChange={(event) => setDraftUsername(event.target.value)}
+                      disabled={!authenticated}
+                      placeholder="normie_player"
+                      className="mt-1 w-full border border-paper/35 bg-black/70 px-3 py-2 text-sm lowercase text-paper outline-none placeholder:text-paper/25 disabled:opacity-45"
+                      maxLength={20}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Display Name</span>
+                    <div className="mt-1 flex items-center gap-2 border border-paper/35 bg-black/70 px-3 py-2">
+                      <IdCard size={14} className="text-paper/50" />
+                      <input
+                        value={draftDisplayName}
+                        onChange={(event) => setDraftDisplayName(event.target.value)}
+                        disabled={!authenticated}
+                        placeholder="Arcade name"
+                        className="min-w-0 flex-1 bg-transparent text-sm text-paper outline-none placeholder:text-paper/25 disabled:opacity-45"
+                        maxLength={40}
+                      />
+                    </div>
+                  </label>
+                </div>
+
+                <div>
+                  <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Verified Avatar</div>
+                  <div className="mt-2 grid max-h-40 grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-5 md:grid-cols-6">
+                    {ownedNormieIds.length ? (
+                      ownedNormieIds.map((id) => (
+                        <button
+                          key={id}
+                          onClick={() => setDraftNormieId(id)}
+                          disabled={!authenticated}
+                          className={`border bg-paper p-1 transition ${draftNormieId === id ? "border-mint shadow-neon" : "border-paper/30 hover:border-paper"}`}
+                          aria-label={`Select Normie ${id}`}
+                        >
+                          <Image src={normieImageUrl(id)} alt={`Normie #${id}`} width={64} height={64} className="h-14 w-full object-contain" unoptimized />
+                          <span className="mt-1 block bg-black px-1 py-0.5 text-[9px] text-paper">#{id}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="col-span-4 border border-paper/25 bg-black/65 px-3 py-4 text-center text-xs text-paper/55 sm:col-span-5 md:col-span-6">
+                        {authenticated ? "Holder verification will unlock owned Normie avatars." : "Login to verify owned Normies."}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {error ? <div className="mt-5 border border-magenta/60 bg-magenta/10 px-3 py-2 text-xs text-magenta">{error}</div> : null}
+
+            <footer className="mt-6 flex flex-col gap-3 border-t border-paper/20 pt-5 sm:flex-row">
+              <button
+                onClick={saveProfile}
+                disabled={!authenticated || saving || !canSave}
+                className="inline-flex flex-1 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15 disabled:opacity-45"
+              >
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save Profile
+              </button>
+              <button
+                onClick={enterArcade}
+                disabled={!authenticated}
+                className="inline-flex flex-1 items-center justify-center gap-2 border border-mint/70 bg-mint/10 px-5 py-3 text-xs uppercase tracking-widest text-mint shadow-neon transition hover:bg-mint/15 disabled:opacity-45"
+              >
+                Enter Arcade <ArrowRight size={16} />
+              </button>
+            </footer>
           </section>
         </OnboardingShell>
-
-        <aside className="game-panel p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="terminal-hash text-[10px] uppercase tracking-[0.24em] text-pixel/60">Player Card</div>
-              <h2 className="mt-1 font-display text-xl uppercase tracking-[0.2em] text-paper">Arcade Identity</h2>
-            </div>
-            <div className="grid h-16 w-16 place-items-center border border-paper/45 bg-paper">
-              {activeAvatar ? (
-                <Image src={activeAvatar} alt="Selected Normie avatar" width={60} height={60} className="h-[60px] w-[60px] object-contain" unoptimized />
-              ) : (
-                <UserRound size={28} className="text-black/60" />
-              )}
-            </div>
-          </div>
-
-          <div className="mt-5 flex items-center gap-2 border border-paper/25 bg-black/55 px-3 py-2 text-sm text-paper/75">
-            <Wallet size={16} />
-            <span>{shortWallet(user?.wallet?.address)}</span>
-          </div>
-
-          <label className="mt-5 block">
-            <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Username</span>
-            <input
-              value={draftUsername}
-              onChange={(event) => setDraftUsername(event.target.value)}
-              disabled={!authenticated}
-              placeholder="normie_player"
-              className="mt-1 w-full border border-paper/35 bg-black/70 px-3 py-2 text-sm lowercase text-paper outline-none placeholder:text-paper/25 disabled:opacity-45"
-              maxLength={20}
-            />
-          </label>
-
-          <label className="mt-4 block">
-            <span className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Display Name</span>
-            <div className="mt-1 flex items-center gap-2 border border-paper/35 bg-black/70 px-3 py-2">
-              <IdCard size={14} className="text-paper/50" />
-              <input
-                value={draftDisplayName}
-                onChange={(event) => setDraftDisplayName(event.target.value)}
-                disabled={!authenticated}
-                placeholder="Arcade name"
-                className="min-w-0 flex-1 bg-transparent text-sm text-paper outline-none placeholder:text-paper/25 disabled:opacity-45"
-                maxLength={40}
-              />
-            </div>
-          </label>
-
-          <div className="mt-4">
-            <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Verified Avatar</div>
-            <div className="mt-2 grid max-h-36 grid-cols-4 gap-2 overflow-y-auto pr-1">
-              {ownedNormieIds.length ? (
-                ownedNormieIds.map((id) => (
-                  <button
-                    key={id}
-                    onClick={() => setDraftNormieId(id)}
-                    disabled={!authenticated}
-                    className={`border bg-paper p-1 transition ${draftNormieId === id ? "border-mint shadow-neon" : "border-paper/30 hover:border-paper"}`}
-                    aria-label={`Select Normie ${id}`}
-                  >
-                    <Image src={normieImageUrl(id)} alt={`Normie #${id}`} width={64} height={64} className="h-14 w-full object-contain" unoptimized />
-                    <span className="mt-1 block bg-black px-1 py-0.5 text-[9px] text-paper">#{id}</span>
-                  </button>
-                ))
-              ) : (
-                <div className="col-span-4 border border-paper/25 bg-black/65 px-3 py-4 text-center text-xs text-paper/55">
-                  {authenticated ? "Holder verification will unlock owned Normie avatars." : "Login to verify owned Normies."}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 inline-flex border border-mint/50 px-2 py-1 text-[10px] uppercase tracking-widest text-mint">
-            {isNormieHolder ? `0xN Holder${draftNormieId !== null ? ` #${draftNormieId}` : ""}` : "No verified Normie yet"}
-          </div>
-
-          {error ? <div className="mt-4 border border-magenta/60 bg-magenta/10 px-3 py-2 text-xs text-magenta">{error}</div> : null}
-
-          <button
-            onClick={saveProfile}
-            disabled={!authenticated || saving || !canSave}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15 disabled:opacity-45"
-          >
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save Profile
-          </button>
-        </aside>
       </div>
     </main>
   );
