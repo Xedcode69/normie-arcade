@@ -194,8 +194,26 @@ export function TcgClashGame() {
           {error ? <div className="mt-3 border border-magenta/50 bg-magenta/10 px-3 py-2 text-xs text-magenta">{error}</div> : null}
 
           <div className="mt-5 grid gap-2">
-            <PlayerPlate label="You" name={you?.name} score={you?.score ?? 0} connected={connected} avatarUrl={you?.avatarUrl} draftActive={state.phase === "drafting" && state.draftTurnPlayerId === you?.id} />
-            <PlayerPlate label="Opponent" name={opponent?.name} score={opponent?.score ?? 0} connected={Boolean(opponent?.connected)} avatarUrl={opponent?.avatarUrl} draftActive={state.phase === "drafting" && state.draftTurnPlayerId === opponent?.id} />
+            <PlayerPlate
+              label="You"
+              name={you?.name}
+              score={you?.score ?? 0}
+              connected={connected}
+              avatarUrl={you?.avatarUrl}
+              handCount={you?.handCount ?? hand.length}
+              deckCount={you?.deckCount ?? 0}
+              draftActive={state.phase === "drafting" && state.draftTurnPlayerId === you?.id}
+            />
+            <PlayerPlate
+              label="Opponent"
+              name={opponent?.name}
+              score={opponent?.score ?? 0}
+              connected={Boolean(opponent?.connected)}
+              avatarUrl={opponent?.avatarUrl}
+              handCount={opponent?.handCount ?? 0}
+              deckCount={opponent?.deckCount ?? 0}
+              draftActive={state.phase === "drafting" && state.draftTurnPlayerId === opponent?.id}
+            />
           </div>
 
           <div className="mt-5 border border-paper/15 bg-black/60 p-3">
@@ -257,10 +275,14 @@ export function TcgClashGame() {
           )}
 
           <section className="mt-4 game-panel p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Hand</div>
                 <div className="text-sm text-paper/60">{state.phase === "drafting" ? `Draft ${drafted.length}/${state.draftTarget ?? 8}.` : `Turn ${state.turn}/${state.maxTurns}. Select a card, then choose a lane.`}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-center text-xs uppercase tracking-widest text-paper/60">
+                <div className="border border-paper/20 bg-black/60 px-3 py-2">Deck {you?.deckCount ?? 0}</div>
+                <div className="border border-paper/20 bg-black/60 px-3 py-2">Rival Hand {opponent?.handCount ?? 0}</div>
               </div>
               {state.phase === "finished" ? (
                 <button onClick={rematch} className="inline-flex items-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-xs uppercase tracking-widest text-paper hover:bg-paper/15">
@@ -436,7 +458,25 @@ function shortEffectLabel(effect: string) {
   return effect.replace("2 combo:", "Combo:").replace("wins a tied lane by", "tie lane").replace("virtual power", "power");
 }
 
-function PlayerPlate({ label, name, score, connected, avatarUrl, draftActive }: { label: string; name?: string; score: number; connected: boolean; avatarUrl?: string | null; draftActive?: boolean }) {
+function PlayerPlate({
+  label,
+  name,
+  score,
+  connected,
+  avatarUrl,
+  handCount,
+  deckCount,
+  draftActive
+}: {
+  label: string;
+  name?: string;
+  score: number;
+  connected: boolean;
+  avatarUrl?: string | null;
+  handCount: number;
+  deckCount: number;
+  draftActive?: boolean;
+}) {
   return (
     <div
       className={`grid grid-cols-[2.25rem_1fr_2rem] items-center gap-2 border bg-black/55 p-2 transition ${
@@ -447,6 +487,10 @@ function PlayerPlate({ label, name, score, connected, avatarUrl, draftActive }: 
       <div className="min-w-0">
         <div className="truncate text-xs uppercase tracking-[0.14em] text-paper">{name ?? label}</div>
         <div className={`text-[10px] uppercase tracking-widest ${draftActive ? "text-mint" : "text-paper/40"}`}>{draftActive ? "Drafting" : connected ? "Connected" : "Offline"}</div>
+        <div className="mt-1 flex gap-1 text-[9px] uppercase tracking-widest text-paper/45">
+          <span className="border border-paper/15 bg-black/50 px-1.5 py-0.5">H {handCount}</span>
+          <span className="border border-paper/15 bg-black/50 px-1.5 py-0.5">D {deckCount}</span>
+        </div>
       </div>
       <div className="text-right font-display text-lg text-mint">{score}</div>
     </div>
@@ -579,17 +623,30 @@ function LanePanel({
 
 function CardStack({ label, cards }: { label: string; cards: number[] }) {
   const last = cards[cards.length - 1];
+  const previous = cards.slice(0, -1).slice(-5);
   return (
-    <div className="min-h-28 border border-paper/15 bg-black/50 p-2">
-      <div className="mb-1 text-[9px] uppercase tracking-widest text-paper/40">{label} / {cards.length}</div>
-      {last !== undefined ? <MiniCard id={last} /> : <div className="grid h-20 place-items-center text-[10px] uppercase tracking-widest text-paper/25">Empty</div>}
+    <div className="min-h-32 border border-paper/15 bg-black/50 p-2">
+      <div className="mb-1 flex items-center justify-between gap-2 text-[9px] uppercase tracking-widest text-paper/40">
+        <span>{label} / {cards.length}</span>
+        {previous.length ? <span>Played {cards.length}</span> : null}
+      </div>
+      {last !== undefined ? <MiniCard id={last} revealKey={`${label}-${cards.length}-${last}`} /> : <div className="grid h-20 place-items-center text-[10px] uppercase tracking-widest text-paper/25">Empty</div>}
+      {previous.length ? (
+        <div className="mt-2 flex gap-1 border-t border-paper/10 pt-2">
+          {previous.map((id, index) => (
+            <div key={`${id}-${index}`} title={`Played Normie #${id}`} className="grid h-7 w-7 place-items-center border border-paper/15 bg-paper text-[9px] text-black/70">
+              #{String(id).slice(-2)}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function MiniCard({ id }: { id: number }) {
+function MiniCard({ id, revealKey }: { id: number; revealKey?: string }) {
   return (
-    <div className="grid grid-cols-[3rem_1fr] items-center gap-2">
+    <div key={revealKey ?? id} className="grid animate-[tcg-reveal_320ms_ease-out] grid-cols-[3rem_1fr] items-center gap-2">
       <NormieImage src={NormieAPIService.imageUrl(id)} alt={`Normie card #${id}`} className="h-12 w-12 border border-paper/25 bg-paper object-contain" />
       <div className="min-w-0">
         <div className="truncate text-xs text-paper">Normie #{id}</div>
@@ -622,8 +679,8 @@ function TcgCard({
     <button
       disabled={disabled}
       onClick={onClick}
-      className={`grid min-h-64 grid-rows-[auto_1fr_auto] border bg-black/70 p-3 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 ${
-        selected ? "border-mint shadow-neon" : "border-paper/25 hover:border-paper/70"
+      className={`grid min-h-64 animate-[tcg-draw_260ms_ease-out] grid-rows-[auto_1fr_auto] border bg-black/70 p-3 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 ${
+        selected ? "-translate-y-1 border-mint bg-mint/5 shadow-[0_0_24px_rgba(0,255,194,0.28)]" : "border-paper/25 hover:border-paper/70"
       }`}
     >
       <NormieImage src={NormieAPIService.imageUrl(cardId)} alt={`Normie card #${cardId}`} className="mx-auto h-32 w-32 border border-paper/30 bg-paper object-contain" />
@@ -644,6 +701,8 @@ function TcgCard({
       </span>
       {actionLabel ? (
         <span className="mt-3 border-t border-paper/10 pt-2 text-center text-[10px] uppercase tracking-widest text-mint">{actionLabel}</span>
+      ) : selected ? (
+        <span className="mt-3 border-t border-mint/30 pt-2 text-center text-[10px] uppercase tracking-widest text-mint">Armed</span>
       ) : null}
     </button>
   );
