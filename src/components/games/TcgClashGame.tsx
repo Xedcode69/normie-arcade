@@ -47,6 +47,8 @@ export function TcgClashGame() {
   );
   const traitsById = useNormieTraitsById(visibleCardIds);
   const burnedIds = useBurnedNormieIds(visibleCardIds);
+  const draftSecondsLeft = useDraftSecondsLeft(state.draftDeadlineAt);
+  const draftActivePlayer = state.players.find((player) => player.id === state.draftTurnPlayerId);
 
   const title = useMemo(() => {
     if (!connected) return "Create or join a Circuit Clash room.";
@@ -171,8 +173,8 @@ export function TcgClashGame() {
           {error ? <div className="mt-3 border border-magenta/50 bg-magenta/10 px-3 py-2 text-xs text-magenta">{error}</div> : null}
 
           <div className="mt-5 grid gap-2">
-            <PlayerPlate label="You" name={you?.name} score={you?.score ?? 0} connected={connected} avatarUrl={you?.avatarUrl} />
-            <PlayerPlate label="Opponent" name={opponent?.name} score={opponent?.score ?? 0} connected={Boolean(opponent?.connected)} avatarUrl={opponent?.avatarUrl} />
+            <PlayerPlate label="You" name={you?.name} score={you?.score ?? 0} connected={connected} avatarUrl={you?.avatarUrl} draftActive={state.phase === "drafting" && state.draftTurnPlayerId === you?.id} />
+            <PlayerPlate label="Opponent" name={opponent?.name} score={opponent?.score ?? 0} connected={Boolean(opponent?.connected)} avatarUrl={opponent?.avatarUrl} draftActive={state.phase === "drafting" && state.draftTurnPlayerId === opponent?.id} />
           </div>
 
           <div className="mt-5 border border-paper/15 bg-black/60 p-3">
@@ -191,6 +193,9 @@ export function TcgClashGame() {
               draftPool={draftPool}
               draftTarget={state.draftTarget ?? 8}
               opponentDraftedCount={opponent?.draftedCount ?? 0}
+              activeDrafterName={draftActivePlayer?.id === playerId ? "You" : draftActivePlayer?.name ?? "Opponent"}
+              secondsLeft={draftSecondsLeft}
+              totalSeconds={state.draftPickSeconds ?? 20}
               onDraft={draftPick}
               traitsById={traitsById}
               burnedIds={burnedIds}
@@ -262,13 +267,17 @@ function RevealEffects({ label, reveal }: { label: string; reveal?: { cardId: nu
   );
 }
 
-function PlayerPlate({ label, name, score, connected, avatarUrl }: { label: string; name?: string; score: number; connected: boolean; avatarUrl?: string | null }) {
+function PlayerPlate({ label, name, score, connected, avatarUrl, draftActive }: { label: string; name?: string; score: number; connected: boolean; avatarUrl?: string | null; draftActive?: boolean }) {
   return (
-    <div className="grid grid-cols-[2.25rem_1fr_2rem] items-center gap-2 border border-paper/20 bg-black/55 p-2">
+    <div
+      className={`grid grid-cols-[2.25rem_1fr_2rem] items-center gap-2 border bg-black/55 p-2 transition ${
+        draftActive ? "animate-pulse border-mint shadow-neon" : "border-paper/20"
+      }`}
+    >
       {avatarUrl ? <NormieImage src={avatarUrl} alt={`${name ?? label} avatar`} className="h-9 w-9 border border-paper/30 bg-paper object-contain" /> : <Users size={18} className="mx-auto text-paper/45" />}
       <div className="min-w-0">
         <div className="truncate text-xs uppercase tracking-[0.14em] text-paper">{name ?? label}</div>
-        <div className="text-[10px] uppercase tracking-widest text-paper/40">{connected ? "Connected" : "Offline"}</div>
+        <div className={`text-[10px] uppercase tracking-widest ${draftActive ? "text-mint" : "text-paper/40"}`}>{draftActive ? "Drafting" : connected ? "Connected" : "Offline"}</div>
       </div>
       <div className="text-right font-display text-lg text-mint">{score}</div>
     </div>
@@ -281,6 +290,9 @@ function DraftPanel({
   draftPool,
   draftTarget,
   opponentDraftedCount,
+  activeDrafterName,
+  secondsLeft,
+  totalSeconds,
   onDraft,
   traitsById,
   burnedIds
@@ -290,10 +302,15 @@ function DraftPanel({
   draftPool: number[];
   draftTarget: number;
   opponentDraftedCount: number;
+  activeDrafterName: string;
+  secondsLeft: number | null;
+  totalSeconds: number;
   onDraft: (cardId: number) => void;
   traitsById: Record<number, NormieTraits>;
   burnedIds: Set<number>;
 }) {
+  const timerPercent = secondsLeft === null ? 0 : Math.max(0, Math.min(100, (secondsLeft / totalSeconds) * 100));
+
   return (
     <section className="game-panel p-4">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -301,9 +318,17 @@ function DraftPanel({
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Deck Draft</div>
           <div className="text-sm text-paper/60">Pick from the shared Normie pool. Both players draft {draftTarget} cards.</div>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-center text-xs uppercase tracking-widest text-paper/60">
-          <div className="border border-paper/20 bg-black/60 px-3 py-2">You {drafted.length}/{draftTarget}</div>
-          <div className="border border-paper/20 bg-black/60 px-3 py-2">Rival {opponentDraftedCount}/{draftTarget}</div>
+        <div className="grid min-w-72 gap-2 text-xs uppercase tracking-widest text-paper/60">
+          <div className={`border px-3 py-2 text-center transition ${canDraft ? "animate-pulse border-mint bg-mint/10 text-mint shadow-neon" : "border-paper/20 bg-black/60"}`}>
+            {activeDrafterName} drafting / {secondsLeft ?? "--"}s
+          </div>
+          <div className="h-1.5 overflow-hidden border border-paper/15 bg-black/70">
+            <div className={`h-full transition-all duration-300 ${canDraft ? "bg-mint" : "bg-paper/55"}`} style={{ width: `${timerPercent}%` }} />
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="border border-paper/20 bg-black/60 px-3 py-2">You {drafted.length}/{draftTarget}</div>
+            <div className="border border-paper/20 bg-black/60 px-3 py-2">Rival {opponentDraftedCount}/{draftTarget}</div>
+          </div>
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -492,4 +517,22 @@ function useBurnedNormieIds(ids: number[]) {
   }, [ids.length]);
 
   return burnedIds;
+}
+
+function useDraftSecondsLeft(deadlineAt?: number) {
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!deadlineAt) {
+      setSecondsLeft(null);
+      return;
+    }
+
+    const update = () => setSecondsLeft(Math.max(0, Math.ceil((deadlineAt - Date.now()) / 1000)));
+    update();
+    const timer = window.setInterval(update, 250);
+    return () => window.clearInterval(timer);
+  }, [deadlineAt]);
+
+  return secondsLeft;
 }

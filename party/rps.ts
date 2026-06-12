@@ -221,6 +221,8 @@ type TcgState = {
   draftPool: number[];
   draftTurnPlayerId?: string;
   draftTarget: number;
+  draftDeadlineAt?: number;
+  draftPickSeconds?: number;
   reveal?: TcgReveal;
   winnerId?: string;
   history: TcgReveal[];
@@ -249,6 +251,7 @@ const tcgDeckSize = 8;
 const tcgDraftPoolSize = 16;
 const tcgStartingHand = 3;
 const tcgMaxTurns = 5;
+const tcgDraftPickMs = 20_000;
 
 function rpsWinner(a: RPSType, b: RPSType) {
   if (a === b) return "draw";
@@ -271,6 +274,7 @@ export default class RPSParty {
   private tcgTraitCache = new Map<number, NormieTraits>();
   private tcgBurnedIds?: Set<number>;
   private tcgScorches: Array<{ seat: 0 | 1; lane: number; turn: number }> = [];
+  private tcgDraftTimer?: ReturnType<typeof setTimeout>;
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private revealTimer?: ReturnType<typeof setTimeout>;
@@ -307,6 +311,7 @@ export default class RPSParty {
     lanes: this.emptyTcgLanes(),
     draftPool: [],
     draftTarget: tcgDeckSize,
+    draftPickSeconds: tcgDraftPickMs / 1000,
     history: [],
     message: "Waiting for a second challenger."
   };
@@ -538,6 +543,7 @@ export default class RPSParty {
     this.tcgScorches = [];
     this.tcgState.draftPool = this.createTcgDeck(`${this.room.id ?? "tcg"}-draft-${Date.now()}`, tcgDraftPoolSize);
     this.tcgState.draftTarget = tcgDeckSize;
+    this.tcgState.draftPickSeconds = tcgDraftPickMs / 1000;
     this.tcgState.draftTurnPlayerId = this.tcgState.players.find((player) => player.seat === 0)?.id;
     this.tcgState.players = this.tcgState.players.map((player) => ({
       ...player,
@@ -550,16 +556,22 @@ export default class RPSParty {
       peaceShield: false
     }));
     this.tcgState.message = "Draft phase. Pick Normies from the shared pool one at a time.";
+    this.scheduleTcgDraftTimer();
   }
 
   private draftTcgCard(data: Extract<TcgClientMessage, { type: "tcg_draft_pick" }>) {
     if (this.tcgState.phase !== "drafting" || this.tcgState.draftTurnPlayerId !== data.playerId) return;
+    this.pickTcgDraftCard(data.playerId, data.cardId, false);
+  }
 
-    const player = this.tcgState.players.find((item) => item.id === data.playerId && item.connected);
-    if (!player || player.drafted.length >= this.tcgState.draftTarget || !this.tcgState.draftPool.includes(data.cardId)) return;
+  private pickTcgDraftCard(playerId: string, cardId: number, automatic: boolean) {
+    const player = this.tcgState.players.find((item) => item.id === playerId);
+    if (player && !player.connected && !automatic) return;
+    if (!player || player.drafted.length >= this.tcgState.draftTarget || !this.tcgState.draftPool.includes(cardId)) return;
 
-    player.drafted.push(data.cardId);
-    this.tcgState.draftPool = this.tcgState.draftPool.filter((id) => id !== data.cardId);
+    this.clearTcgDraftTimer();
+    player.drafted.push(cardId);
+    this.tcgState.draftPool = this.tcgState.draftPool.filter((id) => id !== cardId);
 
     const draftComplete = this.tcgState.players.length >= 2 && this.tcgState.players.every((item) => item.drafted.length >= this.tcgState.draftTarget);
     if (draftComplete) {
@@ -572,11 +584,13 @@ export default class RPSParty {
       .filter((item) => item.connected && item.drafted.length < this.tcgState.draftTarget)
       .sort((a, b) => a.drafted.length - b.drafted.length || a.seat - b.seat)[0];
     this.tcgState.draftTurnPlayerId = nextPlayer?.id;
-    this.tcgState.message = `${player.name} drafted Normie #${data.cardId}.`;
+    this.tcgState.message = automatic ? `${player.name} timed out. Auto-drafted Normie #${cardId}.` : `${player.name} drafted Normie #${cardId}.`;
+    this.scheduleTcgDraftTimer();
     this.broadcastTcg();
   }
 
   private startTcgBattle() {
+    this.clearTcgDraftTimer();
     this.tcgState.players = this.tcgState.players.map((player) => {
       const deck = this.shuffleTcgDeck(player.drafted, `${this.room.id ?? "tcg"}-${player.id}-${Date.now()}`);
       return {
@@ -590,7 +604,29 @@ export default class RPSParty {
     });
     this.tcgState.phase = "playing";
     this.tcgState.draftTurnPlayerId = undefined;
+    this.tcgState.draftDeadlineAt = undefined;
     this.tcgState.message = "Draft locked. Turn 1: play one Normie into a lane.";
+  }
+
+  private scheduleTcgDraftTimer() {
+    this.clearTcgDraftTimer();
+    if (this.tcgState.phase !== "drafting" || !this.tcgState.draftTurnPlayerId || !this.tcgState.draftPool.length) return;
+
+    const playerId = this.tcgState.draftTurnPlayerId;
+    this.tcgState.draftDeadlineAt = Date.now() + tcgDraftPickMs;
+    this.tcgDraftTimer = setTimeout(() => {
+      if (this.tcgState.phase !== "drafting" || this.tcgState.draftTurnPlayerId !== playerId) return;
+      const cardId = this.tcgState.draftPool[0];
+      if (typeof cardId !== "number") return;
+      this.pickTcgDraftCard(playerId, cardId, true);
+    }, tcgDraftPickMs);
+  }
+
+  private clearTcgDraftTimer() {
+    if (this.tcgDraftTimer) {
+      clearTimeout(this.tcgDraftTimer);
+      this.tcgDraftTimer = undefined;
+    }
   }
 
   private playTcgCard(data: Extract<TcgClientMessage, { type: "tcg_play" }>) {

@@ -40,6 +40,8 @@ export type TcgPvpState = {
   draftPool?: number[];
   draftTurnPlayerId?: string;
   draftTarget?: number;
+  draftDeadlineAt?: number;
+  draftPickSeconds?: number;
   reveal?: TcgReveal;
   winnerId?: string;
   history: TcgReveal[];
