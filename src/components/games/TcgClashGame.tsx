@@ -1,17 +1,28 @@
 "use client";
 
-import { Copy, Dices, LogIn, RefreshCw, Swords, Users } from "lucide-react";
+import { Copy, Dices, LogIn, RefreshCw, Swords, Trophy, Users } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { createTcgRoomCode, normalizeTcgRoomCode, tcgCardPower } from "@/lib/tcgPvp";
 import { useTcgPvp } from "@/hooks/useTcgPvp";
+import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { NormieAPIService } from "@/services/NormieAPIService";
 import type { NormieTraits } from "@/types/normie";
 import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
 
 type RoomMode = "quick" | "create" | "join";
+type ProjectedLanePower = {
+  power: number;
+  effects: string[];
+};
+type TcgMatchSummary = {
+  result: "Victory" | "Defeat" | "Draw";
+  finalScore: string;
+  bestCard?: { cardId: number; power: number; owner: "You" | "Opponent" };
+  biggestSwing?: { turn: number; margin: number; winner: "You" | "Opponent" | "Draw" };
+};
 
 export function TcgClashGame() {
   const [roomCode, setRoomCode] = useState(() => {
@@ -30,6 +41,9 @@ export function TcgClashGame() {
   const selectedNormieId = useAccountStore((store) => store.selectedNormieId);
   const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
   const notify = useArcadeStore((store) => store.notify);
+  const setLeaderboardOpen = useArcadeStore((store) => store.setLeaderboardOpen);
+  const recordLeaderboardResult = useLeaderboardRecorder();
+  const recordedLeaderboardKeyRef = useRef<string | null>(null);
   const { connected, connect, disconnect, draftPick, error, playerId, playCard, rematch, state } = useTcgPvp(`tcg-${roomCode.toLowerCase()}`);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
@@ -58,6 +72,10 @@ export function TcgClashGame() {
     if (you?.pendingPlay) return "Card locked. Waiting for opponent.";
     return state.message;
   }, [canDraft, connected, opponent?.connected, playerId, state.message, state.phase, state.winnerId, you?.pendingPlay]);
+  const matchSummary = useMemo(
+    () => buildTcgMatchSummary({ history: state.history, playerSeat, winnerId: state.winnerId, playerId, youScore: you?.score ?? 0, opponentScore: opponent?.score ?? 0 }),
+    [opponent?.score, playerId, playerSeat, state.history, state.winnerId, you?.score]
+  );
 
   function selectRoomMode(mode: RoomMode) {
     if (connected) return;
@@ -115,6 +133,39 @@ export function TcgClashGame() {
     playCard(selectedCard, lane);
     setSelectedCard(null);
   }
+
+  function openTcgLeaderboard() {
+    setLeaderboardOpen(true);
+    window.dispatchEvent(new CustomEvent("normie:select-leaderboard", { detail: { game: "TCG", mode: "PVP" } }));
+  }
+
+  useEffect(() => {
+    if (state.phase !== "finished") {
+      recordedLeaderboardKeyRef.current = null;
+      return;
+    }
+    if (!playerId || !you || !opponent) return;
+
+    const resultKey = `${roomCode}:${state.history.length}:${state.winnerId ?? "draw"}:${you.score}:${opponent.score}`;
+    if (recordedLeaderboardKeyRef.current === resultKey) return;
+    recordedLeaderboardKeyRef.current = resultKey;
+
+    void recordLeaderboardResult({
+      game: "TCG",
+      mode: "PVP",
+      outcome: !state.winnerId ? "DRAW" : state.winnerId === playerId ? "WIN" : "LOSS",
+      score: you.score,
+      chipsWon: 0,
+      netChips: 0,
+      bestCombo: state.history.length,
+      metadata: {
+        roomCode,
+        turns: state.history.length,
+        opponentScore: opponent.score,
+        draftedCards: drafted.length
+      }
+    });
+  }, [drafted.length, opponent, playerId, recordLeaderboardResult, roomCode, state.history.length, state.phase, state.winnerId, you]);
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col px-4 pb-4 pt-1">
@@ -186,6 +237,10 @@ export function TcgClashGame() {
         </aside>
 
         <main className="min-h-0">
+          {state.phase === "finished" ? (
+            <MatchResultPanel summary={matchSummary} onRematch={rematch} onOpenLeaderboard={openTcgLeaderboard} />
+          ) : null}
+
           {state.phase === "drafting" ? (
             <DraftPanel
               canDraft={canDraft}
@@ -210,6 +265,19 @@ export function TcgClashGame() {
                   opponentCards={lane[opponentLaneKey]}
                   selectedCard={selectedCard}
                   canPlay={canPlay}
+                  preview={
+                    selectedCard
+                      ? projectTcgLanePower({
+                          cardId: selectedCard,
+                          lane: index,
+                          lanes: state.lanes,
+                          playerSeat,
+                          opponentPendingLane: opponent?.pendingPlay?.lane,
+                          traitsById,
+                          burnedIds
+                        })
+                      : null
+                  }
                   onPlay={() => playSelected(index)}
                 />
               ))}
@@ -267,6 +335,57 @@ function RevealEffects({ label, reveal }: { label: string; reveal?: { cardId: nu
   );
 }
 
+function MatchResultPanel({ summary, onRematch, onOpenLeaderboard }: { summary: TcgMatchSummary; onRematch: () => void; onOpenLeaderboard: () => void }) {
+  const resultClass = summary.result === "Victory" ? "text-mint" : summary.result === "Defeat" ? "text-magenta" : "text-paper";
+
+  return (
+    <section className="mb-4 border border-paper/35 bg-black/80 p-4 shadow-neon">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-paper/15 pb-3">
+        <div>
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.25em] text-pixel/65">Match Result</div>
+          <div className={`mt-1 font-display text-3xl uppercase tracking-[0.18em] ${resultClass}`}>{summary.result}</div>
+        </div>
+        <div className="text-right">
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/55">Final Score</div>
+          <div className="mt-1 font-display text-2xl text-paper">{summary.finalScore}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <ResultStat
+          label="Best Card Played"
+          value={summary.bestCard ? `#${summary.bestCard.cardId} / ${summary.bestCard.power}` : "No cards"}
+          detail={summary.bestCard ? `${summary.bestCard.owner} played the highest-power card.` : "No reveal history recorded."}
+        />
+        <ResultStat
+          label="Biggest Power Swing"
+          value={summary.biggestSwing ? `${summary.biggestSwing.margin} power` : "0 power"}
+          detail={summary.biggestSwing ? `Turn ${summary.biggestSwing.turn}. ${summary.biggestSwing.winner} won the swing.` : "No contested power gap."}
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button onClick={onOpenLeaderboard} className="inline-flex items-center gap-2 border border-mint/55 bg-mint/10 px-4 py-2 text-xs uppercase tracking-widest text-mint transition hover:bg-mint/15">
+          <Trophy size={15} /> TCG Leaderboard
+        </button>
+        <button onClick={onRematch} className="inline-flex items-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-xs uppercase tracking-widest text-paper transition hover:bg-paper/15">
+          <RefreshCw size={15} /> Rematch
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ResultStat({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="border border-paper/15 bg-black/55 p-3">
+      <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">{label}</div>
+      <div className="mt-1 text-lg text-paper">{value}</div>
+      <div className="mt-1 text-xs text-paper/50">{detail}</div>
+    </div>
+  );
+}
+
 function PlayerPlate({ label, name, score, connected, avatarUrl, draftActive }: { label: string; name?: string; score: number; connected: boolean; avatarUrl?: string | null; draftActive?: boolean }) {
   return (
     <div
@@ -316,7 +435,7 @@ function DraftPanel({
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Deck Draft</div>
-          <div className="text-sm text-paper/60">Pick from the shared Normie pool. Both players draft {draftTarget} cards.</div>
+          <div className="text-sm text-paper/60">Snake draft from the shared Normie pool. Both players draft {draftTarget} cards.</div>
         </div>
         <div className="grid min-w-72 gap-2 text-xs uppercase tracking-widest text-paper/60">
           <div className={`border px-3 py-2 text-center transition ${canDraft ? "animate-pulse border-mint bg-mint/10 text-mint shadow-neon" : "border-paper/20 bg-black/60"}`}>
@@ -358,9 +477,25 @@ function DraftPanel({
   );
 }
 
-function LanePanel({ lane, yourCards, opponentCards, selectedCard, canPlay, onPlay }: { lane: number; yourCards: number[]; opponentCards: number[]; selectedCard: number | null; canPlay: boolean; onPlay: () => void }) {
+function LanePanel({
+  lane,
+  yourCards,
+  opponentCards,
+  selectedCard,
+  canPlay,
+  preview,
+  onPlay
+}: {
+  lane: number;
+  yourCards: number[];
+  opponentCards: number[];
+  selectedCard: number | null;
+  canPlay: boolean;
+  preview: ProjectedLanePower | null;
+  onPlay: () => void;
+}) {
   return (
-    <div className="game-panel min-h-72 p-3">
+    <div className={`game-panel min-h-72 p-3 transition ${preview ? "border-mint/45 shadow-[0_0_18px_rgba(0,255,194,0.12)]" : ""}`}>
       <div className="flex items-center justify-between border-b border-paper/15 pb-2">
         <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Lane {lane + 1}</div>
         <button
@@ -371,6 +506,19 @@ function LanePanel({ lane, yourCards, opponentCards, selectedCard, canPlay, onPl
           <Swords size={12} /> Play
         </button>
       </div>
+      {preview ? (
+        <div className="mt-3 border border-mint/35 bg-mint/5 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="terminal-hash text-[9px] uppercase tracking-[0.2em] text-mint/80">Projected</span>
+            <span className="font-display text-lg text-mint">{preview.power}</span>
+          </div>
+          <div className="mt-1 space-y-0.5 text-[10px] leading-snug text-paper/55">
+            {preview.effects.slice(0, 3).map((effect) => (
+              <div key={effect}>{effect}</div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="mt-3 grid grid-rows-2 gap-3">
         <CardStack label="Opponent" cards={opponentCards} />
         <CardStack label="You" cards={yourCards} />
@@ -475,6 +623,158 @@ function describeTcgEffects(traits?: NormieTraits, burned?: boolean) {
   effects.push("Combos: same Expression +2; Human/Cat/Alien +3.");
 
   return effects;
+}
+
+function projectTcgLanePower({
+  cardId,
+  lane,
+  lanes,
+  playerSeat,
+  opponentPendingLane,
+  traitsById,
+  burnedIds
+}: {
+  cardId: number;
+  lane: number;
+  lanes: Array<{ playerA: number[]; playerB: number[] }>;
+  playerSeat: 0 | 1;
+  opponentPendingLane?: number;
+  traitsById: Record<number, NormieTraits>;
+  burnedIds: Set<number>;
+}): ProjectedLanePower {
+  const ownKey = playerSeat === 0 ? "playerA" : "playerB";
+  const opponentKey = playerSeat === 0 ? "playerB" : "playerA";
+  const traits = traitsById[cardId];
+  const base = tcgCardPower(cardId);
+  const expression = String(traits?.Expression ?? "");
+  const type = String(traits?.Type ?? "");
+  const ownBoardIds = lanes.flatMap((item) => item[ownKey]);
+  const ownBoardTraits = ownBoardIds.map((id) => traitsById[id]).filter((item): item is NormieTraits => Boolean(item));
+  const contested = opponentPendingLane === lane;
+  const effects: string[] = [`Base ${base}`];
+  let power = base;
+
+  if (!traits) {
+    effects.push("Traits loading.");
+    return { power, effects };
+  }
+
+  if (expression === "Neutral" && contested) {
+    power += 1;
+    effects.push("Neutral +1 contested.");
+  } else if (expression === "Slight Smile" && hasAdjacentOwnCard(lanes, ownKey, lane)) {
+    power += 2;
+    effects.push("Slight Smile +2 beside ally.");
+  } else if (expression === "Friendly" && lanes[lane][ownKey].length < lanes[lane][opponentKey].length) {
+    power += 2;
+    effects.push("Friendly +2 while behind.");
+  } else if (expression === "Content") {
+    power += 1;
+    effects.push("Content +1.");
+  } else if (expression === "Confident" && contested) {
+    power += 3;
+    effects.push("Confident +3 contested.");
+  } else if (expression === "Peaceful") {
+    effects.push("Peaceful shield ready.");
+  } else if (expression) {
+    power += 1;
+    effects.push(`${expression} +1 wildcard.`);
+  }
+
+  if (type === "Human") {
+    const bonus = ownBoardTraits.filter((item) => String(item.Type ?? "") === "Human").length;
+    power += bonus;
+    effects.push(bonus ? `Human +${bonus}.` : "Human +0.");
+  } else if (type === "Cat" && lanes[lane][ownKey].length + lanes[lane][opponentKey].length === 0) {
+    power += 3;
+    effects.push("Cat +3 empty lane.");
+  } else if (type === "Alien") {
+    if (opponentPendingLane !== undefined && opponentPendingLane !== lane) {
+      power += 2;
+      effects.push("Alien +2 rival elsewhere.");
+    } else {
+      effects.push("Alien waits for rival lane.");
+    }
+  } else if (type === "Agent") {
+    effects.push("Agent copies hidden last Type bonus.");
+  }
+
+  const expressionPair = expression && ownBoardTraits.some((item) => String(item.Expression ?? "") === expression);
+  if (expressionPair) {
+    power += 2;
+    effects.push("Combo +2 same Expression.");
+  }
+
+  const typeSet = new Set([...ownBoardTraits.map((item) => String(item.Type ?? "")), type]);
+  if (typeSet.has("Human") && typeSet.has("Cat") && typeSet.has("Alien")) {
+    power += 3;
+    effects.push("Combo +3 type spread.");
+  }
+
+  if (burnedIds.has(cardId)) {
+    power += 6;
+    effects.push("Burned +6.");
+  }
+
+  return { power, effects };
+}
+
+function hasAdjacentOwnCard(lanes: Array<{ playerA: number[]; playerB: number[] }>, ownKey: "playerA" | "playerB", lane: number) {
+  return [lane - 1, lane + 1].some((index) => index >= 0 && index < lanes.length && lanes[index][ownKey].length > 0);
+}
+
+function buildTcgMatchSummary({
+  history,
+  playerSeat,
+  winnerId,
+  playerId,
+  youScore,
+  opponentScore
+}: {
+  history: Array<{
+    turn: number;
+    playerA?: { cardId: number; power: number };
+    playerB?: { cardId: number; power: number };
+    laneWinner?: "playerA" | "playerB" | "draw";
+  }>;
+  playerSeat: 0 | 1;
+  winnerId?: string;
+  playerId: string | null;
+  youScore: number;
+  opponentScore: number;
+}): TcgMatchSummary {
+  const ownerFor = (side: "playerA" | "playerB") => (playerSeat === 0 ? side === "playerA" : side === "playerB") ? "You" : "Opponent";
+  let bestCard: TcgMatchSummary["bestCard"];
+  let biggestSwing: TcgMatchSummary["biggestSwing"];
+
+  history.forEach((entry) => {
+    const cards = [
+      entry.playerA ? { ...entry.playerA, owner: ownerFor("playerA") } : null,
+      entry.playerB ? { ...entry.playerB, owner: ownerFor("playerB") } : null
+    ].filter((item): item is { cardId: number; power: number; owner: "You" | "Opponent" } => Boolean(item));
+
+    cards.forEach((card) => {
+      if (!bestCard || card.power > bestCard.power) bestCard = card;
+    });
+
+    if (entry.playerA && entry.playerB) {
+      const margin = Math.abs(entry.playerA.power - entry.playerB.power);
+      if (!biggestSwing || margin > biggestSwing.margin) {
+        biggestSwing = {
+          turn: entry.turn,
+          margin,
+          winner: entry.playerA.power === entry.playerB.power ? "Draw" : entry.playerA.power > entry.playerB.power ? ownerFor("playerA") : ownerFor("playerB")
+        };
+      }
+    }
+  });
+
+  return {
+    result: !winnerId ? "Draw" : winnerId === playerId ? "Victory" : "Defeat",
+    finalScore: `${youScore} - ${opponentScore}`,
+    bestCard,
+    biggestSwing
+  };
 }
 
 function useNormieTraitsById(ids: number[]) {

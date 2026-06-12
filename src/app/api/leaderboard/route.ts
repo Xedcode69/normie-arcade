@@ -17,7 +17,9 @@ export async function GET(request: Request) {
   }
 
   const orderBy =
-    payload.data.mode === "SKILL"
+    payload.data.game === "TCG"
+      ? [{ totalWins: "desc" as const }, { bestScore: "desc" as const }, { totalPlays: "asc" as const }]
+      : payload.data.mode === "SKILL"
       ? [{ bestScore: "desc" as const }, { bestCombo: "desc" as const }, { totalPlays: "asc" as const }]
       : [{ netChips: "desc" as const }, { totalWins: "desc" as const }, { totalPlays: "asc" as const }];
 

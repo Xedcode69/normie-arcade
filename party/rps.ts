@@ -580,13 +580,23 @@ export default class RPSParty {
       return;
     }
 
-    const nextPlayer = this.tcgState.players
-      .filter((item) => item.connected && item.drafted.length < this.tcgState.draftTarget)
-      .sort((a, b) => a.drafted.length - b.drafted.length || a.seat - b.seat)[0];
-    this.tcgState.draftTurnPlayerId = nextPlayer?.id;
+    this.tcgState.draftTurnPlayerId = this.nextTcgDraftPlayerId();
     this.tcgState.message = automatic ? `${player.name} timed out. Auto-drafted Normie #${cardId}.` : `${player.name} drafted Normie #${cardId}.`;
     this.scheduleTcgDraftTimer();
     this.broadcastTcg();
+  }
+
+  private nextTcgDraftPlayerId() {
+    const totalDrafted = this.tcgState.players.reduce((sum, player) => sum + player.drafted.length, 0);
+    const snakeSeats: Array<0 | 1> = [0, 1, 1, 0];
+
+    for (let offset = 0; offset < snakeSeats.length; offset += 1) {
+      const seat = snakeSeats[(totalDrafted + offset) % snakeSeats.length];
+      const player = this.tcgState.players.find((item) => item.seat === seat && item.drafted.length < this.tcgState.draftTarget);
+      if (player) return player.id;
+    }
+
+    return undefined;
   }
 
   private startTcgBattle() {

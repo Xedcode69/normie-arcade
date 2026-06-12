@@ -12,6 +12,7 @@ const boards: Array<{ label: string; game: LeaderboardGame; mode: LeaderboardMod
   { label: "RPS Solo", game: "RPS", mode: "SOLO" },
   { label: "RPS PvP", game: "RPS", mode: "PVP" },
   { label: "Poker PvP", game: "POKER", mode: "PVP" },
+  { label: "TCG PvP", game: "TCG", mode: "PVP" },
   { label: "Sort", game: "SORT_SPRINT", mode: "SKILL" },
   { label: "Pixel", game: "PIXEL_DETECTIVE", mode: "SKILL" },
   { label: "Whack-A", game: "WHACK_RUSH", mode: "SKILL" }
@@ -24,6 +25,17 @@ export function Leaderboard() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+
+  useEffect(() => {
+    function selectBoard(event: Event) {
+      const detail = (event as CustomEvent<{ game?: LeaderboardGame; mode?: LeaderboardMode }>).detail;
+      const board = boards.find((item) => item.game === detail?.game && item.mode === detail?.mode);
+      if (board) setSelected(board);
+    }
+
+    window.addEventListener("normie:select-leaderboard", selectBoard);
+    return () => window.removeEventListener("normie:select-leaderboard", selectBoard);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +116,7 @@ export function Leaderboard() {
 
 function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
   const skill = entry.mode === "SKILL";
+  const tcg = entry.game === "TCG";
 
   return (
     <div className="pixel-card grid grid-cols-[1.5rem_2.25rem_minmax(0,1fr)_4.75rem] items-center gap-2 p-2">
@@ -116,11 +129,11 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
       <div className="min-w-0">
         <div className="truncate text-xs text-paper">{entry.player}</div>
         <div className="text-[10px] text-pixel/60">
-          {skill ? `combo x${entry.bestCombo}` : `${entry.totalWins}W / ${entry.totalPlays}P`}
+          {skill ? `combo x${entry.bestCombo}` : tcg ? `best score ${entry.bestScore}` : `${entry.totalWins}W / ${entry.totalPlays}P`}
         </div>
       </div>
       <div className={`text-right text-sm ${skill || entry.netChips >= 0 ? "text-mint" : "text-magenta"}`}>
-        {skill ? entry.bestScore : `${entry.netChips >= 0 ? "+" : ""}${entry.netChips}`}
+        {skill ? entry.bestScore : tcg ? `${entry.totalWins}W` : `${entry.netChips >= 0 ? "+" : ""}${entry.netChips}`}
       </div>
     </div>
   );
