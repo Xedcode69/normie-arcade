@@ -17,6 +17,7 @@ type ProjectedLanePower = {
   effects: string[];
 };
 type TcgEffectKind = "buff" | "penalty" | "burned" | "combo" | "shield" | "info";
+type LaneOwnership = "you" | "opponent" | "draw";
 type TcgMatchSummary = {
   result: "Victory" | "Defeat" | "Draw";
   finalScore: string;
@@ -253,6 +254,7 @@ export function TcgClashGame() {
                   lane={index}
                   yourCards={lane[yourLaneKey]}
                   opponentCards={lane[opponentLaneKey]}
+                  ownership={getLaneOwnership(state.reveal, index, playerSeat)}
                   selectedCard={selectedCard}
                   canPlay={canPlay}
                   preview={
@@ -577,6 +579,7 @@ function LanePanel({
   lane,
   yourCards,
   opponentCards,
+  ownership,
   selectedCard,
   canPlay,
   preview,
@@ -585,15 +588,32 @@ function LanePanel({
   lane: number;
   yourCards: number[];
   opponentCards: number[];
+  ownership: LaneOwnership | null;
   selectedCard: number | null;
   canPlay: boolean;
   preview: ProjectedLanePower | null;
   onPlay: () => void;
 }) {
+  const ownershipStyles = ownership
+    ? {
+        you: "border-mint/70 bg-mint/10 text-mint shadow-[0_0_18px_rgba(0,255,194,0.18)]",
+        opponent: "border-magenta/70 bg-magenta/10 text-magenta shadow-[0_0_18px_rgba(255,61,242,0.16)]",
+        draw: "border-paper/55 bg-paper/10 text-paper/70"
+      }[ownership]
+    : "";
+  const ownershipLabel = ownership === "you" ? "You Claimed" : ownership === "opponent" ? "Opponent Claimed" : ownership === "draw" ? "Draw" : null;
+
   return (
-    <div className={`game-panel min-h-72 p-3 transition ${preview ? "border-mint/45 shadow-[0_0_18px_rgba(0,255,194,0.12)]" : ""}`}>
+    <div className={`game-panel min-h-72 p-3 transition ${ownershipStyles} ${preview ? "border-mint/45 shadow-[0_0_18px_rgba(0,255,194,0.12)]" : ""}`}>
       <div className="flex items-center justify-between border-b border-paper/15 pb-2">
-        <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Lane {lane + 1}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Lane {lane + 1}</div>
+          {ownershipLabel ? (
+            <span className={`inline-flex items-center border px-2 py-0.5 text-[9px] uppercase tracking-widest ${ownershipStyles}`}>
+              {ownershipLabel}
+            </span>
+          ) : null}
+        </div>
         <button
           disabled={!canPlay || !selectedCard}
           onClick={onPlay}
@@ -621,6 +641,29 @@ function LanePanel({
       </div>
     </div>
   );
+}
+
+function getLaneOwnership(
+  reveal: { playerA?: { lane: number }; playerB?: { lane: number }; laneWinner?: "playerA" | "playerB" | "draw" } | undefined,
+  lane: number,
+  playerSeat: 0 | 1
+): LaneOwnership | null {
+  if (!reveal?.playerA || !reveal.playerB) return null;
+  const playerASide: LaneOwnership = playerSeat === 0 ? "you" : "opponent";
+  const playerBSide: LaneOwnership = playerSeat === 1 ? "you" : "opponent";
+  const laneA = reveal.playerA.lane;
+  const laneB = reveal.playerB.lane;
+
+  if (laneA === laneB) {
+    if (lane !== laneA) return null;
+    if (reveal.laneWinner === "playerA") return playerASide;
+    if (reveal.laneWinner === "playerB") return playerBSide;
+    return "draw";
+  }
+
+  if (lane === laneA) return playerASide;
+  if (lane === laneB) return playerBSide;
+  return null;
 }
 
 function CardStack({ label, cards }: { label: string; cards: number[] }) {
