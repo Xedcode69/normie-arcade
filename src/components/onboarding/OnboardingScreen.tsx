@@ -177,11 +177,13 @@ function PrivyOnboarding() {
               </div>
             </header>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-3">
-              <StepTile active={!authenticated} complete={authenticated} label="Login" detail="Privy wallet or email" />
-              <StepTile active={authenticated && !profileComplete} complete={profileComplete} label="Identity" detail="Username and avatar" />
-              <StepTile active={authenticated && profileComplete} complete={false} label="Enter" detail="Open city map" />
-            </div>
+            <ProgressRail
+              steps={[
+                { label: "Login", complete: authenticated, active: !authenticated },
+                { label: "Profile", complete: profileComplete, active: authenticated && !profileComplete },
+                { label: "Enter", complete: false, active: authenticated && profileComplete }
+              ]}
+            />
 
             <div className="mt-6 grid gap-5 lg:grid-cols-[13rem_1fr]">
               <div className="border border-paper/25 bg-black/55 p-4">
@@ -304,14 +306,36 @@ function OnboardingShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StepTile({ active, complete, label, detail }: { active: boolean; complete: boolean; label: string; detail: string }) {
+function ProgressRail({ steps }: { steps: Array<{ active: boolean; complete: boolean; label: string }> }) {
   return (
-    <div className={`border px-4 py-3 ${complete ? "border-mint/60 bg-mint/10" : active ? "border-paper/70 bg-paper/10" : "border-paper/25 bg-black/55"}`}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-display text-sm uppercase tracking-[0.18em] text-paper">{label}</span>
-        {complete ? <Check size={15} className="text-mint" /> : null}
-      </div>
-      <div className="mt-2 text-xs text-paper/55">{detail}</div>
+    <div className="mt-6 flex items-center gap-2 border border-paper/20 bg-black/45 px-4 py-3">
+      {steps.map((step, index) => (
+        <div key={step.label} className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span
+              className={`grid h-6 w-6 shrink-0 place-items-center border text-[10px] ${
+                step.complete
+                  ? "border-mint bg-mint/15 text-mint shadow-neon"
+                  : step.active
+                    ? "border-paper bg-paper/15 text-paper shadow-neon"
+                    : "border-paper/25 bg-black/60 text-paper/35"
+              }`}
+            >
+              {step.complete ? <Check size={13} /> : index + 1}
+            </span>
+            <span
+              className={`truncate font-display text-[11px] uppercase tracking-[0.22em] ${
+                step.complete ? "text-mint" : step.active ? "text-paper" : "text-paper/40"
+              }`}
+            >
+              {step.label}
+            </span>
+          </div>
+          {index < steps.length - 1 ? (
+            <div className={`h-px w-8 shrink-0 sm:w-14 ${step.complete ? "bg-mint/80" : "bg-paper/20"}`} aria-hidden="true" />
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
