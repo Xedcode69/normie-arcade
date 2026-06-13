@@ -7,6 +7,7 @@ import { ArcadeAuthGate } from "@/components/auth/ArcadeAuthGate";
 import { GameDock } from "@/components/games/GameDock";
 import { HUD } from "@/components/hud/HUD";
 import { CommunityGames } from "@/components/hud/CommunityGames";
+import { FirstRunGuide } from "@/components/hud/FirstRunGuide";
 import { Leaderboard } from "@/components/hud/Leaderboard";
 import { LobbyControls } from "@/components/hud/LobbyControls";
 import { LobbyHotkeys } from "@/components/hud/LobbyHotkeys";
@@ -29,6 +30,7 @@ export function ArcadeExperience() {
       <CommunityGames />
       <Leaderboard />
       <LobbyControls />
+      <FirstRunGuide />
       <PlayerControls />
       <GameDock />
       <NotificationSystem />
