@@ -10,14 +10,14 @@ import { useArcadeStore } from "@/stores/arcadeStore";
 import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 60;
+const COUNTDOWN_SECONDS = 3;
 const HOLE_COUNT = 9;
 const MAX_ID = 9999;
 const NORMAL_POINTS = 10;
 const COMBO_MILESTONE_BONUS = 25;
 const BURNED_PENALTY = 25;
-const CORNER_HOLES = [0, 2, 6, 8];
 
-type Phase = "idle" | "loading" | "running" | "ended";
+type Phase = "idle" | "loading" | "countdown" | "running" | "ended";
 
 type Target = {
   id: string;
@@ -55,6 +55,7 @@ function lifeSpan(timeLeft: number) {
 export function WhackRushGame() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [timeLeft, setTimeLeft] = useState(RUN_SECONDS);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [targets, setTargets] = useState<Target[]>([]);
   const [burnedIds, setBurnedIds] = useState<number[]>([]);
   const [burnFeedLoading, setBurnFeedLoading] = useState(false);
@@ -152,12 +153,13 @@ export function WhackRushGame() {
   );
 
   async function start() {
-    if (phase === "loading" || phase === "running") return;
+    if (phase === "loading" || phase === "countdown" || phase === "running") return;
     clearWaveTimers();
     recordedRef.current = false;
-    phaseRef.current = "running";
-    setPhase("running");
+    phaseRef.current = "countdown";
+    setPhase("countdown");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setTargets([]);
     setScore(0);
     setHits(0);
@@ -170,16 +172,16 @@ export function WhackRushGame() {
     comboRef.current = 0;
     bestComboRef.current = 0;
     setBurnedIds([]);
-    setMessage("Rush started. Burn feed loading in the background.");
+    setMessage("Rush primed. Get ready to whack clean Normies.");
     setBurnFeedLoading(true);
     spawnTarget({ burned: false });
 
     NormieAPIService.fetchBurnedNormieIds(120)
       .then((ids) => {
         setBurnedIds(ids);
-        setMessage(ids.length ? "Rush active. Avoid the burned targets." : "Rush active. Burn feed fallback active.");
+        setMessage(ids.length ? "Burn feed ready. Avoid the red flame targets." : "Burn feed fallback ready.");
       })
-      .catch(() => setMessage("Rush active. Burn feed fallback active."))
+      .catch(() => setMessage("Burn feed fallback ready."))
       .finally(() => setBurnFeedLoading(false));
   }
 
@@ -189,6 +191,7 @@ export function WhackRushGame() {
     phaseRef.current = "idle";
     setPhase("idle");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setTargets([]);
     setScore(0);
     setHits(0);
@@ -243,7 +246,7 @@ export function WhackRushGame() {
       return;
     }
 
-    if (roll < 0.88) {
+    if (roll < 1) {
       const baitHole = Math.floor(Math.random() * HOLE_COUNT);
       spawnTarget({ hole: baitHole, burned: true, lifeScale: 0.95 });
       scheduleWaveStep(() => {
@@ -251,14 +254,7 @@ export function WhackRushGame() {
         spawnTarget({ hole: nearby.length ? pickRandom(nearby) : undefined, burned: false, lifeScale: 0.9 });
       }, 280);
       setMessage("Burned bait. Wait for the clean target.");
-      return;
     }
-
-    const corners = [...CORNER_HOLES].sort(() => Math.random() - 0.5);
-    corners.forEach((hole, index) => {
-      scheduleWaveStep(() => spawnTarget({ hole, burned: false, lifeScale: 0.72 }), index * 150);
-    });
-    setMessage("Corner run. Track the route.");
   }, [scheduleWaveStep, spawnTarget]);
 
   function whack(target: Target) {
@@ -297,6 +293,24 @@ export function WhackRushGame() {
     const interval = window.setInterval(() => setTimeLeft((value) => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(interval);
   }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "countdown") return undefined;
+
+    if (countdown <= 0) {
+      phaseRef.current = "running";
+      setPhase("running");
+      setMessage("Rush active. Whack clean Normies and avoid burned targets.");
+      return undefined;
+    }
+
+    setMessage(`Rush starts in ${countdown}.`);
+    const timeout = window.setTimeout(() => {
+      setCountdown((value) => value - 1);
+    }, 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [countdown, phase]);
 
   useEffect(() => {
     if (phase !== "running") return undefined;
@@ -365,7 +379,7 @@ export function WhackRushGame() {
             <div>
               <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Burn Yard</div>
               <div className="mt-1 font-display text-2xl uppercase tracking-[0.08em] text-paper">
-                {phase === "running" ? "Active" : phase === "loading" ? "Loading" : "Ready"}
+                {phase === "running" ? "Active" : phase === "countdown" || phase === "loading" ? "Loading" : "Ready"}
               </div>
             </div>
             <button
@@ -403,11 +417,16 @@ export function WhackRushGame() {
             </div>
           </div>
 
-          <div className="grid min-h-[29rem] grid-cols-3 gap-3">
+          <div className="relative grid min-h-[29rem] grid-cols-3 gap-3">
             {Array.from({ length: HOLE_COUNT }, (_, hole) => {
               const target = targets.find((item) => item.hole === hole);
               return <Hole key={hole} target={target} phase={phase} onWhack={whack} />;
             })}
+            {phase === "countdown" ? (
+              <div className="absolute inset-0 grid place-items-center border border-mint/70 bg-black/55 font-display text-6xl text-mint shadow-neon">
+                {countdown}
+              </div>
+            ) : null}
           </div>
         </section>
       </main>
@@ -423,6 +442,7 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
       {target ? (
         <button
           onClick={() => onWhack(target)}
+          disabled={phase !== "running"}
           className="absolute inset-x-6 bottom-7 top-1 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
         >
           <span
