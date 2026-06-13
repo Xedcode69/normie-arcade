@@ -23,6 +23,7 @@ type Target = {
   hole: number;
   burned: boolean;
   expiresAt: number;
+  lifeMs: number;
 };
 
 function randomId() {
@@ -188,12 +189,14 @@ export function WhackRushGame() {
       const burnedPool = burnedIdsRef.current;
       const normieId = burned && burnedPool.length ? pickRandom(burnedPool) : randomId();
       const now = Date.now();
+      const lifeMs = lifeSpan(timeLeftRef.current);
       const target: Target = {
         id: `${now}-${targetSerial.current++}`,
         normieId,
         hole: pickRandom(availableHoles),
         burned,
-        expiresAt: now + lifeSpan(timeLeftRef.current)
+        expiresAt: now + lifeMs,
+        lifeMs
       };
 
       return [...items, target].slice(-HOLE_COUNT);
@@ -352,18 +355,19 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
       {target ? (
         <button
           onClick={() => onWhack(target)}
-          className="absolute inset-x-6 bottom-7 top-3 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
+          className="absolute inset-x-6 bottom-7 top-2 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
         >
           <span
-            className={`relative grid h-[calc(100%-0.75rem)] w-32 place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-rise_160ms_ease-out_both] ${
+            className={`relative grid h-[calc(100%-0.25rem)] w-32 origin-bottom place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-pop_var(--whack-life)_linear_both] ${
               target.burned ? "border-paper/70 shadow-[0_0_24px_rgba(244,241,232,0.18)]" : "border-mint shadow-neon"
             }`}
+            style={{ "--whack-life": `${target.lifeMs}ms` } as React.CSSProperties}
           >
             <span className="absolute inset-0 grid place-items-center text-[9px] uppercase tracking-[0.18em] text-paper/25">0xN</span>
             <NormieImage
               src={target.burned ? NormieAPIService.burnedImageUrl(target.normieId) : NormieAPIService.imageUrl(target.normieId)}
               alt={`${target.burned ? "Burned" : "Normie"} target #${target.normieId}`}
-              className={`relative h-full w-full object-contain object-bottom ${target.burned ? "opacity-85 grayscale contrast-125" : ""}`}
+              className={`relative h-full w-full translate-y-[8%] object-contain object-bottom ${target.burned ? "opacity-85 grayscale contrast-125" : ""}`}
             />
           </span>
           {target.burned ? (
