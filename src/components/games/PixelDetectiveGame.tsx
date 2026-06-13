@@ -12,7 +12,6 @@ import { GameResultPanel } from "@/components/games/GameResultPanel";
 const RUN_SECONDS = 60;
 const COUNTDOWN_SECONDS = 3;
 const MAX_ID = 9999;
-const FRAGMENT_SIZE = 10;
 
 type Phase = "idle" | "loading" | "countdown" | "running" | "ended";
 
@@ -43,7 +42,13 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function buildFragment(pixels: string) {
+function fragmentSizeForTime(timeLeft: number) {
+  if (timeLeft > 45) return 12;
+  if (timeLeft > 20) return 10;
+  return 8;
+}
+
+function buildFragment(pixels: string, size: number) {
   const cleaned = pixels.trim();
   if (cleaned.length < 1600) {
     throw new Error("Pixel payload was incomplete.");
@@ -55,13 +60,13 @@ function buildFragment(pixels: string) {
   }
 
   const center = litPixels.length ? litPixels[Math.floor(Math.random() * litPixels.length)] : { x: 20, y: 20 };
-  const x = clamp(center.x - Math.floor(FRAGMENT_SIZE / 2) + Math.floor(Math.random() * 5) - 2, 0, 40 - FRAGMENT_SIZE);
-  const y = clamp(center.y - Math.floor(FRAGMENT_SIZE / 2) + Math.floor(Math.random() * 5) - 2, 0, 40 - FRAGMENT_SIZE);
-  const rows = Array.from({ length: FRAGMENT_SIZE }, (_, row) =>
-    cleaned.slice((y + row) * 40 + x, (y + row) * 40 + x + FRAGMENT_SIZE)
+  const x = clamp(center.x - Math.floor(size / 2) + Math.floor(Math.random() * 5) - 2, 0, 40 - size);
+  const y = clamp(center.y - Math.floor(size / 2) + Math.floor(Math.random() * 5) - 2, 0, 40 - size);
+  const rows = Array.from({ length: size }, (_, row) =>
+    cleaned.slice((y + row) * 40 + x, (y + row) * 40 + x + size)
   );
 
-  return { rows, crop: { x, y, size: FRAGMENT_SIZE } };
+  return { rows, crop: { x, y, size } };
 }
 
 function suspectStateClass(id: number, revealedGuess: RevealedGuess | null) {
@@ -130,7 +135,7 @@ export function PixelDetectiveGame() {
     try {
       const targetId = randomId();
       const pixels = await NormieAPIService.fetchNormiePixels(targetId);
-      const fragment = buildFragment(pixels);
+      const fragment = buildFragment(pixels, fragmentSizeForTime(timeLeft));
       setRound({
         targetId,
         options: randomOptions(targetId),
@@ -145,7 +150,7 @@ export function PixelDetectiveGame() {
     } finally {
       loadingRef.current = false;
     }
-  }, [beginCountdown]);
+  }, [beginCountdown, timeLeft]);
 
   useEffect(() => {
     if (phase !== "countdown") return undefined;
@@ -308,7 +313,7 @@ export function PixelDetectiveGame() {
             <div>
               <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Evidence Fragment</div>
               <div className="mt-1 font-display text-2xl uppercase tracking-[0.08em] text-paper">
-                {round ? `Crop ${round.crop.x},${round.crop.y}` : "No Case"}
+                {round ? `${round.crop.size}x${round.crop.size} Crop` : "No Case"}
               </div>
             </div>
             <button
@@ -323,7 +328,7 @@ export function PixelDetectiveGame() {
           <div className="grid min-h-80 place-items-center border border-paper/15 bg-black/70 p-4">
             {round ? (
               <div className="relative">
-                <PixelFragment rows={round.rows} />
+                <PixelFragment rows={round.rows} size={round.crop.size} />
                 {phase === "countdown" ? (
                   <div className="absolute inset-0 grid place-items-center border border-mint/70 bg-black/65 font-display text-5xl text-mint shadow-neon">
                     {countdown}
@@ -384,10 +389,10 @@ export function PixelDetectiveGame() {
   );
 }
 
-function PixelFragment({ rows }: { rows: string[] }) {
+function PixelFragment({ rows, size }: { rows: string[]; size: number }) {
   return (
     <div className="border-2 border-paper bg-[#e3e5e4] p-2 shadow-[6px_6px_0_#000]">
-      <div className="grid h-64 w-64 border border-black/25" style={{ gridTemplateColumns: `repeat(${FRAGMENT_SIZE}, minmax(0, 1fr))` }}>
+      <div className="grid h-64 w-64 border border-black/25" style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
         {rows.join("").split("").map((pixel, index) => (
           <span
             key={index}
