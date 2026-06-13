@@ -118,7 +118,7 @@ export function RPSGame() {
         setSoloSummary({
           outcome: "win",
           finalScore: `${nextScore.player} - ${nextScore.npc}`,
-          chips: `+${payout - activeBet} net / ${payout} paid`,
+          chips: `Bet ${activeBet} / Paid ${payout} / Profit +${payout - activeBet}`,
           bestMoment: `${playerType} beat ${npcType} to close the match.`
         });
       } else {
@@ -136,7 +136,7 @@ export function RPSGame() {
         setSoloSummary({
           outcome: "loss",
           finalScore: `${nextScore.player} - ${nextScore.npc}`,
-          chips: `-${activeBet} chips`,
+          chips: `Bet ${activeBet} / Paid 0 / Profit -${activeBet}`,
           bestMoment: `${npcType} beat ${playerType} in the final round.`
         });
       }
@@ -1098,14 +1098,14 @@ function Fighter({
           <motion.div
             initial={{ y: 12, opacity: 0, scale: 0.86 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
-            className="relative grid h-28 w-28 place-items-center rounded-full border border-paper/50 bg-paper shadow-[0_0_24px_rgba(244,241,232,0.18)]"
+            className="relative grid h-28 w-28 place-items-center overflow-hidden rounded-full border border-paper/50 bg-paper shadow-[0_0_24px_rgba(244,241,232,0.18)]"
           >
             <Image
               src={typeImages[fighter.type]}
               alt={`${fighter.type} fighter`}
-              width={104}
-              height={104}
-              className="h-24 w-24 object-contain drop-shadow-[0_0_12px_rgba(0,0,0,0.5)]"
+              width={112}
+              height={112}
+              className="h-full w-full object-cover drop-shadow-[0_0_12px_rgba(0,0,0,0.5)]"
             />
           </motion.div>
         ) : hiddenPick ? (
