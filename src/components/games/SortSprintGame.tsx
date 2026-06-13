@@ -14,10 +14,10 @@ import { GameResultPanel } from "@/components/games/GameResultPanel";
 const RUN_SECONDS = 30;
 const RULE_EVERY = 4;
 const LEADERBOARD_KEY = "normie-sort-sprint-leaderboard:v1";
-const START_QUEUE_TARGET = 30;
-const START_MIN_READY = 12;
-const MIN_QUEUE_BUFFER = 10;
-const REFILL_BATCH_SIZE = 16;
+const START_QUEUE_TARGET = 48;
+const START_MIN_READY = 30;
+const MIN_QUEUE_BUFFER = 22;
+const REFILL_BATCH_SIZE = 28;
 
 const fallbackRuleLabels = {
   Expression: [],
@@ -69,10 +69,10 @@ function seededShuffle<T>(items: T[], seed: string) {
 function buildBins(rule: Rule, current: Normie | null, queue: Normie[]) {
   const liveValues = [current, ...queue]
     .map((normie) => displayTrait(normie?.traits[rule]))
-    .filter((value) => value !== "Unknown");
+    .filter((value) => current && displayTrait(current.traits[rule]) === "Unknown" ? true : value !== "Unknown");
   const values = Array.from(new Set([...liveValues, ...fallbackRuleLabels[rule]]));
   const expected = current ? displayTrait(current.traits[rule]) : "";
-  const compact = values.filter((value) => value !== "Unknown").slice(0, 8);
+  const compact = values.filter((value) => expected === "Unknown" || value !== "Unknown").slice(0, 8);
   const withExpected = expected && !compact.includes(expected) ? [expected, ...compact.slice(0, 7)] : compact;
 
   return seededShuffle(withExpected, `${current?.id ?? "empty"}:${rule}:${withExpected.join("|")}`);
@@ -153,21 +153,27 @@ export function SortSprintGame() {
 
       setQueue((items) => {
         const nextItems = [...items, ...normies];
+        queueRef.current = nextItems;
         if (currentRef.current) {
           return nextItems;
         }
 
         const [next, ...rest] = nextItems;
         currentRef.current = next ?? null;
+        queueRef.current = rest;
         setCurrent(next ?? null);
         return rest;
       });
+    } catch {
+      if (generation === loadGenerationRef.current) {
+        notify({ kind: "loss", title: "Sort Belt Delayed", body: "Could not load the next Normie batch. Retrying." });
+      }
     } finally {
       if (generation === loadGenerationRef.current) {
         loadingRef.current = false;
       }
     }
-  }, []);
+  }, [notify]);
 
   const warmQueue = useCallback(async () => {
     if (loadingRef.current) return;
@@ -189,12 +195,16 @@ export function SortSprintGame() {
         setCurrent(next ?? null);
         return rest;
       });
+    } catch {
+      if (generation === loadGenerationRef.current) {
+        notify({ kind: "loss", title: "Sort Belt Delayed", body: "Preload failed. Retrying the belt fill." });
+      }
     } finally {
       if (generation === loadGenerationRef.current) {
         loadingRef.current = false;
       }
     }
-  }, []);
+  }, [notify]);
 
   const pullNext = useCallback(() => {
     setQueue((items) => {
@@ -224,7 +234,7 @@ export function SortSprintGame() {
     if (phase !== "running") return undefined;
 
     const interval = window.setInterval(() => {
-      setTimeLeft((value) => Math.max(0, value - 1));
+      setTimeLeft((value) => (currentRef.current ? Math.max(0, value - 1) : value));
     }, 1000);
 
     return () => window.clearInterval(interval);
@@ -402,7 +412,11 @@ export function SortSprintGame() {
             </div>
           ) : (
             <div className="grid min-h-56 place-items-center border border-paper/15 bg-black/50 text-paper/55">
-              {phase === "loading" || phase === "running" ? "Loading the next Normie..." : "Start a 30-second sorting shift."}
+              {phase === "loading"
+                ? "Preloading the sorting belt..."
+                : phase === "running"
+                  ? "Refilling the belt. Clock paused..."
+                  : "Start a 30-second sorting shift."}
             </div>
           )}
 
