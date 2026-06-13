@@ -14,6 +14,10 @@ import { GameResultPanel } from "@/components/games/GameResultPanel";
 const RUN_SECONDS = 30;
 const RULE_EVERY = 4;
 const LEADERBOARD_KEY = "normie-sort-sprint-leaderboard:v1";
+const START_QUEUE_TARGET = 30;
+const START_MIN_READY = 12;
+const MIN_QUEUE_BUFFER = 10;
+const REFILL_BATCH_SIZE = 16;
 
 const fallbackRuleLabels = {
   Expression: [],
@@ -117,6 +121,7 @@ export function SortSprintGame() {
   const [lastResult, setLastResult] = useState("Waiting for the sorting belt.");
   const loadingRef = useRef(false);
   const currentRef = useRef<Normie | null>(null);
+  const queueRef = useRef<Normie[]>([]);
   const loadGenerationRef = useRef(0);
   const notify = useArcadeStore((state) => state.notify);
   const displayName = useAccountStore((state) => state.displayName);
@@ -133,12 +138,17 @@ export function SortSprintGame() {
     currentRef.current = current;
   }, [current]);
 
-  const loadMore = useCallback(async () => {
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+
+  const loadMore = useCallback(async (target = REFILL_BATCH_SIZE) => {
     if (loadingRef.current) return;
     const generation = loadGenerationRef.current;
     loadingRef.current = true;
     try {
-      const normies = await NormieAPIService.getRandomNormies(6);
+      const requested = Math.max(1, Math.round(target));
+      const normies = await NormieAPIService.getRandomNormies(requested);
       if (generation !== loadGenerationRef.current) return;
 
       setQueue((items) => {
@@ -159,22 +169,56 @@ export function SortSprintGame() {
     }
   }, []);
 
+  const warmQueue = useCallback(async () => {
+    if (loadingRef.current) return;
+    const generation = loadGenerationRef.current;
+    loadingRef.current = true;
+    try {
+      const needed = Math.max(START_MIN_READY, START_QUEUE_TARGET - queueRef.current.length - (currentRef.current ? 1 : 0));
+      const normies = await NormieAPIService.getRandomNormies(needed);
+      if (generation !== loadGenerationRef.current) return;
+
+      setQueue((items) => {
+        const nextItems = [...items, ...normies];
+        queueRef.current = nextItems;
+        if (currentRef.current) return nextItems;
+
+        const [next, ...rest] = nextItems;
+        currentRef.current = next ?? null;
+        queueRef.current = rest;
+        setCurrent(next ?? null);
+        return rest;
+      });
+    } finally {
+      if (generation === loadGenerationRef.current) {
+        loadingRef.current = false;
+      }
+    }
+  }, []);
+
   const pullNext = useCallback(() => {
     setQueue((items) => {
       const [next, ...rest] = items;
       currentRef.current = next ?? null;
+      queueRef.current = rest;
       setCurrent(next ?? null);
       return rest;
     });
   }, []);
 
   useEffect(() => {
-    if ((phase === "idle" || phase === "running") && queue.length < 4) void loadMore();
-  }, [loadMore, phase, queue.length]);
+    if (phase === "idle" && !current && queue.length < START_MIN_READY) void loadMore(START_MIN_READY);
+    if (phase === "loading" && queue.length + (current ? 1 : 0) < START_MIN_READY) void warmQueue();
+    if (phase === "running" && queue.length < MIN_QUEUE_BUFFER) void loadMore(REFILL_BATCH_SIZE);
+  }, [current, loadMore, phase, queue.length, warmQueue]);
 
   useEffect(() => {
-    if (phase === "loading" && current) setPhase("running");
-  }, [current, phase]);
+    if (phase === "loading" && current && queue.length >= START_MIN_READY - 1) {
+      setPhase("running");
+      setMessage("Sorting belt online. Score as many correct sorts as possible.");
+      setLastResult("30-second shift started.");
+    }
+  }, [current, phase, queue.length]);
 
   useEffect(() => {
     if (phase !== "running") return undefined;
@@ -227,8 +271,8 @@ export function SortSprintGame() {
   function start() {
     if (phase === "running" || phase === "loading") return;
 
-    const activeCurrent = currentRef.current;
-    setPhase(activeCurrent ? "running" : "loading");
+    const readyCount = queueRef.current.length + (currentRef.current ? 1 : 0);
+    setPhase(readyCount >= START_MIN_READY ? "running" : "loading");
     setTimeLeft(RUN_SECONDS);
     setRule("Expression");
     setSortsOnRule(0);
@@ -236,15 +280,16 @@ export function SortSprintGame() {
     setCombo(0);
     setBestCombo(0);
     setMistakes(0);
-    setMessage("Sorting belt online. Score as many correct sorts as possible.");
-    setLastResult("30-second shift started.");
-    if (!activeCurrent || queue.length < 4) void loadMore();
+    setMessage(readyCount >= START_MIN_READY ? "Sorting belt online. Score as many correct sorts as possible." : "Preloading the sorting belt.");
+    setLastResult(readyCount >= START_MIN_READY ? "30-second shift started." : "Filling the queue before the clock starts.");
+    if (readyCount < START_QUEUE_TARGET) void warmQueue();
   }
 
   function reset() {
     loadGenerationRef.current += 1;
     loadingRef.current = false;
     currentRef.current = null;
+    queueRef.current = [];
     setPhase("idle");
     setTimeLeft(RUN_SECONDS);
     setRule("Expression");

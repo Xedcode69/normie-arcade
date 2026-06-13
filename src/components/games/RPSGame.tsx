@@ -284,7 +284,7 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const [roomMode, setRoomMode] = useState<RoomMode>(() => (roomCode === "QUICKPLAY" ? "quick" : "join"));
   const [joinCode, setJoinCode] = useState(() => (roomCode === "QUICKPLAY" ? "" : roomCode));
   const [inviteStakeLoaded, setInviteStakeLoaded] = useState(false);
-  const { connected, connect, clearError, disconnect, error, playerId, reset, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
+  const { connected, connect, clearError, disconnect, error, playerId, acceptRematch, declineRematch, requestRematch, state, submitPick } = useRpsPvp(`rps-${roomCode.toLowerCase()}`);
   const { ready, authenticated, getAccessToken, login, user } = usePrivy();
   const username = useAccountStore((store) => store.username);
   const displayName = useAccountStore((store) => store.displayName);
@@ -305,6 +305,8 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   const playerPick = reveal ? (playerSeat === 0 ? reveal.playerA : reveal.playerB) : undefined;
   const opponentPick = reveal ? (playerSeat === 0 ? reveal.playerB : reveal.playerA) : undefined;
   const bothLocked = connected && state.phase === "playing" && Boolean(you?.pick) && Boolean(opponent?.pick);
+  const rematchRequestedByYou = state.rematchRequestedBy === playerId;
+  const rematchRequestedByOpponent = Boolean(state.rematchRequestedBy && state.rematchRequestedBy !== playerId);
   const [countdown, setCountdown] = useState<string | null>(null);
   const [effect, setEffect] = useState<"win" | "loss" | "draw" | null>(null);
   const [seenReveal, setSeenReveal] = useState<string | null>(null);
@@ -474,6 +476,14 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
     }
   }, [error]);
 
+  useEffect(() => {
+    if (!state.rematchDeclinedBy) return;
+    const declinedBy = state.players.find((player) => player.id === state.rematchDeclinedBy)?.name ?? "Opponent";
+    notify({ kind: "info", title: "Rematch Declined", body: `${declinedBy} declined. Returning to the RPS menu.` });
+    window.sessionStorage.removeItem(RPS_RECONNECT_KEY);
+    disconnect();
+  }, [disconnect, notify, state.players, state.rematchDeclinedBy]);
+
   function inviteUrl() {
     if (typeof window === "undefined") return "";
     const url = new URL(window.location.href);
@@ -580,7 +590,15 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
   }
 
   function handleReset() {
-    reset();
+    requestRematch();
+  }
+
+  function handleAcceptRematch() {
+    acceptRematch();
+  }
+
+  function handleDeclineRematch() {
+    declineRematch();
   }
 
   function leaveMatch() {
@@ -752,14 +770,6 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
           <div className="pixel-card px-5 py-2 text-sm text-paper">Server chips {you.serverBalance}</div>
         ) : null}
         <div className="pixel-card px-5 py-2 text-sm text-paper">Stake {effectiveStake}</div>
-        {state.phase === "finished" ? (
-          <button
-            onClick={handleReset}
-            className="border border-paper/60 bg-paper/10 px-5 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15"
-          >
-            Rematch
-          </button>
-        ) : null}
       </div>
       <div className="mx-auto mt-4 w-full max-w-4xl shrink-0 border-t border-paper/20 pt-4 text-center">
         <div className="mx-auto min-w-0 max-w-3xl text-center">
@@ -775,7 +785,11 @@ function RPSPvP({ bet, setBet }: { bet: number; setBet: (bet: number) => void })
         winnerId={state.winnerId}
         history={state.history}
         fallbackBet={bet}
+        rematchRequestedByYou={rematchRequestedByYou}
+        rematchRequestedByOpponent={rematchRequestedByOpponent}
         onRematch={handleReset}
+        onAcceptRematch={handleAcceptRematch}
+        onDeclineRematch={handleDeclineRematch}
         onReturnToLobby={returnToLobby}
       />
     </div>
@@ -790,7 +804,11 @@ function PvPMatchSummary({
   winnerId,
   history,
   fallbackBet,
+  rematchRequestedByYou,
+  rematchRequestedByOpponent,
   onRematch,
+  onAcceptRematch,
+  onDeclineRematch,
   onReturnToLobby
 }: {
   visible: boolean;
@@ -807,7 +825,11 @@ function PvPMatchSummary({
     scoreB: number;
   }>;
   fallbackBet: number;
+  rematchRequestedByYou: boolean;
+  rematchRequestedByOpponent: boolean;
   onRematch: () => void;
+  onAcceptRematch: () => void;
+  onDeclineRematch: () => void;
   onReturnToLobby: () => void;
 }) {
   if (!visible) return null;
@@ -871,12 +893,30 @@ function PvPMatchSummary({
       </div>
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button
-          onClick={onRematch}
-          className="inline-flex items-center justify-center gap-2 border border-paper/60 bg-paper/10 px-5 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15"
-        >
-          <Swords size={15} /> Rematch
-        </button>
+        {rematchRequestedByOpponent ? (
+          <>
+            <button
+              onClick={onAcceptRematch}
+              className="inline-flex items-center justify-center gap-2 border border-mint/60 bg-mint/10 px-5 py-2 text-sm uppercase tracking-widest text-mint transition hover:bg-mint/15"
+            >
+              <Swords size={15} /> Accept Rematch
+            </button>
+            <button
+              onClick={onDeclineRematch}
+              className="inline-flex items-center justify-center gap-2 border border-magenta/60 bg-magenta/10 px-5 py-2 text-sm uppercase tracking-widest text-magenta transition hover:bg-magenta/15"
+            >
+              <X size={15} /> Decline
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={onRematch}
+            disabled={rematchRequestedByYou}
+            className="inline-flex items-center justify-center gap-2 border border-paper/60 bg-paper/10 px-5 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15 disabled:opacity-45"
+          >
+            <Swords size={15} /> {rematchRequestedByYou ? "Rematch Requested" : "Request Rematch"}
+          </button>
+        )}
         <button
           onClick={onReturnToLobby}
           className="inline-flex items-center justify-center gap-2 border border-paper/40 bg-black/70 px-5 py-2 text-sm uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper"

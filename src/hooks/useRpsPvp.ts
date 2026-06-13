@@ -123,6 +123,21 @@ export function useRpsPvp(room = "rps-quickplay") {
     send({ type: "reset", playerId });
   }, [playerId, send]);
 
+  const requestRematch = useCallback(() => {
+    if (!playerId) return;
+    send({ type: "rematch_request", playerId });
+  }, [playerId, send]);
+
+  const acceptRematch = useCallback(() => {
+    if (!playerId) return;
+    send({ type: "rematch_accept", playerId });
+  }, [playerId, send]);
+
+  const declineRematch = useCallback(() => {
+    if (!playerId) return;
+    send({ type: "rematch_decline", playerId });
+  }, [playerId, send]);
+
   useEffect(() => () => disconnect(), [disconnect]);
 
   return {
@@ -132,6 +147,9 @@ export function useRpsPvp(room = "rps-quickplay") {
     disconnect,
     error,
     playerId,
+    acceptRematch,
+    declineRematch,
+    requestRematch,
     reset,
     state,
     submitPick

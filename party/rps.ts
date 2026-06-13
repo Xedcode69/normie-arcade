@@ -47,6 +47,8 @@ type MatchState = {
   history: RoundHistoryEntry[];
   reveal?: RoundReveal;
   winnerId?: string;
+  rematchRequestedBy?: string;
+  rematchDeclinedBy?: string;
   message: string;
 };
 
@@ -162,7 +164,10 @@ type ClientMessage =
       avatarUrl?: string | null;
     }
   | { type: "pick"; playerId: string; pick: RPSType }
-  | { type: "reset"; playerId: string };
+  | { type: "reset"; playerId: string }
+  | { type: "rematch_request"; playerId: string }
+  | { type: "rematch_accept"; playerId: string }
+  | { type: "rematch_decline"; playerId: string };
 
 type PokerClientMessage =
   | {
@@ -426,6 +431,21 @@ export default class RPSParty {
 
     if (data.type === "reset") {
       await this.reset(data.playerId);
+      return;
+    }
+
+    if (data.type === "rematch_request") {
+      this.requestRematch(data.playerId);
+      return;
+    }
+
+    if (data.type === "rematch_accept") {
+      await this.acceptRematch(data.playerId);
+      return;
+    }
+
+    if (data.type === "rematch_decline") {
+      this.declineRematch(data.playerId);
     }
   }
 
@@ -1505,6 +1525,9 @@ export default class RPSParty {
       }
       if (data.type === "pick" && typeof data.playerId === "string" && picks.includes(data.pick)) return data;
       if (data.type === "reset" && typeof data.playerId === "string") return data;
+      if (data.type === "rematch_request" && typeof data.playerId === "string") return data;
+      if (data.type === "rematch_accept" && typeof data.playerId === "string") return data;
+      if (data.type === "rematch_decline" && typeof data.playerId === "string") return data;
       return null;
     } catch {
       return null;
@@ -1649,9 +1672,40 @@ export default class RPSParty {
     }, 1800);
   }
 
-  private async reset(playerId: string) {
+  private requestRematch(playerId: string) {
     if (this.state.phase !== "finished") return;
-    if (!this.state.players.some((player) => player.id === playerId)) return;
+    const player = this.state.players.find((item) => item.id === playerId && item.connected);
+    if (!player) return;
+
+    this.state.rematchRequestedBy = player.id;
+    this.state.rematchDeclinedBy = undefined;
+    this.state.message = `${player.name} requested a rematch.`;
+    this.broadcast();
+  }
+
+  private async acceptRematch(playerId: string) {
+    if (this.state.phase !== "finished") return;
+    if (!this.state.rematchRequestedBy || this.state.rematchRequestedBy === playerId) return;
+    if (!this.state.players.some((player) => player.id === playerId && player.connected)) return;
+    await this.startRematch();
+  }
+
+  private declineRematch(playerId: string) {
+    if (this.state.phase !== "finished") return;
+    const player = this.state.players.find((item) => item.id === playerId && item.connected);
+    if (!player) return;
+
+    this.state.rematchDeclinedBy = player.id;
+    this.state.message = `${player.name} declined the rematch. Returning to the arena menu.`;
+    this.broadcast();
+  }
+
+  private async reset(playerId: string) {
+    this.requestRematch(playerId);
+  }
+
+  private async startRematch() {
+    if (this.state.phase !== "finished") return;
 
     if (this.revealTimer) {
       clearTimeout(this.revealTimer);
@@ -1667,14 +1721,20 @@ export default class RPSParty {
       reserved: false,
       accountError: undefined
     }));
-    await Promise.all(this.state.players.filter((player) => player.connected).map((player) => this.reserveWager(player)));
+    const reserveResults = await Promise.all(this.state.players.filter((player) => player.connected).map((player) => this.reserveWager(player)));
     const readyPlayers = this.state.players.filter((player) => player.connected && player.reserved);
-    this.state.phase = readyPlayers.length === 2 ? "playing" : "waiting";
+    const allReserved = reserveResults.length === 2 && reserveResults.every((result) => result.ok);
+    if (!allReserved) {
+      await Promise.all(this.state.players.filter((player) => player.reserved).map((player) => this.refundWager(player)));
+    }
+    this.state.phase = allReserved && readyPlayers.length === 2 ? "playing" : "waiting";
     this.state.round = 1;
     this.state.history = [];
     this.state.reveal = undefined;
     this.state.winnerId = undefined;
-    this.state.message = this.state.phase === "playing" ? "Rematch ready. Submit your type." : "Waiting for a second challenger.";
+    this.state.rematchRequestedBy = undefined;
+    this.state.rematchDeclinedBy = undefined;
+    this.state.message = this.state.phase === "playing" ? "Rematch accepted. Submit your type." : "Rematch failed. One player could not reserve the stake.";
     this.broadcast();
   }
 

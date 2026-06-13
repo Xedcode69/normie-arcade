@@ -34,6 +34,8 @@ export type RPSPvPState = {
     winner: "playerA" | "playerB" | "draw";
   };
   winnerId?: string;
+  rematchRequestedBy?: string;
+  rematchDeclinedBy?: string;
   message: string;
 };
 
