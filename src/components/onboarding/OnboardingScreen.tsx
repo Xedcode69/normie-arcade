@@ -1,15 +1,13 @@
 "use client";
 
-import { ArrowRight, Check, Coins, Gamepad2, IdCard, Loader2, LogIn, LogOut, Trophy, UserRound, Wallet } from "lucide-react";
+import { ArrowRight, Check, IdCard, Loader2, LogIn, LogOut, UserRound, Wallet } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useMemo, useState } from "react";
 import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
-import { useChipStore } from "@/stores/chipStore";
 import { usePlayerStore } from "@/stores/playerStore";
-import { formatChips } from "@/lib/gameMath";
 
 const previewNormies = [2260, 5674, 6450, 8768];
 
@@ -69,20 +67,22 @@ function PrivyOnboarding() {
   const setProfile = useAccountStore((store) => store.setProfile);
   const setAvatarUrl = usePlayerStore((store) => store.setAvatarUrl);
   const notify = useArcadeStore((store) => store.notify);
-  const setActiveGame = useArcadeStore((store) => store.setActiveGame);
-  const setLeaderboardOpen = useArcadeStore((store) => store.setLeaderboardOpen);
-  const hydrateChips = useChipStore((store) => store.hydrate);
-  const balance = useChipStore((store) => store.balance);
   const [draftUsername, setDraftUsername] = useState(username ?? "");
   const [draftDisplayName, setDraftDisplayName] = useState(displayName ?? "");
   const [draftNormieId, setDraftNormieId] = useState<number | null>(selectedNormieId ?? null);
   const [saving, setSaving] = useState(false);
-  const [claimingChips, setClaimingChips] = useState(false);
-  const [starterClaimed, setStarterClaimed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const activeAvatar = draftNormieId !== null ? normieImageUrl(draftNormieId) : selectedNormieImage;
-  const avatarPicked = Boolean(draftNormieId ?? selectedNormieId ?? selectedNormieImage);
   const profileComplete = Boolean(username || displayName || selectedNormieId);
+  const hasProfileChanges = useMemo(() => {
+    const normalizedUsername = draftUsername.trim() ? draftUsername.trim().toLowerCase() : "";
+    const normalizedDisplayName = draftDisplayName.trim();
+    return (
+      normalizedUsername !== (username ?? "") ||
+      normalizedDisplayName !== (displayName ?? "") ||
+      draftNormieId !== (selectedNormieId ?? null)
+    );
+  }, [displayName, draftDisplayName, draftNormieId, draftUsername, selectedNormieId, username]);
   const canSave = useMemo(() => {
     const cleanUsername = draftUsername.trim();
     const cleanDisplayName = draftDisplayName.trim();
@@ -98,97 +98,57 @@ function PrivyOnboarding() {
   async function saveProfile() {
     if (!canSave) {
       setError("Username must be 3-20 letters, numbers, or underscores.");
-      return;
+      return false;
     }
 
     const token = await getAccessToken();
     if (!token) {
       setError("Could not read your Privy session.");
-      return;
+      return false;
     }
 
     setSaving(true);
     setError(null);
-    const response = await fetch("/api/account/profile", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        username: draftUsername.trim() ? draftUsername.trim().toLowerCase() : null,
-        displayName: draftDisplayName.trim() || null,
-        selectedNormieId: draftNormieId
-      })
-    });
-    const data = (await response.json()) as {
-      error?: string;
-      profile?: {
-        username: string | null;
-        displayName: string | null;
-        isNormieHolder: boolean;
-        selectedNormieId: number | null;
-        selectedNormieImage: string | null;
-        holderVerifiedAt: string | null;
-        ownedNormieIds: number[];
-      };
-    };
-    setSaving(false);
-
-    if (!response.ok || !data.profile) {
-      setError(data.error ?? "Profile setup failed.");
-      return;
-    }
-
-    setProfile(data.profile);
-    setAvatarUrl(data.profile.selectedNormieImage);
-    notify({ kind: "win", title: "Profile Ready", body: "Your arcade identity is saved." });
-  }
-
-  async function claimStarterChips() {
-    if (claimingChips) return;
-    if (!authenticated) {
-      login();
-      return;
-    }
-
-    setClaimingChips(true);
-    setError(null);
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        throw new Error("Could not read your Privy session.");
-      }
-
-      const response = await fetch("/api/chips/faucet", {
-        method: "POST",
+      const response = await fetch("/api/account/profile", {
+        method: "PATCH",
         headers: {
+          "Content-Type": "application/json",
           authorization: `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({
+          username: draftUsername.trim() ? draftUsername.trim().toLowerCase() : null,
+          displayName: draftDisplayName.trim() || null,
+          selectedNormieId: draftNormieId
+        })
       });
       const data = (await response.json()) as {
-        ok?: boolean;
-        amount?: number;
         error?: string;
-        chipAccount?: {
-          balance: number;
-          streak: number;
-          multiplier: number;
+        profile?: {
+          username: string | null;
+          displayName: string | null;
+          isNormieHolder: boolean;
+          selectedNormieId: number | null;
+          selectedNormieImage: string | null;
+          holderVerifiedAt: string | null;
+          ownedNormieIds: number[];
         };
       };
 
-      if (!response.ok || !data.ok || !data.chipAccount) {
-        throw new Error(data.error ?? "Starter chips failed.");
+      if (!response.ok || !data.profile) {
+        setError(data.error ?? "Profile setup failed.");
+        return false;
       }
 
-      hydrateChips(data.chipAccount);
-      setStarterClaimed(true);
-      notify({ kind: "win", title: "Starter Chips Ready", body: `${formatChips(data.amount ?? 0)} chips added to your account.` });
-    } catch (claimError) {
-      setError(claimError instanceof Error ? claimError.message : "Starter chips failed.");
-      notify({ kind: "loss", title: "Starter Chips Failed", body: claimError instanceof Error ? claimError.message : "Could not claim chips." });
+      setProfile(data.profile);
+      setAvatarUrl(data.profile.selectedNormieImage);
+      notify({ kind: "win", title: "Profile Ready", body: "Your arcade identity is saved." });
+      return true;
+    } catch {
+      setError("Profile setup failed.");
+      return false;
     } finally {
-      setClaimingChips(false);
+      setSaving(false);
     }
   }
 
@@ -196,14 +156,16 @@ function PrivyOnboarding() {
     router.push("/arcade");
   }
 
-  function tryRecommendedGame() {
-    setActiveGame("sort");
-    router.push("/arcade");
-  }
+  async function saveAndEnterArcade() {
+    if (!authenticated) return;
 
-  function openLeaderboard() {
-    setLeaderboardOpen(true);
-    router.push("/arcade");
+    if (!hasProfileChanges) {
+      enterArcade();
+      return;
+    }
+
+    const saved = await saveProfile();
+    if (saved) enterArcade();
   }
 
   return (
@@ -247,7 +209,7 @@ function PrivyOnboarding() {
               steps={[
                 { label: "Login", complete: authenticated, active: !authenticated },
                 { label: "Profile", complete: profileComplete, active: authenticated && !profileComplete },
-                { label: "Explore", complete: false, active: authenticated && profileComplete }
+                { label: "Enter", complete: false, active: authenticated && profileComplete }
               ]}
             />
 
@@ -332,152 +294,29 @@ function PrivyOnboarding() {
               </div>
             </div>
 
-            <FirstRunChecklist
-              authenticated={authenticated}
-              avatarPicked={avatarPicked}
-              profileComplete={profileComplete}
-              chipsReady={starterClaimed || balance > 0}
-              claimingChips={claimingChips}
-              onClaimChips={claimStarterChips}
-              onTryGame={tryRecommendedGame}
-              onOpenLeaderboard={openLeaderboard}
-            />
-
             {error ? <div className="mt-5 border border-magenta/60 bg-magenta/10 px-3 py-2 text-xs text-magenta">{error}</div> : null}
 
             <footer className="mt-6 flex flex-col gap-3 border-t border-paper/20 pt-5 sm:flex-row">
               <button
                 onClick={saveProfile}
-                disabled={!authenticated || saving || !canSave}
-                className="inline-flex flex-1 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15 disabled:opacity-45"
+                disabled={!authenticated || saving || !canSave || !hasProfileChanges}
+                className="inline-flex flex-1 items-center justify-center gap-2 border border-paper/35 bg-paper/5 px-5 py-3 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper/60 hover:bg-paper/10 disabled:opacity-45"
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save Profile
               </button>
               <button
-                onClick={enterArcade}
-                disabled={!authenticated}
-                className="inline-flex flex-1 items-center justify-center gap-2 border border-mint/70 bg-mint/10 px-5 py-3 text-xs uppercase tracking-widest text-mint shadow-neon transition hover:bg-mint/15 disabled:opacity-45"
+                onClick={saveAndEnterArcade}
+                disabled={!authenticated || saving || !canSave}
+                className="inline-flex flex-[1.4] items-center justify-center gap-2 border border-mint/70 bg-mint/10 px-5 py-3 text-xs uppercase tracking-widest text-mint shadow-neon transition hover:bg-mint/15 disabled:opacity-45"
               >
-                Enter Arcade <ArrowRight size={16} />
+                {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+                {hasProfileChanges ? "Save & Enter" : "Enter Arcade"} <ArrowRight size={16} />
               </button>
             </footer>
           </section>
         </OnboardingShell>
       </div>
     </main>
-  );
-}
-
-function FirstRunChecklist({
-  authenticated,
-  avatarPicked,
-  profileComplete,
-  chipsReady,
-  claimingChips,
-  onClaimChips,
-  onTryGame,
-  onOpenLeaderboard
-}: {
-  authenticated: boolean;
-  avatarPicked: boolean;
-  profileComplete: boolean;
-  chipsReady: boolean;
-  claimingChips: boolean;
-  onClaimChips: () => void;
-  onTryGame: () => void;
-  onOpenLeaderboard: () => void;
-}) {
-  return (
-    <section className="mt-6 border border-paper/20 bg-black/45 p-4">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <div className="terminal-hash text-[10px] uppercase tracking-[0.24em] text-pixel/60">First Run Checklist</div>
-          <div className="mt-1 text-sm text-paper/65">Finish setup, grab chips, then jump into a starter cabinet.</div>
-        </div>
-        <div className="terminal-hash text-[10px] uppercase tracking-widest text-paper/40">Recommended route</div>
-      </div>
-
-      <div className="grid gap-2 md:grid-cols-4">
-        <ChecklistStep complete={avatarPicked || profileComplete} active={authenticated && !avatarPicked} label="Pick Avatar" detail="Choose a Normie player card." />
-        <ChecklistAction
-          complete={chipsReady}
-          active={authenticated && !chipsReady}
-          icon={claimingChips ? <Loader2 size={14} className="animate-spin" /> : <Coins size={14} />}
-          label="Claim Chips"
-          detail={chipsReady ? "Starter balance ready." : "Load test chips."}
-          disabled={!authenticated || claimingChips}
-          onClick={onClaimChips}
-        />
-        <ChecklistAction
-          complete={false}
-          active={authenticated && profileComplete}
-          icon={<Gamepad2 size={14} />}
-          label="Try Sort"
-          detail="Fast skill game, no chips needed."
-          disabled={!authenticated}
-          onClick={onTryGame}
-        />
-        <ChecklistAction
-          complete={false}
-          active={authenticated}
-          icon={<Trophy size={14} />}
-          label="Open Ranks"
-          detail="See global boards."
-          disabled={!authenticated}
-          onClick={onOpenLeaderboard}
-        />
-      </div>
-    </section>
-  );
-}
-
-function ChecklistStep({ complete, active, label, detail }: { complete: boolean; active: boolean; label: string; detail: string }) {
-  return (
-    <div className={`border px-3 py-3 ${complete ? "border-mint/55 bg-mint/10" : active ? "border-paper/60 bg-paper/10" : "border-paper/20 bg-black/55"}`}>
-      <div className="flex items-center gap-2">
-        <span className={`grid h-6 w-6 place-items-center border ${complete ? "border-mint text-mint" : "border-paper/30 text-paper/45"}`}>
-          {complete ? <Check size={13} /> : <UserRound size={13} />}
-        </span>
-        <span className="font-display text-xs uppercase tracking-[0.16em] text-paper">{label}</span>
-      </div>
-      <div className="mt-2 text-xs leading-relaxed text-paper/50">{detail}</div>
-    </div>
-  );
-}
-
-function ChecklistAction({
-  complete,
-  active,
-  icon,
-  label,
-  detail,
-  disabled,
-  onClick
-}: {
-  complete: boolean;
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  detail: string;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`border px-3 py-3 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45 ${
-        complete ? "border-mint/55 bg-mint/10" : active ? "border-paper/60 bg-paper/10 hover:border-mint/70" : "border-paper/20 bg-black/55"
-      }`}
-    >
-      <span className="flex items-center gap-2">
-        <span className={`grid h-6 w-6 place-items-center border ${complete ? "border-mint text-mint" : active ? "border-paper/60 text-paper" : "border-paper/30 text-paper/45"}`}>
-          {complete ? <Check size={13} /> : icon}
-        </span>
-        <span className="font-display text-xs uppercase tracking-[0.16em] text-paper">{label}</span>
-      </span>
-      <span className="mt-2 block text-xs leading-relaxed text-paper/50">{detail}</span>
-    </button>
   );
 }
 

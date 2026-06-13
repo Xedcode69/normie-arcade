@@ -12,12 +12,13 @@ import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 30;
-const RULE_EVERY = 4;
+const COUNTDOWN_SECONDS = 3;
+const MAX_RULE_STREAK = 2;
 const LEADERBOARD_KEY = "normie-sort-sprint-leaderboard:v1";
-const START_QUEUE_TARGET = 30;
-const START_MIN_READY = 12;
-const MIN_QUEUE_BUFFER = 10;
-const REFILL_BATCH_SIZE = 16;
+const START_QUEUE_TARGET = 48;
+const START_MIN_READY = 30;
+const MIN_QUEUE_BUFFER = 22;
+const REFILL_BATCH_SIZE = 28;
 
 const fallbackRuleLabels = {
   Expression: [],
@@ -27,7 +28,7 @@ const fallbackRuleLabels = {
 } as const;
 
 type Rule = keyof typeof fallbackRuleLabels;
-type Phase = "idle" | "loading" | "running" | "ended";
+type Phase = "idle" | "loading" | "countdown" | "running" | "ended";
 type SortSprintEntry = {
   id: string;
   player: string;
@@ -42,11 +43,6 @@ const rules: Rule[] = ["Expression", "Age", "Facial Feature", "Hair Style"];
 
 function displayTrait(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : "Unknown";
-}
-
-function nextRule(current: Rule) {
-  const index = rules.indexOf(current);
-  return rules[(index + 1) % rules.length];
 }
 
 function seededShuffle<T>(items: T[], seed: string) {
@@ -66,13 +62,18 @@ function seededShuffle<T>(items: T[], seed: string) {
   return shuffled;
 }
 
+function rollRule(previous: Rule | null, streak: number) {
+  const candidates = previous && streak >= MAX_RULE_STREAK ? rules.filter((item) => item !== previous) : rules;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
 function buildBins(rule: Rule, current: Normie | null, queue: Normie[]) {
   const liveValues = [current, ...queue]
     .map((normie) => displayTrait(normie?.traits[rule]))
-    .filter((value) => value !== "Unknown");
+    .filter((value) => current && displayTrait(current.traits[rule]) === "Unknown" ? true : value !== "Unknown");
   const values = Array.from(new Set([...liveValues, ...fallbackRuleLabels[rule]]));
   const expected = current ? displayTrait(current.traits[rule]) : "";
-  const compact = values.filter((value) => value !== "Unknown").slice(0, 8);
+  const compact = values.filter((value) => expected === "Unknown" || value !== "Unknown").slice(0, 8);
   const withExpected = expected && !compact.includes(expected) ? [expected, ...compact.slice(0, 7)] : compact;
 
   return seededShuffle(withExpected, `${current?.id ?? "empty"}:${rule}:${withExpected.join("|")}`);
@@ -108,8 +109,8 @@ function saveLeaderboard(entries: SortSprintEntry[]) {
 export function SortSprintGame() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [timeLeft, setTimeLeft] = useState<number>(RUN_SECONDS);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [rule, setRule] = useState<Rule>("Expression");
-  const [sortsOnRule, setSortsOnRule] = useState(0);
   const [correct, setCorrect] = useState(0);
   const [combo, setCombo] = useState(0);
   const [bestCombo, setBestCombo] = useState(0);
@@ -123,12 +124,34 @@ export function SortSprintGame() {
   const currentRef = useRef<Normie | null>(null);
   const queueRef = useRef<Normie[]>([]);
   const loadGenerationRef = useRef(0);
+  const ruleRef = useRef<Rule>("Expression");
+  const ruleStreakRef = useRef(1);
   const notify = useArcadeStore((state) => state.notify);
   const displayName = useAccountStore((state) => state.displayName);
   const username = useAccountStore((state) => state.username);
   const recordLeaderboardResult = useLeaderboardRecorder();
 
   const bins = useMemo(() => buildBins(rule, current, queue), [current, queue, rule]);
+
+  const beginCountdown = useCallback(() => {
+    const openingRule = rollRule(null, 0);
+    ruleRef.current = openingRule;
+    ruleStreakRef.current = 1;
+    setRule(openingRule);
+    setCountdown(COUNTDOWN_SECONDS);
+    setPhase("countdown");
+    setMessage(`Belt ready. First rule: ${openingRule}.`);
+    setLastResult("Shift starts in 3.");
+  }, []);
+
+  const rollNextRule = useCallback(() => {
+    const previous = ruleRef.current;
+    const next = rollRule(previous, ruleStreakRef.current);
+    ruleStreakRef.current = next === previous ? ruleStreakRef.current + 1 : 1;
+    ruleRef.current = next;
+    setRule(next);
+    setMessage(`Rule roll. Sort by ${next}.`);
+  }, []);
 
   useEffect(() => {
     setLeaderboard(loadLeaderboard());
@@ -153,21 +176,27 @@ export function SortSprintGame() {
 
       setQueue((items) => {
         const nextItems = [...items, ...normies];
+        queueRef.current = nextItems;
         if (currentRef.current) {
           return nextItems;
         }
 
         const [next, ...rest] = nextItems;
         currentRef.current = next ?? null;
+        queueRef.current = rest;
         setCurrent(next ?? null);
         return rest;
       });
+    } catch {
+      if (generation === loadGenerationRef.current) {
+        notify({ kind: "loss", title: "Sort Belt Delayed", body: "Could not load the next Normie batch. Retrying." });
+      }
     } finally {
       if (generation === loadGenerationRef.current) {
         loadingRef.current = false;
       }
     }
-  }, []);
+  }, [notify]);
 
   const warmQueue = useCallback(async () => {
     if (loadingRef.current) return;
@@ -189,12 +218,16 @@ export function SortSprintGame() {
         setCurrent(next ?? null);
         return rest;
       });
+    } catch {
+      if (generation === loadGenerationRef.current) {
+        notify({ kind: "loss", title: "Sort Belt Delayed", body: "Preload failed. Retrying the belt fill." });
+      }
     } finally {
       if (generation === loadGenerationRef.current) {
         loadingRef.current = false;
       }
     }
-  }, []);
+  }, [notify]);
 
   const pullNext = useCallback(() => {
     setQueue((items) => {
@@ -214,17 +247,33 @@ export function SortSprintGame() {
 
   useEffect(() => {
     if (phase === "loading" && current && queue.length >= START_MIN_READY - 1) {
-      setPhase("running");
-      setMessage("Sorting belt online. Score as many correct sorts as possible.");
-      setLastResult("30-second shift started.");
+      beginCountdown();
     }
-  }, [current, phase, queue.length]);
+  }, [beginCountdown, current, phase, queue.length]);
+
+  useEffect(() => {
+    if (phase !== "countdown") return undefined;
+
+    if (countdown <= 0) {
+      setPhase("running");
+      setMessage(`Sorting belt online. Sort by ${ruleRef.current}.`);
+      setLastResult("Go. 30-second shift started.");
+      return undefined;
+    }
+
+    setLastResult(`Shift starts in ${countdown}.`);
+    const timeout = window.setTimeout(() => {
+      setCountdown((value) => value - 1);
+    }, 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [countdown, phase]);
 
   useEffect(() => {
     if (phase !== "running") return undefined;
 
     const interval = window.setInterval(() => {
-      setTimeLeft((value) => Math.max(0, value - 1));
+      setTimeLeft((value) => (currentRef.current ? Math.max(0, value - 1) : value));
     }, 1000);
 
     return () => window.clearInterval(interval);
@@ -272,16 +321,21 @@ export function SortSprintGame() {
     if (phase === "running" || phase === "loading") return;
 
     const readyCount = queueRef.current.length + (currentRef.current ? 1 : 0);
-    setPhase(readyCount >= START_MIN_READY ? "running" : "loading");
+    if (readyCount >= START_MIN_READY) {
+      beginCountdown();
+    } else {
+      setPhase("loading");
+    }
     setTimeLeft(RUN_SECONDS);
-    setRule("Expression");
-    setSortsOnRule(0);
+    setCountdown(COUNTDOWN_SECONDS);
     setCorrect(0);
     setCombo(0);
     setBestCombo(0);
     setMistakes(0);
-    setMessage(readyCount >= START_MIN_READY ? "Sorting belt online. Score as many correct sorts as possible." : "Preloading the sorting belt.");
-    setLastResult(readyCount >= START_MIN_READY ? "30-second shift started." : "Filling the queue before the clock starts.");
+    if (readyCount < START_MIN_READY) {
+      setMessage("Preloading the sorting belt.");
+    }
+    setLastResult(readyCount >= START_MIN_READY ? "Shift starts in 3." : "Filling the queue before the clock starts.");
     if (readyCount < START_QUEUE_TARGET) void warmQueue();
   }
 
@@ -292,8 +346,10 @@ export function SortSprintGame() {
     queueRef.current = [];
     setPhase("idle");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setRule("Expression");
-    setSortsOnRule(0);
+    ruleRef.current = "Expression";
+    ruleStreakRef.current = 1;
     setCorrect(0);
     setCombo(0);
     setBestCombo(0);
@@ -312,20 +368,11 @@ export function SortSprintGame() {
 
     if (correct) {
       const nextCombo = combo + 1;
-      const nextSortsOnRule = sortsOnRule + 1;
       setCorrect((value) => value + 1);
       setCombo(nextCombo);
       setBestCombo((value) => Math.max(value, nextCombo));
-      setSortsOnRule(nextSortsOnRule);
       playTone(520 + Math.min(nextCombo, 12) * 24, 0.1, "triangle");
       setLastResult(`Correct - ${expected}. Combo ${nextCombo}.`);
-
-      if (nextSortsOnRule >= RULE_EVERY) {
-        const changedRule = nextRule(rule);
-        setRule(changedRule);
-        setSortsOnRule(0);
-        setMessage(`Rule swap. Sort by ${changedRule}.`);
-      }
     } else {
       const nextMistakes = mistakes + 1;
       setMistakes(nextMistakes);
@@ -335,6 +382,7 @@ export function SortSprintGame() {
       setMessage(nextMistakes >= 3 ? "Three wrong bins is rough. One clean streak can still save it." : "Wrong bin. Combo reset.");
     }
 
+    rollNextRule();
     pullNext();
   }
 
@@ -390,7 +438,14 @@ export function SortSprintGame() {
 
           {current ? (
             <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)] xl:grid-cols-1">
-              <NormieImage src={current.image} alt={`Normie ${current.id}`} className="mx-auto h-36 w-36 border border-paper/30 bg-paper object-cover" />
+              <div className="relative mx-auto">
+                <NormieImage src={current.image} alt={`Normie ${current.id}`} className="h-36 w-36 border border-paper/30 bg-paper object-cover" />
+                {phase === "countdown" ? (
+                  <div className="absolute inset-0 grid place-items-center border border-mint/70 bg-black/65 font-display text-5xl text-mint shadow-neon">
+                    {countdown}
+                  </div>
+                ) : null}
+              </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 {rules.map((item) => (
                   <div key={item} className={`min-w-0 border px-3 py-2 ${item === rule ? "border-mint bg-mint/10 text-mint" : "border-paper/20 text-paper/65"}`}>
@@ -402,7 +457,11 @@ export function SortSprintGame() {
             </div>
           ) : (
             <div className="grid min-h-56 place-items-center border border-paper/15 bg-black/50 text-paper/55">
-              {phase === "loading" || phase === "running" ? "Loading the next Normie..." : "Start a 30-second sorting shift."}
+              {phase === "loading"
+                ? "Preloading the sorting belt..."
+                : phase === "running"
+                  ? "Refilling the belt. Clock paused..."
+                  : "Start a 30-second sorting shift."}
             </div>
           )}
 
