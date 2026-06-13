@@ -10,10 +10,10 @@ import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 60;
+const COUNTDOWN_SECONDS = 3;
 const MAX_ID = 9999;
-const FRAGMENT_SIZE = 10;
 
-type Phase = "idle" | "loading" | "running" | "ended";
+type Phase = "idle" | "loading" | "countdown" | "running" | "ended";
 
 type PixelRound = {
   targetId: number;
@@ -42,7 +42,13 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function buildFragment(pixels: string) {
+function fragmentSizeForTime(timeLeft: number) {
+  if (timeLeft > 45) return 12;
+  if (timeLeft > 20) return 10;
+  return 8;
+}
+
+function buildFragment(pixels: string, size: number) {
   const cleaned = pixels.trim();
   if (cleaned.length < 1600) {
     throw new Error("Pixel payload was incomplete.");
@@ -54,13 +60,13 @@ function buildFragment(pixels: string) {
   }
 
   const center = litPixels.length ? litPixels[Math.floor(Math.random() * litPixels.length)] : { x: 20, y: 20 };
-  const x = clamp(center.x - Math.floor(FRAGMENT_SIZE / 2) + Math.floor(Math.random() * 5) - 2, 0, 40 - FRAGMENT_SIZE);
-  const y = clamp(center.y - Math.floor(FRAGMENT_SIZE / 2) + Math.floor(Math.random() * 5) - 2, 0, 40 - FRAGMENT_SIZE);
-  const rows = Array.from({ length: FRAGMENT_SIZE }, (_, row) =>
-    cleaned.slice((y + row) * 40 + x, (y + row) * 40 + x + FRAGMENT_SIZE)
+  const x = clamp(center.x - Math.floor(size / 2) + Math.floor(Math.random() * 5) - 2, 0, 40 - size);
+  const y = clamp(center.y - Math.floor(size / 2) + Math.floor(Math.random() * 5) - 2, 0, 40 - size);
+  const rows = Array.from({ length: size }, (_, row) =>
+    cleaned.slice((y + row) * 40 + x, (y + row) * 40 + x + size)
   );
 
-  return { rows, crop: { x, y, size: FRAGMENT_SIZE } };
+  return { rows, crop: { x, y, size } };
 }
 
 function suspectStateClass(id: number, revealedGuess: RevealedGuess | null) {
@@ -96,6 +102,7 @@ function suspectStateStyle(id: number, revealedGuess: RevealedGuess | null): Rea
 export function PixelDetectiveGame() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [timeLeft, setTimeLeft] = useState(RUN_SECONDS);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [round, setRound] = useState<PixelRound | null>(null);
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -109,6 +116,13 @@ export function PixelDetectiveGame() {
   const notify = useArcadeStore((state) => state.notify);
   const recordLeaderboardResult = useLeaderboardRecorder();
 
+  const beginCountdown = useCallback(() => {
+    setCountdown(COUNTDOWN_SECONDS);
+    setPhase("countdown");
+    setMessage("Evidence locked. Study the suspects before the case opens.");
+    setLastResult("Case opens in 3.");
+  }, []);
+
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
@@ -121,15 +135,14 @@ export function PixelDetectiveGame() {
     try {
       const targetId = randomId();
       const pixels = await NormieAPIService.fetchNormiePixels(targetId);
-      const fragment = buildFragment(pixels);
+      const fragment = buildFragment(pixels, fragmentSizeForTime(timeLeft));
       setRound({
         targetId,
         options: randomOptions(targetId),
         rows: fragment.rows,
         crop: fragment.crop
       });
-      setPhase("running");
-      setMessage("Match the fragment to the correct suspect.");
+      beginCountdown();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Pixel feed failed.");
       setLastResult("Could not load a clean pixel fragment.");
@@ -137,7 +150,25 @@ export function PixelDetectiveGame() {
     } finally {
       loadingRef.current = false;
     }
-  }, []);
+  }, [beginCountdown, timeLeft]);
+
+  useEffect(() => {
+    if (phase !== "countdown") return undefined;
+
+    if (countdown <= 0) {
+      setPhase("running");
+      setMessage("Match the fragment to the correct suspect.");
+      setLastResult("Case open. Identify the suspect.");
+      return undefined;
+    }
+
+    setLastResult(`Case opens in ${countdown}.`);
+    const timeout = window.setTimeout(() => {
+      setCountdown((value) => value - 1);
+    }, 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [countdown, phase]);
 
   useEffect(() => {
     if (phase !== "running") return undefined;
@@ -193,6 +224,7 @@ export function PixelDetectiveGame() {
     phaseRef.current = "loading";
     setPhase("loading");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setScore(0);
     setStreak(0);
     setBestStreak(0);
@@ -207,6 +239,7 @@ export function PixelDetectiveGame() {
   function reset() {
     setPhase("idle");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setScore(0);
     setStreak(0);
     setBestStreak(0);
@@ -280,7 +313,7 @@ export function PixelDetectiveGame() {
             <div>
               <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Evidence Fragment</div>
               <div className="mt-1 font-display text-2xl uppercase tracking-[0.08em] text-paper">
-                {round ? `Crop ${round.crop.x},${round.crop.y}` : "No Case"}
+                {round ? `${round.crop.size}x${round.crop.size} Crop` : "No Case"}
               </div>
             </div>
             <button
@@ -294,7 +327,14 @@ export function PixelDetectiveGame() {
 
           <div className="grid min-h-80 place-items-center border border-paper/15 bg-black/70 p-4">
             {round ? (
-              <PixelFragment rows={round.rows} />
+              <div className="relative">
+                <PixelFragment rows={round.rows} size={round.crop.size} />
+                {phase === "countdown" ? (
+                  <div className="absolute inset-0 grid place-items-center border border-mint/70 bg-black/65 font-display text-5xl text-mint shadow-neon">
+                    {countdown}
+                  </div>
+                ) : null}
+              </div>
             ) : (
               <div className="grid place-items-center gap-3 text-center text-paper/55">
                 <Crosshair size={38} />
@@ -309,7 +349,7 @@ export function PixelDetectiveGame() {
           </div>
         </section>
 
-        <section className="min-h-0">
+        <section className="min-h-0 min-w-0">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Suspects</div>
@@ -319,26 +359,26 @@ export function PixelDetectiveGame() {
               Keys 1-4 select suspects
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {(round?.options ?? [0, 1, 2, 3]).map((id, index) => (
               <button
                 key={`${id}-${index}`}
                 disabled={phase !== "running" || !round || Boolean(revealedGuess)}
                 onClick={() => guess(id)}
-                className={`group grid min-h-72 grid-rows-[1fr_auto] border-2 bg-black/70 p-3 text-left transition hover:-translate-y-0.5 hover:border-mint/80 hover:bg-mint/10 disabled:cursor-default ${suspectStateClass(id, revealedGuess)}`}
+                className={`group grid min-h-72 min-w-0 grid-rows-[1fr_auto] overflow-hidden border-2 bg-black/70 p-2 text-left transition hover:-translate-y-0.5 hover:border-mint/80 hover:bg-mint/10 disabled:cursor-default md:p-3 ${suspectStateClass(id, revealedGuess)}`}
                 style={suspectStateStyle(id, revealedGuess)}
               >
                 {round ? (
-                  <NormieImage src={NormieAPIService.imageUrl(id)} alt={`Normie suspect #${id}`} className="mx-auto h-44 w-44 border border-paper/30 bg-paper object-contain" />
+                  <NormieImage src={NormieAPIService.imageUrl(id)} alt={`Normie suspect #${id}`} className="mx-auto h-40 w-full max-w-40 border border-paper/30 bg-paper object-contain xl:h-36 xl:max-w-36 2xl:h-40 2xl:max-w-40" />
                 ) : (
-                  <div className="mx-auto h-44 w-44 animate-pulse border border-paper/15 bg-paper/10" />
+                  <div className="mx-auto h-40 w-full max-w-40 animate-pulse border border-paper/15 bg-paper/10 xl:h-36 xl:max-w-36 2xl:h-40 2xl:max-w-40" />
                 )}
-                <span className="mt-3 flex items-center justify-between border-t border-paper/15 pt-3">
-                  <span>
-                    <span className="block text-sm uppercase tracking-[0.14em] text-paper">Normie #{round ? id : "----"}</span>
+                <span className="mt-3 flex min-w-0 items-center justify-between gap-2 border-t border-paper/15 pt-3">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm uppercase tracking-[0.14em] text-paper">Normie #{round ? id : "----"}</span>
                     <span className="mt-1 block text-[10px] uppercase tracking-[0.18em] text-paper/45">Suspect {index + 1}</span>
                   </span>
-                  <span className="grid h-8 w-8 place-items-center border border-paper/30 text-pixel/75 group-hover:border-mint group-hover:text-mint">{index + 1}</span>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center border border-paper/30 text-pixel/75 group-hover:border-mint group-hover:text-mint">{index + 1}</span>
                 </span>
               </button>
             ))}
@@ -349,10 +389,10 @@ export function PixelDetectiveGame() {
   );
 }
 
-function PixelFragment({ rows }: { rows: string[] }) {
+function PixelFragment({ rows, size }: { rows: string[]; size: number }) {
   return (
     <div className="border-2 border-paper bg-[#e3e5e4] p-2 shadow-[6px_6px_0_#000]">
-      <div className="grid h-64 w-64 border border-black/25" style={{ gridTemplateColumns: `repeat(${FRAGMENT_SIZE}, minmax(0, 1fr))` }}>
+      <div className="grid h-64 w-64 border border-black/25" style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
         {rows.join("").split("").map((pixel, index) => (
           <span
             key={index}
