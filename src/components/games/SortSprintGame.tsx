@@ -12,6 +12,7 @@ import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 30;
+const COUNTDOWN_SECONDS = 3;
 const RULE_EVERY = 4;
 const LEADERBOARD_KEY = "normie-sort-sprint-leaderboard:v1";
 const START_QUEUE_TARGET = 48;
@@ -27,7 +28,7 @@ const fallbackRuleLabels = {
 } as const;
 
 type Rule = keyof typeof fallbackRuleLabels;
-type Phase = "idle" | "loading" | "running" | "ended";
+type Phase = "idle" | "loading" | "countdown" | "running" | "ended";
 type SortSprintEntry = {
   id: string;
   player: string;
@@ -108,6 +109,7 @@ function saveLeaderboard(entries: SortSprintEntry[]) {
 export function SortSprintGame() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [timeLeft, setTimeLeft] = useState<number>(RUN_SECONDS);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [rule, setRule] = useState<Rule>("Expression");
   const [sortsOnRule, setSortsOnRule] = useState(0);
   const [correct, setCorrect] = useState(0);
@@ -129,6 +131,13 @@ export function SortSprintGame() {
   const recordLeaderboardResult = useLeaderboardRecorder();
 
   const bins = useMemo(() => buildBins(rule, current, queue), [current, queue, rule]);
+
+  const beginCountdown = useCallback(() => {
+    setCountdown(COUNTDOWN_SECONDS);
+    setPhase("countdown");
+    setMessage("Belt ready. Watch the first Normie, then sort on go.");
+    setLastResult("Shift starts in 3.");
+  }, []);
 
   useEffect(() => {
     setLeaderboard(loadLeaderboard());
@@ -224,11 +233,27 @@ export function SortSprintGame() {
 
   useEffect(() => {
     if (phase === "loading" && current && queue.length >= START_MIN_READY - 1) {
+      beginCountdown();
+    }
+  }, [beginCountdown, current, phase, queue.length]);
+
+  useEffect(() => {
+    if (phase !== "countdown") return undefined;
+
+    if (countdown <= 0) {
       setPhase("running");
       setMessage("Sorting belt online. Score as many correct sorts as possible.");
-      setLastResult("30-second shift started.");
+      setLastResult("Go. 30-second shift started.");
+      return undefined;
     }
-  }, [current, phase, queue.length]);
+
+    setLastResult(`Shift starts in ${countdown}.`);
+    const timeout = window.setTimeout(() => {
+      setCountdown((value) => value - 1);
+    }, 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [countdown, phase]);
 
   useEffect(() => {
     if (phase !== "running") return undefined;
@@ -282,16 +307,21 @@ export function SortSprintGame() {
     if (phase === "running" || phase === "loading") return;
 
     const readyCount = queueRef.current.length + (currentRef.current ? 1 : 0);
-    setPhase(readyCount >= START_MIN_READY ? "running" : "loading");
+    if (readyCount >= START_MIN_READY) {
+      beginCountdown();
+    } else {
+      setPhase("loading");
+    }
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setRule("Expression");
     setSortsOnRule(0);
     setCorrect(0);
     setCombo(0);
     setBestCombo(0);
     setMistakes(0);
-    setMessage(readyCount >= START_MIN_READY ? "Sorting belt online. Score as many correct sorts as possible." : "Preloading the sorting belt.");
-    setLastResult(readyCount >= START_MIN_READY ? "30-second shift started." : "Filling the queue before the clock starts.");
+    setMessage(readyCount >= START_MIN_READY ? "Belt ready. Watch the first Normie, then sort on go." : "Preloading the sorting belt.");
+    setLastResult(readyCount >= START_MIN_READY ? "Shift starts in 3." : "Filling the queue before the clock starts.");
     if (readyCount < START_QUEUE_TARGET) void warmQueue();
   }
 
@@ -302,6 +332,7 @@ export function SortSprintGame() {
     queueRef.current = [];
     setPhase("idle");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setRule("Expression");
     setSortsOnRule(0);
     setCorrect(0);
@@ -400,7 +431,14 @@ export function SortSprintGame() {
 
           {current ? (
             <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)] xl:grid-cols-1">
-              <NormieImage src={current.image} alt={`Normie ${current.id}`} className="mx-auto h-36 w-36 border border-paper/30 bg-paper object-cover" />
+              <div className="relative mx-auto">
+                <NormieImage src={current.image} alt={`Normie ${current.id}`} className="h-36 w-36 border border-paper/30 bg-paper object-cover" />
+                {phase === "countdown" ? (
+                  <div className="absolute inset-0 grid place-items-center border border-mint/70 bg-black/65 font-display text-5xl text-mint shadow-neon">
+                    {countdown}
+                  </div>
+                ) : null}
+              </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 {rules.map((item) => (
                   <div key={item} className={`min-w-0 border px-3 py-2 ${item === rule ? "border-mint bg-mint/10 text-mint" : "border-paper/20 text-paper/65"}`}>
