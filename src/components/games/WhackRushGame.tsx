@@ -13,7 +13,9 @@ const RUN_SECONDS = 60;
 const HOLE_COUNT = 9;
 const MAX_ID = 9999;
 const NORMAL_POINTS = 10;
-const BURNED_PENALTY = 20;
+const COMBO_MILESTONE_BONUS = 25;
+const BURNED_PENALTY = 25;
+const CORNER_HOLES = [0, 2, 6, 8];
 
 type Phase = "idle" | "loading" | "running" | "ended";
 
@@ -32,6 +34,10 @@ function randomId() {
 
 function pickRandom<T>(items: T[]) {
   return items[Math.floor(Math.random() * items.length)];
+}
+
+function availableHoles(targets: Target[]) {
+  return Array.from({ length: HOLE_COUNT }, (_, index) => index).filter((hole) => !targets.some((target) => target.hole === hole));
 }
 
 function spawnDelay(timeLeft: number) {
@@ -68,8 +74,22 @@ export function WhackRushGame() {
   const burnedHitsRef = useRef(0);
   const comboRef = useRef(0);
   const bestComboRef = useRef(0);
+  const waveTimersRef = useRef<number[]>([]);
   const recordLeaderboardResult = useLeaderboardRecorder();
   const notify = useArcadeStore((state) => state.notify);
+
+  const clearWaveTimers = useCallback(() => {
+    waveTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    waveTimersRef.current = [];
+  }, []);
+
+  const scheduleWaveStep = useCallback((run: () => void, delay: number) => {
+    const timer = window.setTimeout(() => {
+      waveTimersRef.current = waveTimersRef.current.filter((item) => item !== timer);
+      if (phaseRef.current === "running") run();
+    }, delay);
+    waveTimersRef.current.push(timer);
+  }, []);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -103,6 +123,7 @@ export function WhackRushGame() {
     (reason: string) => {
       if (recordedRef.current) return;
       recordedRef.current = true;
+      clearWaveTimers();
       phaseRef.current = "ended";
       setPhase("ended");
       setTargets([]);
@@ -127,11 +148,12 @@ export function WhackRushGame() {
         body: `${finalScore} points, ${finalHits} clean hits, ${finalBurnedHits} burned mistakes.`
       });
     },
-    [notify, recordLeaderboardResult]
+    [clearWaveTimers, notify, recordLeaderboardResult]
   );
 
   async function start() {
     if (phase === "loading" || phase === "running") return;
+    clearWaveTimers();
     recordedRef.current = false;
     phaseRef.current = "running";
     setPhase("running");
@@ -150,7 +172,7 @@ export function WhackRushGame() {
     setBurnedIds([]);
     setMessage("Rush started. Burn feed loading in the background.");
     setBurnFeedLoading(true);
-    addTarget();
+    spawnTarget({ burned: false });
 
     NormieAPIService.fetchBurnedNormieIds(120)
       .then((ids) => {
@@ -162,6 +184,7 @@ export function WhackRushGame() {
   }
 
   function reset() {
+    clearWaveTimers();
     recordedRef.current = false;
     phaseRef.current = "idle";
     setPhase("idle");
@@ -180,20 +203,22 @@ export function WhackRushGame() {
     setMessage("Whack live Normies. Do not hit burned Normies.");
   }
 
-  const addTarget = useCallback(() => {
+  const spawnTarget = useCallback((options?: { hole?: number; burned?: boolean; lifeScale?: number }) => {
     setTargets((items) => {
-      const availableHoles = Array.from({ length: HOLE_COUNT }, (_, index) => index).filter((hole) => !items.some((target) => target.hole === hole));
-      if (!availableHoles.length) return items;
+      const openHoles = availableHoles(items);
+      if (!openHoles.length) return items;
 
-      const burned = Math.random() < 0.28;
+      const burned = options?.burned ?? Math.random() < 0.28;
       const burnedPool = burnedIdsRef.current;
       const normieId = burned && burnedPool.length ? pickRandom(burnedPool) : randomId();
       const now = Date.now();
-      const lifeMs = lifeSpan(timeLeftRef.current);
+      const lifeMs = Math.round(lifeSpan(timeLeftRef.current) * (options?.lifeScale ?? 1));
+      const requestedHole = options?.hole;
+      const hole = requestedHole !== undefined && openHoles.includes(requestedHole) ? requestedHole : pickRandom(openHoles);
       const target: Target = {
         id: `${now}-${targetSerial.current++}`,
         normieId,
-        hole: pickRandom(availableHoles),
+        hole,
         burned,
         expiresAt: now + lifeMs,
         lifeMs
@@ -202,6 +227,39 @@ export function WhackRushGame() {
       return [...items, target].slice(-HOLE_COUNT);
     });
   }, []);
+
+  const triggerWave = useCallback(() => {
+    const roll = Math.random();
+
+    if (roll < 0.48) {
+      spawnTarget();
+      return;
+    }
+
+    if (roll < 0.7) {
+      spawnTarget({ burned: false });
+      spawnTarget({ burned: false });
+      setMessage("Double pop. Build the combo.");
+      return;
+    }
+
+    if (roll < 0.88) {
+      const baitHole = Math.floor(Math.random() * HOLE_COUNT);
+      spawnTarget({ hole: baitHole, burned: true, lifeScale: 0.95 });
+      scheduleWaveStep(() => {
+        const nearby = [baitHole - 1, baitHole + 1, baitHole - 3, baitHole + 3].filter((hole) => hole >= 0 && hole < HOLE_COUNT);
+        spawnTarget({ hole: nearby.length ? pickRandom(nearby) : undefined, burned: false, lifeScale: 0.9 });
+      }, 280);
+      setMessage("Burned bait. Wait for the clean target.");
+      return;
+    }
+
+    const corners = [...CORNER_HOLES].sort(() => Math.random() - 0.5);
+    corners.forEach((hole, index) => {
+      scheduleWaveStep(() => spawnTarget({ hole, burned: false, lifeScale: 0.72 }), index * 150);
+    });
+    setMessage("Corner run. Track the route.");
+  }, [scheduleWaveStep, spawnTarget]);
 
   function whack(target: Target) {
     if (phase !== "running") return;
@@ -221,7 +279,7 @@ export function WhackRushGame() {
     }
 
     const nextCombo = comboRef.current + 1;
-    const comboBonus = nextCombo > 1 ? Math.floor(nextCombo / 5) * 2 : 0;
+    const comboBonus = nextCombo > 0 && nextCombo % 5 === 0 ? COMBO_MILESTONE_BONUS : 0;
     hitsRef.current += 1;
     comboRef.current = nextCombo;
     scoreRef.current += NORMAL_POINTS + comboBonus;
@@ -230,7 +288,7 @@ export function WhackRushGame() {
     setCombo(nextCombo);
     setBestCombo(bestComboRef.current);
     setScore(scoreRef.current);
-    setMessage(`Clean whack. +${NORMAL_POINTS + comboBonus}. Combo ${nextCombo}.`);
+    setMessage(comboBonus ? `Clean whack. +${NORMAL_POINTS} and +${comboBonus} combo bonus. Combo ${nextCombo}.` : `Clean whack. +${NORMAL_POINTS}. Combo ${nextCombo}.`);
     playTone(520 + Math.min(nextCombo, 12) * 18, 0.08, "triangle");
   }
 
@@ -244,7 +302,15 @@ export function WhackRushGame() {
     if (phase !== "running") return undefined;
     const interval = window.setInterval(() => {
       setTargets((items) => {
-        const next = items.filter((target) => target.expiresAt > Date.now());
+        const now = Date.now();
+        const expired = items.filter((target) => target.expiresAt <= now);
+        const missedNormal = expired.some((target) => !target.burned);
+        if (missedNormal && comboRef.current > 0) {
+          comboRef.current = 0;
+          setCombo(0);
+          setMessage("Normal Normie escaped. Combo reset.");
+        }
+        const next = items.filter((target) => target.expiresAt > now);
         return next.length === items.length ? items : next;
       });
     }, 120);
@@ -254,10 +320,12 @@ export function WhackRushGame() {
   useEffect(() => {
     if (phase !== "running") return undefined;
     const interval = window.setInterval(() => {
-      if (phaseRef.current === "running") addTarget();
+      if (phaseRef.current === "running") triggerWave();
     }, spawnDelay(timeLeft));
     return () => window.clearInterval(interval);
-  }, [addTarget, phase, timeLeft]);
+  }, [phase, timeLeft, triggerWave]);
+
+  useEffect(() => clearWaveTimers, [clearWaveTimers]);
 
   useEffect(() => {
     if (phase === "running" && timeLeft <= 0) finishRun("Rush complete.");
@@ -312,7 +380,7 @@ export function WhackRushGame() {
           <div className="mt-4 space-y-3 text-sm leading-relaxed text-paper/65">
             <Rule label="Normal Normie" value={`+${NORMAL_POINTS} points`} />
             <Rule label="Burned Normie" value={`-${BURNED_PENALTY} points`} danger />
-            <Rule label="Combo" value="Clean hits add small bonus" />
+            <Rule label="Combo" value={`Every 5 clean hits +${COMBO_MILESTONE_BONUS}`} />
             <Rule label="Leaderboard" value="Highest score wins" />
           </div>
 
@@ -359,7 +427,7 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
         >
           <span
             className={`relative grid h-[calc(100%+0.75rem)] w-36 origin-bottom place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-pop_var(--whack-life)_linear_both] ${
-              target.burned ? "border-paper/70 shadow-[0_0_24px_rgba(244,241,232,0.18)]" : "border-mint shadow-neon"
+              target.burned ? "border-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.55),0_0_24px_rgba(239,68,68,0.35)]" : "border-mint shadow-neon"
             }`}
             style={{ "--whack-life": `${target.lifeMs}ms` } as React.CSSProperties}
           >
