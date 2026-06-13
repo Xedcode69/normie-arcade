@@ -74,6 +74,15 @@ function PrivyOnboarding() {
   const [error, setError] = useState<string | null>(null);
   const activeAvatar = draftNormieId !== null ? normieImageUrl(draftNormieId) : selectedNormieImage;
   const profileComplete = Boolean(username || displayName || selectedNormieId);
+  const hasProfileChanges = useMemo(() => {
+    const normalizedUsername = draftUsername.trim() ? draftUsername.trim().toLowerCase() : "";
+    const normalizedDisplayName = draftDisplayName.trim();
+    return (
+      normalizedUsername !== (username ?? "") ||
+      normalizedDisplayName !== (displayName ?? "") ||
+      draftNormieId !== (selectedNormieId ?? null)
+    );
+  }, [displayName, draftDisplayName, draftNormieId, draftUsername, selectedNormieId, username]);
   const canSave = useMemo(() => {
     const cleanUsername = draftUsername.trim();
     const cleanDisplayName = draftDisplayName.trim();
@@ -89,55 +98,74 @@ function PrivyOnboarding() {
   async function saveProfile() {
     if (!canSave) {
       setError("Username must be 3-20 letters, numbers, or underscores.");
-      return;
+      return false;
     }
 
     const token = await getAccessToken();
     if (!token) {
       setError("Could not read your Privy session.");
-      return;
+      return false;
     }
 
     setSaving(true);
     setError(null);
-    const response = await fetch("/api/account/profile", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        username: draftUsername.trim() ? draftUsername.trim().toLowerCase() : null,
-        displayName: draftDisplayName.trim() || null,
-        selectedNormieId: draftNormieId
-      })
-    });
-    const data = (await response.json()) as {
-      error?: string;
-      profile?: {
-        username: string | null;
-        displayName: string | null;
-        isNormieHolder: boolean;
-        selectedNormieId: number | null;
-        selectedNormieImage: string | null;
-        holderVerifiedAt: string | null;
-        ownedNormieIds: number[];
+    try {
+      const response = await fetch("/api/account/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          username: draftUsername.trim() ? draftUsername.trim().toLowerCase() : null,
+          displayName: draftDisplayName.trim() || null,
+          selectedNormieId: draftNormieId
+        })
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        profile?: {
+          username: string | null;
+          displayName: string | null;
+          isNormieHolder: boolean;
+          selectedNormieId: number | null;
+          selectedNormieImage: string | null;
+          holderVerifiedAt: string | null;
+          ownedNormieIds: number[];
+        };
       };
-    };
-    setSaving(false);
 
-    if (!response.ok || !data.profile) {
-      setError(data.error ?? "Profile setup failed.");
-      return;
+      if (!response.ok || !data.profile) {
+        setError(data.error ?? "Profile setup failed.");
+        return false;
+      }
+
+      setProfile(data.profile);
+      setAvatarUrl(data.profile.selectedNormieImage);
+      notify({ kind: "win", title: "Profile Ready", body: "Your arcade identity is saved." });
+      return true;
+    } catch {
+      setError("Profile setup failed.");
+      return false;
+    } finally {
+      setSaving(false);
     }
-
-    setProfile(data.profile);
-    setAvatarUrl(data.profile.selectedNormieImage);
-    notify({ kind: "win", title: "Profile Ready", body: "Your arcade identity is saved." });
   }
 
   function enterArcade() {
     router.push("/arcade");
+  }
+
+  async function saveAndEnterArcade() {
+    if (!authenticated) return;
+
+    if (!hasProfileChanges) {
+      enterArcade();
+      return;
+    }
+
+    const saved = await saveProfile();
+    if (saved) enterArcade();
   }
 
   return (
@@ -271,17 +299,18 @@ function PrivyOnboarding() {
             <footer className="mt-6 flex flex-col gap-3 border-t border-paper/20 pt-5 sm:flex-row">
               <button
                 onClick={saveProfile}
-                disabled={!authenticated || saving || !canSave}
-                className="inline-flex flex-1 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15 disabled:opacity-45"
+                disabled={!authenticated || saving || !canSave || !hasProfileChanges}
+                className="inline-flex flex-1 items-center justify-center gap-2 border border-paper/35 bg-paper/5 px-5 py-3 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper/60 hover:bg-paper/10 disabled:opacity-45"
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Save Profile
               </button>
               <button
-                onClick={enterArcade}
-                disabled={!authenticated}
-                className="inline-flex flex-1 items-center justify-center gap-2 border border-mint/70 bg-mint/10 px-5 py-3 text-xs uppercase tracking-widest text-mint shadow-neon transition hover:bg-mint/15 disabled:opacity-45"
+                onClick={saveAndEnterArcade}
+                disabled={!authenticated || saving || !canSave}
+                className="inline-flex flex-[1.4] items-center justify-center gap-2 border border-mint/70 bg-mint/10 px-5 py-3 text-xs uppercase tracking-widest text-mint shadow-neon transition hover:bg-mint/15 disabled:opacity-45"
               >
-                Enter Arcade <ArrowRight size={16} />
+                {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+                {hasProfileChanges ? "Save & Enter" : "Enter Arcade"} <ArrowRight size={16} />
               </button>
             </footer>
           </section>
