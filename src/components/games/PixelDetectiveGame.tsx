@@ -7,6 +7,7 @@ import { playTone } from "@/lib/audio";
 import { NormieAPIService } from "@/services/NormieAPIService";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
+import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 60;
 const MAX_ID = 9999;
@@ -259,6 +260,19 @@ export function PixelDetectiveGame() {
         <Metric label="Best" value={bestStreak} />
         <Metric label="Misses" value={mistakes} />
       </section>
+
+      <div className="mx-auto mt-4 w-full max-w-5xl">
+        <GameResultPanel
+          visible={phase === "ended"}
+          title="Pixel Detective"
+          result="complete"
+          finalScore={`${score} correct`}
+          bestMoment={`Best streak x${bestStreak}. ${mistakes} missed suspect${mistakes === 1 ? "" : "s"}.`}
+          leaderboard={{ game: "PIXEL_DETECTIVE", mode: "SKILL", label: "Detective Leaderboard" }}
+          playAgainLabel="Open New Case"
+          onPlayAgain={start}
+        />
+      </div>
 
       <main className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(20rem,28rem)_minmax(0,1fr)]">
         <section className="game-panel min-h-0 p-4">

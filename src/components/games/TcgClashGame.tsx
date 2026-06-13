@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Copy, Dices, Flame, GitBranch, Info, LogIn, Plus, RefreshCw, Shield, Swords, Trophy, Users } from "lucide-react";
+import { AlertTriangle, Copy, Dices, Flame, GitBranch, Home, Info, LogIn, Plus, RefreshCw, Shield, Swords, Trophy, Users } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
@@ -43,6 +43,7 @@ export function TcgClashGame() {
   const selectedNormieImage = useAccountStore((store) => store.selectedNormieImage);
   const notify = useArcadeStore((store) => store.notify);
   const setLeaderboardOpen = useArcadeStore((store) => store.setLeaderboardOpen);
+  const setActiveGame = useArcadeStore((store) => store.setActiveGame);
   const { connected, connect, disconnect, draftPick, error, playerId, playCard, rematch, state } = useTcgPvp(`tcg-${roomCode.toLowerCase()}`);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
@@ -229,7 +230,7 @@ export function TcgClashGame() {
 
         <main className="min-h-0">
           {state.phase === "finished" ? (
-            <MatchResultPanel summary={matchSummary} onRematch={rematch} onOpenLeaderboard={openTcgLeaderboard} />
+            <MatchResultPanel summary={matchSummary} onRematch={rematch} onOpenLeaderboard={openTcgLeaderboard} onReturnToCity={() => setActiveGame("lobby")} />
           ) : null}
 
           {state.phase === "drafting" ? (
@@ -337,7 +338,7 @@ function RevealEffects({ label, reveal }: { label: string; reveal?: { cardId: nu
   );
 }
 
-function MatchResultPanel({ summary, onRematch, onOpenLeaderboard }: { summary: TcgMatchSummary; onRematch: () => void; onOpenLeaderboard: () => void }) {
+function MatchResultPanel({ summary, onRematch, onOpenLeaderboard, onReturnToCity }: { summary: TcgMatchSummary; onRematch: () => void; onOpenLeaderboard: () => void; onReturnToCity: () => void }) {
   const resultClass = summary.result === "Victory" ? "text-mint" : summary.result === "Defeat" ? "text-magenta" : "text-paper";
 
   return (
@@ -372,6 +373,9 @@ function MatchResultPanel({ summary, onRematch, onOpenLeaderboard }: { summary: 
         </button>
         <button onClick={onRematch} className="inline-flex items-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-xs uppercase tracking-widest text-paper transition hover:bg-paper/15">
           <RefreshCw size={15} /> Rematch
+        </button>
+        <button onClick={onReturnToCity} className="inline-flex items-center gap-2 border border-paper/35 bg-black/70 px-4 py-2 text-xs uppercase tracking-widest text-paper/75 transition hover:border-paper hover:text-paper">
+          <Home size={15} /> Return to City
         </button>
       </div>
     </section>

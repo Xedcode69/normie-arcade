@@ -1,7 +1,7 @@
 "use client";
 
 import { CircleDot, Dices, Flame, Gamepad2, Landmark, Layers3, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { useNormiePreload } from "@/hooks/useNormiePreload";
 import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
@@ -99,8 +99,8 @@ const locations: MapLocation[] = [
     label: "Whack-A-Normie",
     subtitle: "Burn yard whack grid",
     hotkey: "7",
-    x: 50,
-    y: 66,
+    x: 49,
+    y: 65,
     color: "#ff7a43",
     kind: "game",
     game: "whack",
@@ -111,8 +111,8 @@ const locations: MapLocation[] = [
     label: "Circuit Clash",
     subtitle: "PvP Normie TCG",
     hotkey: "8",
-    x: 78,
-    y: 67,
+    x: 81,
+    y: 65,
     color: "#9fb7ff",
     kind: "game",
     game: "tcg",
@@ -123,8 +123,8 @@ const locations: MapLocation[] = [
     label: "Chip Bank",
     subtitle: "Cashier and balances",
     hotkey: "C",
-    x: 30,
-    y: 75,
+    x: 25,
+    y: 78,
     color: "#f4f1e8",
     kind: "utility",
     icon: <Landmark size={22} />
@@ -133,8 +133,8 @@ const locations: MapLocation[] = [
     id: "leaderboard-wall",
     label: "Leaderboard Wall",
     subtitle: "Global rankings",
-    x: 68,
-    y: 75,
+    x: 72,
+    y: 80,
     color: "#ff43cf",
     kind: "utility",
     icon: <Trophy size={22} />
@@ -144,7 +144,7 @@ const locations: MapLocation[] = [
     label: "Community Games",
     subtitle: "External arcade portals",
     x: 50,
-    y: 91,
+    y: 95,
     color: "#d7ff35",
     kind: "utility",
     icon: <Gamepad2 size={22} />
@@ -173,11 +173,6 @@ const hoverRoutePairs = [
   ["sort-depot", "leaderboard-wall"]
 ];
 
-function routePath(from: MapLocation, to: MapLocation) {
-  const midY = (from.y + to.y) / 2;
-  return `M ${from.x} ${from.y} V ${midY} H ${to.x} V ${to.y}`;
-}
-
 export function ArcadeLobby() {
   useNormiePreload();
   const [focusedLocationId, setFocusedLocationId] = useState<string | null>(null);
@@ -186,7 +181,6 @@ export function ArcadeLobby() {
   const setCommunityGamesOpen = useArcadeStore((state) => state.setCommunityGamesOpen);
   const notify = useArcadeStore((state) => state.notify);
   const normies = useArcadeStore((state) => state.loadedNormies);
-  const locationById = useMemo(() => new Map(locations.map((location) => [location.id, location])), []);
 
   function selectLocation(location: MapLocation) {
     if (location.game) {
@@ -237,67 +231,13 @@ export function ArcadeLobby() {
             <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={37} width={27} height={19} color="#d7ff35" label="Prediction Tower" kind="tower" />
             <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={34} width={29} height={21} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
             <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={37} width={26} height={19} color="#27f6e7" label="Pixel Detective" kind="casino" />
-            <DistrictZone id="whack-yard" focusedLocationId={focusedLocationId} left={42} top={59} width={16} height={14} color="#ff7a43" label="Whack-A-Normie" kind="burn" />
-            <DistrictZone id="circuit-clash" focusedLocationId={focusedLocationId} left={68} top={59} width={24} height={14} color="#9fb7ff" label="Circuit Clash" kind="tcg" />
-            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={12} top={60} width={29} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
-            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={59} top={60} width={30} height={16} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
-            <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={28} top={84} width={44} height={9} color="#d7ff35" label="Community Games" kind="community" />
+            <DistrictZone id="whack-yard" focusedLocationId={focusedLocationId} left={40} top={57} width={18} height={16} color="#ff7a43" label="Whack-A-Normie" kind="burn" />
+            <DistrictZone id="circuit-clash" focusedLocationId={focusedLocationId} left={69} top={57} width={25} height={16} color="#9fb7ff" label="Circuit Clash" kind="tcg" />
+            <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={8} top={68} width={28} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
+            <DistrictZone id="leaderboard-wall" focusedLocationId={focusedLocationId} left={59} top={74} width={31} height={15} color="#ff43cf" label="Leaderboard Wall" kind="leaderboard" />
+            <DistrictZone id="community-games" focusedLocationId={focusedLocationId} left={28} top={91} width={44} height={8} color="#d7ff35" label="Community Games" kind="community" />
             <CityBlocks isDimmed={Boolean(focusedLocationId)} />
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {spineRoutePairs.map(([fromId, toId]) => {
-                const from = locationById.get(fromId)!;
-                const to = locationById.get(toId)!;
-                const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : true;
-                return (
-                  <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0.28}>
-                    <path
-                      d={routePath(from, to)}
-                      fill="none"
-                      stroke="rgba(0,0,0,0.7)"
-                      strokeWidth="0.36"
-                      strokeDasharray="0.82 0.72"
-                      strokeLinecap="butt"
-                      strokeLinejoin="miter"
-                    />
-                    <path
-                      d={routePath(from, to)}
-                      fill="none"
-                      stroke={isFocusedRoute ? "rgba(39,246,231,0.82)" : "rgba(244,241,232,0.24)"}
-                      strokeWidth={isFocusedRoute ? "0.22" : "0.14"}
-                      strokeDasharray="0.48 0.88"
-                      strokeLinecap="butt"
-                      strokeLinejoin="miter"
-                    />
-                  </g>
-                );
-              })}
-              {hoverRoutePairs.map(([fromId, toId]) => {
-                const from = locationById.get(fromId)!;
-                const to = locationById.get(toId)!;
-                const isFocusedRoute = focusedLocationId ? fromId === focusedLocationId || toId === focusedLocationId : false;
-                return (
-                  <g key={`${fromId}-${toId}`} className="transition-opacity duration-200" opacity={isFocusedRoute ? 1 : 0}>
-                    <path
-                      d={routePath(from, to)}
-                      fill="none"
-                      stroke="rgba(0,0,0,0.72)"
-                      strokeWidth="0.36"
-                      strokeDasharray="0.82 0.72"
-                      strokeLinecap="butt"
-                      strokeLinejoin="miter"
-                    />
-                    <path
-                      d={routePath(from, to)}
-                      fill="none"
-                      stroke="rgba(39,246,231,0.84)"
-                      strokeWidth="0.22"
-                      strokeDasharray="0.48 0.88"
-                      strokeLinecap="butt"
-                      strokeLinejoin="miter"
-                    />
-                  </g>
-                );
-              })}
               {locations.map((location) => {
                 const connectedToFocus = focusedLocationId
                   ? location.id === focusedLocationId ||

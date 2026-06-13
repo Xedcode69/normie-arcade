@@ -12,6 +12,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import { useChipStore } from "@/stores/chipStore";
 import type { NormieTraits } from "@/types/normie";
+import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 type PokerHand = {
   name: string;
@@ -1259,6 +1260,19 @@ function PokerShowdownPanel({
         >
           <RotateCcw size={16} /> Next Hand
         </button>
+      </div>
+      <div className="mt-4">
+        <GameResultPanel
+          visible
+          title="DNA Poker"
+          result={showdown.winners.length > 1 ? "draw" : youWon ? "win" : "loss"}
+          finalScore={`${showdown.pot} chip pot`}
+          chips={youWon ? `+${showdown.payoutEach} payout` : showdown.winners.length > 1 ? `${showdown.payoutEach} split payout` : "Pot lost"}
+          bestMoment={`Winning hand: ${winnerNames || "Pending"}.`}
+          leaderboard={{ game: "POKER", mode: "PVP", label: "Poker Leaderboard" }}
+          playAgainLabel="Next Hand"
+          onPlayAgain={onNextHand}
+        />
       </div>
     </div>
   );

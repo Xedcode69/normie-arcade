@@ -9,6 +9,7 @@ import { useAccountStore } from "@/stores/accountStore";
 import { useArcadeStore } from "@/stores/arcadeStore";
 import type { Normie } from "@/types/normie";
 import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
+import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 30;
 const RULE_EVERY = 4;
@@ -310,6 +311,19 @@ export function SortSprintGame() {
         <Metric label="Best" value={bestCombo} />
         <Metric label="Mistakes" value={mistakes} />
       </section>
+
+      <div className="mx-auto mt-4 w-full max-w-6xl">
+        <GameResultPanel
+          visible={phase === "ended"}
+          title="Sort Sprint"
+          result="complete"
+          finalScore={`${correct} correct`}
+          bestMoment={`Best combo x${bestCombo}. ${correct + mistakes > 0 ? `${Math.round((correct / (correct + mistakes)) * 100)}% accuracy.` : "No bins sorted."}`}
+          leaderboard={{ game: "SORT_SPRINT", mode: "SKILL", label: "Sort Leaderboard" }}
+          playAgainLabel="Start New Shift"
+          onPlayAgain={start}
+        />
+      </div>
 
       <main className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(20rem,28rem)_minmax(0,1fr)]">
         <section className="game-panel min-h-0 p-4">

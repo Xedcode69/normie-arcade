@@ -16,11 +16,18 @@ import { RPS_TYPES } from "@/types/normie";
 import { playTone } from "@/lib/audio";
 import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { BetControls } from "./BetControls";
+import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 type Score = { player: number; npc: number };
 type FighterPick = { type: RPSType };
 type MatchMode = "solo" | "pvp";
 type RoomMode = "quick" | "create" | "join";
+type SoloRpsSummary = {
+  outcome: "win" | "loss";
+  finalScore: string;
+  chips: string;
+  bestMoment: string;
+};
 const RPS_RECONNECT_KEY = "normie-rps-active-room";
 const RPS_QUICK_MATCH_STAKE = 250;
 
@@ -51,6 +58,8 @@ export function RPSGame() {
   const [message, setMessage] = useState("Best of 3. Human beats Cat, Cat beats Alien, Alien beats Human.");
   const [roundResult, setRoundResult] = useState("Choose a type to start the arena match.");
   const [locked, setLocked] = useState(false);
+  const [matchBet, setMatchBet] = useState<number | null>(null);
+  const [soloSummary, setSoloSummary] = useState<SoloRpsSummary | null>(null);
   const wager = useChipStore((state) => state.wager);
   const win = useChipStore((state) => state.win);
   const lose = useChipStore((state) => state.lose);
@@ -58,12 +67,14 @@ export function RPSGame() {
   const recordLeaderboardResult = useLeaderboardRecorder();
 
   async function playRound(playerType: RPSType) {
-    if (locked) return;
+    if (locked || soloSummary) return;
     const roundStart = score.player === 0 && score.npc === 0;
-    if (roundStart && !wager(bet)) {
+    const activeBet = matchBet ?? bet;
+    if (roundStart && matchBet === null && !wager(activeBet)) {
       notify({ kind: "loss", title: "Table rejected", body: "You need more chips for that match." });
       return;
     }
+    if (roundStart && matchBet === null) setMatchBet(activeBet);
 
     setLocked(true);
     setMessage("Arena gates opening...");
@@ -92,18 +103,24 @@ export function RPSGame() {
     if (nextScore.player >= 2 || nextScore.npc >= 2) {
       const won = nextScore.player > nextScore.npc;
       if (won) {
-        const payout = Math.round(bet * 2.4);
+        const payout = Math.round(activeBet * 2.4);
         win(payout);
         void recordLeaderboardResult({
           game: "RPS",
           mode: "SOLO",
           outcome: "WIN",
-          score: payout - bet,
+          score: payout - activeBet,
           chipsWon: payout,
-          netChips: payout - bet,
-          metadata: { bet, finalScore: `${nextScore.player}-${nextScore.npc}` }
+          netChips: payout - activeBet,
+          metadata: { bet: activeBet, finalScore: `${nextScore.player}-${nextScore.npc}` }
         });
         setRoundResult(`MATCH WIN - final score ${nextScore.player}-${nextScore.npc}. 2.4x payout awarded.`);
+        setSoloSummary({
+          outcome: "win",
+          finalScore: `${nextScore.player} - ${nextScore.npc}`,
+          chips: `Bet ${activeBet} / Paid ${payout} / Profit +${payout - activeBet}`,
+          bestMoment: `${playerType} beat ${npcType} to close the match.`
+        });
       } else {
         lose();
         void recordLeaderboardResult({
@@ -112,15 +129,30 @@ export function RPSGame() {
           outcome: "LOSS",
           score: 0,
           chipsWon: 0,
-          netChips: -bet,
-          metadata: { bet, finalScore: `${nextScore.player}-${nextScore.npc}` }
+          netChips: -activeBet,
+          metadata: { bet: activeBet, finalScore: `${nextScore.player}-${nextScore.npc}` }
         });
         setRoundResult(`MATCH LOSS - final score ${nextScore.player}-${nextScore.npc}. The dealer keeps the wager.`);
+        setSoloSummary({
+          outcome: "loss",
+          finalScore: `${nextScore.player} - ${nextScore.npc}`,
+          chips: `Bet ${activeBet} / Paid 0 / Profit -${activeBet}`,
+          bestMoment: `${npcType} beat ${playerType} in the final round.`
+        });
       }
-      setTimeout(() => setScore({ player: 0, npc: 0 }), 900);
     }
 
     setLocked(false);
+  }
+
+  function resetSoloMatch() {
+    setScore({ player: 0, npc: 0 });
+    setPlayerFighter(null);
+    setNpcFighter(null);
+    setMatchBet(null);
+    setSoloSummary(null);
+    setMessage("Best of 3. Human beats Cat, Cat beats Alien, Alien beats Human.");
+    setRoundResult("Choose a type to start the arena match.");
   }
 
   return (
@@ -153,6 +185,9 @@ export function RPSGame() {
           npcFighter={npcFighter}
           locked={locked}
           roundResult={roundResult}
+          betLocked={matchBet !== null || locked}
+          matchSummary={soloSummary}
+          resetMatch={resetSoloMatch}
           playRound={playRound}
         />
       )}
@@ -168,6 +203,9 @@ function RPSSolo({
   npcFighter,
   locked,
   roundResult,
+  betLocked,
+  matchSummary,
+  resetMatch,
   playRound
 }: {
   bet: number;
@@ -177,10 +215,26 @@ function RPSSolo({
   npcFighter: FighterPick | null;
   locked: boolean;
   roundResult: string;
+  betLocked: boolean;
+  matchSummary: SoloRpsSummary | null;
+  resetMatch: () => void;
   playRound: (type: RPSType) => void;
 }) {
   return (
     <>
+      <div className="mx-auto mt-4 w-full max-w-5xl shrink-0">
+        <GameResultPanel
+          visible={Boolean(matchSummary)}
+          title="Type RPS"
+          result={matchSummary?.outcome ?? "complete"}
+          finalScore={matchSummary?.finalScore ?? ""}
+          chips={matchSummary?.chips}
+          bestMoment={matchSummary?.bestMoment ?? ""}
+          leaderboard={{ game: "RPS", mode: "SOLO", label: "RPS Leaderboard" }}
+          playAgainLabel="New Match"
+          onPlayAgain={resetMatch}
+        />
+      </div>
       <div className="mt-8 grid shrink-0 grid-cols-1 justify-center gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,22rem)]">
         <Fighter label="You" fighter={playerFighter} />
         <Fighter label="NPC" fighter={npcFighter} />
@@ -190,13 +244,13 @@ function RPSSolo({
           <button
             key={type}
             onClick={() => playRound(type)}
-            disabled={locked}
+            disabled={locked || Boolean(matchSummary)}
             className="inline-flex min-w-32 items-center justify-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-sm uppercase tracking-widest text-paper transition hover:bg-paper/15 disabled:opacity-50"
           >
             <Swords size={15} /> {type}
           </button>
         ))}
-        <BetControls bet={bet} setBet={setBet} />
+        <BetControls bet={bet} setBet={setBet} disabled={betLocked} />
       </div>
       <div className="mt-5 flex shrink-0 justify-center">
         <div className="pixel-card px-5 py-2 text-sm text-paper">
@@ -1044,14 +1098,14 @@ function Fighter({
           <motion.div
             initial={{ y: 12, opacity: 0, scale: 0.86 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
-            className="relative grid h-28 w-28 place-items-center rounded-full border border-paper/50 bg-paper shadow-[0_0_24px_rgba(244,241,232,0.18)]"
+            className="relative grid h-28 w-28 place-items-center overflow-hidden rounded-full border border-paper/50 bg-paper shadow-[0_0_24px_rgba(244,241,232,0.18)]"
           >
             <Image
               src={typeImages[fighter.type]}
               alt={`${fighter.type} fighter`}
-              width={104}
-              height={104}
-              className="h-24 w-24 object-contain drop-shadow-[0_0_12px_rgba(0,0,0,0.5)]"
+              width={112}
+              height={112}
+              className="h-full w-full object-cover drop-shadow-[0_0_12px_rgba(0,0,0,0.5)]"
             />
           </motion.div>
         ) : hiddenPick ? (

@@ -11,6 +11,7 @@ import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { BetControls } from "./BetControls";
 import { playTone } from "@/lib/audio";
 import { CenteredNormieImage } from "@/components/normies/CenteredNormieImage";
+import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const difficulty = {
   easy: { label: "Easy", count: 3, payout: 3 },
@@ -19,6 +20,12 @@ const difficulty = {
 } as const;
 
 type Difficulty = keyof typeof difficulty;
+type RouletteRoundSummary = {
+  outcome: "win" | "loss";
+  finalScore: string;
+  chips: string;
+  bestMoment: string;
+};
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -32,6 +39,7 @@ export function RouletteGame() {
   const [activeColumn, setActiveColumn] = useState<number | null>(null);
   const [result, setResult] = useState<string>("Choose difficulty, place chips, reveal matching expressions.");
   const [roundResult, setRoundResult] = useState<string>("Ready for the next expression run.");
+  const [roundSummary, setRoundSummary] = useState<RouletteRoundSummary | null>(null);
   const wager = useChipStore((state) => state.wager);
   const win = useChipStore((state) => state.win);
   const lose = useChipStore((state) => state.lose);
@@ -47,6 +55,7 @@ export function RouletteGame() {
     }
 
     setLoading(true);
+    setRoundSummary(null);
     setNormies(Array.from({ length: config.count }, () => null));
     setRoundResult("Round in progress...");
     setResult("Column 1 is spinning through expression symbols...");
@@ -84,6 +93,12 @@ export function RouletteGame() {
       });
       setResult(`Jackpot: all ${expressions[0]}. Paid ${payout} chips.`);
       setRoundResult(`WIN - all columns stopped on ${expressions[0]}. Paid ${payout} chips.`);
+      setRoundSummary({
+        outcome: "win",
+        finalScore: `${payout - bet} net chips`,
+        chips: `+${payout - bet} net / ${payout} paid`,
+        bestMoment: `All ${config.count} reels landed on ${expressions[0]}.`
+      });
       playTone(760, 0.24, "triangle");
     } else {
       lose();
@@ -98,6 +113,12 @@ export function RouletteGame() {
       });
       setResult(`No match: ${expressions.join(" / ")}.`);
       setRoundResult(`LOSE - stopped on ${expressions.join(" / ")}.`);
+      setRoundSummary({
+        outcome: "loss",
+        finalScore: "0 matches",
+        chips: `-${bet} chips`,
+        bestMoment: `Closest read: ${expressions.join(" / ")}.`
+      });
       playTone(180, 0.22, "square");
     }
 
@@ -153,6 +174,19 @@ export function RouletteGame() {
       <div className="mx-auto mt-4 w-full max-w-5xl shrink-0 border-t border-paper/20 pt-3 text-center">
         <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Round Result</div>
         <div className="truncate text-sm text-paper">{roundResult}</div>
+      </div>
+      <div className="mx-auto mt-4 w-full max-w-5xl shrink-0">
+        <GameResultPanel
+          visible={Boolean(roundSummary)}
+          title="Expression Roulette"
+          result={roundSummary?.outcome ?? "complete"}
+          finalScore={roundSummary?.finalScore ?? ""}
+          chips={roundSummary?.chips}
+          bestMoment={roundSummary?.bestMoment ?? ""}
+          leaderboard={{ game: "ROULETTE", mode: "SOLO", label: "Roulette Leaderboard" }}
+          playAgainLabel="Spin Again"
+          onPlayAgain={spin}
+        />
       </div>
     </div>
   );
