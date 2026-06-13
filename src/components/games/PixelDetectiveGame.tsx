@@ -10,10 +10,11 @@ import { useLeaderboardRecorder } from "@/hooks/useLeaderboardRecorder";
 import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 60;
+const COUNTDOWN_SECONDS = 3;
 const MAX_ID = 9999;
 const FRAGMENT_SIZE = 10;
 
-type Phase = "idle" | "loading" | "running" | "ended";
+type Phase = "idle" | "loading" | "countdown" | "running" | "ended";
 
 type PixelRound = {
   targetId: number;
@@ -96,6 +97,7 @@ function suspectStateStyle(id: number, revealedGuess: RevealedGuess | null): Rea
 export function PixelDetectiveGame() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [timeLeft, setTimeLeft] = useState(RUN_SECONDS);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [round, setRound] = useState<PixelRound | null>(null);
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -108,6 +110,13 @@ export function PixelDetectiveGame() {
   const phaseRef = useRef<Phase>("idle");
   const notify = useArcadeStore((state) => state.notify);
   const recordLeaderboardResult = useLeaderboardRecorder();
+
+  const beginCountdown = useCallback(() => {
+    setCountdown(COUNTDOWN_SECONDS);
+    setPhase("countdown");
+    setMessage("Evidence locked. Study the suspects before the case opens.");
+    setLastResult("Case opens in 3.");
+  }, []);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -128,8 +137,7 @@ export function PixelDetectiveGame() {
         rows: fragment.rows,
         crop: fragment.crop
       });
-      setPhase("running");
-      setMessage("Match the fragment to the correct suspect.");
+      beginCountdown();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Pixel feed failed.");
       setLastResult("Could not load a clean pixel fragment.");
@@ -137,7 +145,25 @@ export function PixelDetectiveGame() {
     } finally {
       loadingRef.current = false;
     }
-  }, []);
+  }, [beginCountdown]);
+
+  useEffect(() => {
+    if (phase !== "countdown") return undefined;
+
+    if (countdown <= 0) {
+      setPhase("running");
+      setMessage("Match the fragment to the correct suspect.");
+      setLastResult("Case open. Identify the suspect.");
+      return undefined;
+    }
+
+    setLastResult(`Case opens in ${countdown}.`);
+    const timeout = window.setTimeout(() => {
+      setCountdown((value) => value - 1);
+    }, 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [countdown, phase]);
 
   useEffect(() => {
     if (phase !== "running") return undefined;
@@ -193,6 +219,7 @@ export function PixelDetectiveGame() {
     phaseRef.current = "loading";
     setPhase("loading");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setScore(0);
     setStreak(0);
     setBestStreak(0);
@@ -207,6 +234,7 @@ export function PixelDetectiveGame() {
   function reset() {
     setPhase("idle");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setScore(0);
     setStreak(0);
     setBestStreak(0);
@@ -294,7 +322,14 @@ export function PixelDetectiveGame() {
 
           <div className="grid min-h-80 place-items-center border border-paper/15 bg-black/70 p-4">
             {round ? (
-              <PixelFragment rows={round.rows} />
+              <div className="relative">
+                <PixelFragment rows={round.rows} />
+                {phase === "countdown" ? (
+                  <div className="absolute inset-0 grid place-items-center border border-mint/70 bg-black/65 font-display text-5xl text-mint shadow-neon">
+                    {countdown}
+                  </div>
+                ) : null}
+              </div>
             ) : (
               <div className="grid place-items-center gap-3 text-center text-paper/55">
                 <Crosshair size={38} />
