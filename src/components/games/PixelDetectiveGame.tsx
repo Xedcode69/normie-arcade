@@ -309,7 +309,7 @@ export function PixelDetectiveGame() {
           </div>
         </section>
 
-        <section className="min-h-0">
+        <section className="min-h-0 min-w-0">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Suspects</div>
@@ -319,26 +319,26 @@ export function PixelDetectiveGame() {
               Keys 1-4 select suspects
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {(round?.options ?? [0, 1, 2, 3]).map((id, index) => (
               <button
                 key={`${id}-${index}`}
                 disabled={phase !== "running" || !round || Boolean(revealedGuess)}
                 onClick={() => guess(id)}
-                className={`group grid min-h-72 grid-rows-[1fr_auto] border-2 bg-black/70 p-3 text-left transition hover:-translate-y-0.5 hover:border-mint/80 hover:bg-mint/10 disabled:cursor-default ${suspectStateClass(id, revealedGuess)}`}
+                className={`group grid min-h-72 min-w-0 grid-rows-[1fr_auto] overflow-hidden border-2 bg-black/70 p-2 text-left transition hover:-translate-y-0.5 hover:border-mint/80 hover:bg-mint/10 disabled:cursor-default md:p-3 ${suspectStateClass(id, revealedGuess)}`}
                 style={suspectStateStyle(id, revealedGuess)}
               >
                 {round ? (
-                  <NormieImage src={NormieAPIService.imageUrl(id)} alt={`Normie suspect #${id}`} className="mx-auto h-44 w-44 border border-paper/30 bg-paper object-contain" />
+                  <NormieImage src={NormieAPIService.imageUrl(id)} alt={`Normie suspect #${id}`} className="mx-auto h-40 w-full max-w-40 border border-paper/30 bg-paper object-contain xl:h-36 xl:max-w-36 2xl:h-40 2xl:max-w-40" />
                 ) : (
-                  <div className="mx-auto h-44 w-44 animate-pulse border border-paper/15 bg-paper/10" />
+                  <div className="mx-auto h-40 w-full max-w-40 animate-pulse border border-paper/15 bg-paper/10 xl:h-36 xl:max-w-36 2xl:h-40 2xl:max-w-40" />
                 )}
-                <span className="mt-3 flex items-center justify-between border-t border-paper/15 pt-3">
-                  <span>
-                    <span className="block text-sm uppercase tracking-[0.14em] text-paper">Normie #{round ? id : "----"}</span>
+                <span className="mt-3 flex min-w-0 items-center justify-between gap-2 border-t border-paper/15 pt-3">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm uppercase tracking-[0.14em] text-paper">Normie #{round ? id : "----"}</span>
                     <span className="mt-1 block text-[10px] uppercase tracking-[0.18em] text-paper/45">Suspect {index + 1}</span>
                   </span>
-                  <span className="grid h-8 w-8 place-items-center border border-paper/30 text-pixel/75 group-hover:border-mint group-hover:text-mint">{index + 1}</span>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center border border-paper/30 text-pixel/75 group-hover:border-mint group-hover:text-mint">{index + 1}</span>
                 </span>
               </button>
             ))}
