@@ -351,14 +351,14 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
   return (
     <div className="relative min-h-44 overflow-hidden border border-paper/20 bg-black/70">
       <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(244,241,232,0.09)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.09)_1px,transparent_1px)] [background-size:8px_8px]" />
-      <div className="absolute inset-x-8 bottom-7 h-11 rounded-[50%] border border-paper/30 bg-black shadow-[0_0_26px_rgba(0,0,0,0.95)_inset]" />
+      <div className="absolute inset-x-8 bottom-6 h-11 rounded-[50%] border border-paper/30 bg-black shadow-[0_0_26px_rgba(0,0,0,0.95)_inset]" />
       {target ? (
         <button
           onClick={() => onWhack(target)}
-          className="absolute inset-x-6 bottom-7 top-2 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
+          className="absolute inset-x-6 bottom-7 top-1 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
         >
           <span
-            className={`relative grid h-[calc(100%-0.25rem)] w-32 origin-bottom place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-pop_var(--whack-life)_linear_both] ${
+            className={`relative grid h-[calc(100%+0.75rem)] w-36 origin-bottom place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-pop_var(--whack-life)_linear_both] ${
               target.burned ? "border-paper/70 shadow-[0_0_24px_rgba(244,241,232,0.18)]" : "border-mint shadow-neon"
             }`}
             style={{ "--whack-life": `${target.lifeMs}ms` } as React.CSSProperties}
@@ -367,7 +367,7 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
             <NormieImage
               src={target.burned ? NormieAPIService.burnedImageUrl(target.normieId) : NormieAPIService.imageUrl(target.normieId)}
               alt={`${target.burned ? "Burned" : "Normie"} target #${target.normieId}`}
-              className={`relative h-full w-full translate-y-[8%] object-contain object-bottom ${target.burned ? "opacity-85 grayscale contrast-125" : ""}`}
+              className={`relative h-full w-full -translate-y-[7%] object-contain object-bottom ${target.burned ? "opacity-85 grayscale contrast-125" : ""}`}
             />
           </span>
           {target.burned ? (
@@ -384,8 +384,8 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
           {phase === "running" ? "Waiting" : "Dormant"}
         </div>
       )}
-      <div className="pointer-events-none absolute inset-x-8 bottom-7 h-11 rounded-[50%] border border-paper/35 bg-black shadow-[0_0_22px_rgba(0,0,0,1)_inset]" />
-      <div className="pointer-events-none absolute inset-x-12 bottom-8 h-5 rounded-[50%] bg-black/85" />
+      <div className="pointer-events-none absolute inset-x-8 bottom-6 h-11 rounded-[50%] border border-paper/35 bg-black shadow-[0_0_22px_rgba(0,0,0,1)_inset]" />
+      <div className="pointer-events-none absolute inset-x-12 bottom-7 h-5 rounded-[50%] bg-black/85" />
     </div>
   );
 }
