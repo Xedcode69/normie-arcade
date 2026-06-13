@@ -64,7 +64,7 @@ export function Leaderboard() {
   }, [open, selected]);
 
   return (
-    <aside className="pointer-events-auto absolute right-3 top-32 z-40 md:right-5">
+    <aside className="pointer-events-auto fixed right-3 top-32 z-[130] md:right-5">
       <button
         aria-label="Toggle leaderboard"
         onClick={() => setOpen(!open)}
