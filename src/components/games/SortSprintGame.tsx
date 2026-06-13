@@ -13,7 +13,7 @@ import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 30;
 const COUNTDOWN_SECONDS = 3;
-const RULE_EVERY = 4;
+const MAX_RULE_STREAK = 2;
 const LEADERBOARD_KEY = "normie-sort-sprint-leaderboard:v1";
 const START_QUEUE_TARGET = 48;
 const START_MIN_READY = 30;
@@ -45,11 +45,6 @@ function displayTrait(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : "Unknown";
 }
 
-function nextRule(current: Rule) {
-  const index = rules.indexOf(current);
-  return rules[(index + 1) % rules.length];
-}
-
 function seededShuffle<T>(items: T[], seed: string) {
   const shuffled = [...items];
   let hash = 0;
@@ -65,6 +60,11 @@ function seededShuffle<T>(items: T[], seed: string) {
   }
 
   return shuffled;
+}
+
+function rollRule(previous: Rule | null, streak: number) {
+  const candidates = previous && streak >= MAX_RULE_STREAK ? rules.filter((item) => item !== previous) : rules;
+  return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
 function buildBins(rule: Rule, current: Normie | null, queue: Normie[]) {
@@ -111,7 +111,6 @@ export function SortSprintGame() {
   const [timeLeft, setTimeLeft] = useState<number>(RUN_SECONDS);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [rule, setRule] = useState<Rule>("Expression");
-  const [sortsOnRule, setSortsOnRule] = useState(0);
   const [correct, setCorrect] = useState(0);
   const [combo, setCombo] = useState(0);
   const [bestCombo, setBestCombo] = useState(0);
@@ -125,6 +124,8 @@ export function SortSprintGame() {
   const currentRef = useRef<Normie | null>(null);
   const queueRef = useRef<Normie[]>([]);
   const loadGenerationRef = useRef(0);
+  const ruleRef = useRef<Rule>("Expression");
+  const ruleStreakRef = useRef(1);
   const notify = useArcadeStore((state) => state.notify);
   const displayName = useAccountStore((state) => state.displayName);
   const username = useAccountStore((state) => state.username);
@@ -133,10 +134,23 @@ export function SortSprintGame() {
   const bins = useMemo(() => buildBins(rule, current, queue), [current, queue, rule]);
 
   const beginCountdown = useCallback(() => {
+    const openingRule = rollRule(null, 0);
+    ruleRef.current = openingRule;
+    ruleStreakRef.current = 1;
+    setRule(openingRule);
     setCountdown(COUNTDOWN_SECONDS);
     setPhase("countdown");
-    setMessage("Belt ready. Watch the first Normie, then sort on go.");
+    setMessage(`Belt ready. First rule: ${openingRule}.`);
     setLastResult("Shift starts in 3.");
+  }, []);
+
+  const rollNextRule = useCallback(() => {
+    const previous = ruleRef.current;
+    const next = rollRule(previous, ruleStreakRef.current);
+    ruleStreakRef.current = next === previous ? ruleStreakRef.current + 1 : 1;
+    ruleRef.current = next;
+    setRule(next);
+    setMessage(`Rule roll. Sort by ${next}.`);
   }, []);
 
   useEffect(() => {
@@ -242,7 +256,7 @@ export function SortSprintGame() {
 
     if (countdown <= 0) {
       setPhase("running");
-      setMessage("Sorting belt online. Score as many correct sorts as possible.");
+      setMessage(`Sorting belt online. Sort by ${ruleRef.current}.`);
       setLastResult("Go. 30-second shift started.");
       return undefined;
     }
@@ -314,13 +328,13 @@ export function SortSprintGame() {
     }
     setTimeLeft(RUN_SECONDS);
     setCountdown(COUNTDOWN_SECONDS);
-    setRule("Expression");
-    setSortsOnRule(0);
     setCorrect(0);
     setCombo(0);
     setBestCombo(0);
     setMistakes(0);
-    setMessage(readyCount >= START_MIN_READY ? "Belt ready. Watch the first Normie, then sort on go." : "Preloading the sorting belt.");
+    if (readyCount < START_MIN_READY) {
+      setMessage("Preloading the sorting belt.");
+    }
     setLastResult(readyCount >= START_MIN_READY ? "Shift starts in 3." : "Filling the queue before the clock starts.");
     if (readyCount < START_QUEUE_TARGET) void warmQueue();
   }
@@ -334,7 +348,8 @@ export function SortSprintGame() {
     setTimeLeft(RUN_SECONDS);
     setCountdown(COUNTDOWN_SECONDS);
     setRule("Expression");
-    setSortsOnRule(0);
+    ruleRef.current = "Expression";
+    ruleStreakRef.current = 1;
     setCorrect(0);
     setCombo(0);
     setBestCombo(0);
@@ -353,20 +368,11 @@ export function SortSprintGame() {
 
     if (correct) {
       const nextCombo = combo + 1;
-      const nextSortsOnRule = sortsOnRule + 1;
       setCorrect((value) => value + 1);
       setCombo(nextCombo);
       setBestCombo((value) => Math.max(value, nextCombo));
-      setSortsOnRule(nextSortsOnRule);
       playTone(520 + Math.min(nextCombo, 12) * 24, 0.1, "triangle");
       setLastResult(`Correct - ${expected}. Combo ${nextCombo}.`);
-
-      if (nextSortsOnRule >= RULE_EVERY) {
-        const changedRule = nextRule(rule);
-        setRule(changedRule);
-        setSortsOnRule(0);
-        setMessage(`Rule swap. Sort by ${changedRule}.`);
-      }
     } else {
       const nextMistakes = mistakes + 1;
       setMistakes(nextMistakes);
@@ -376,6 +382,7 @@ export function SortSprintGame() {
       setMessage(nextMistakes >= 3 ? "Three wrong bins is rough. One clean streak can still save it." : "Wrong bin. Combo reset.");
     }
 
+    rollNextRule();
     pullNext();
   }
 
