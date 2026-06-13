@@ -222,7 +222,10 @@ export function ArcadeLobby() {
           </div>
         </div>
 
-        <div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-y border-paper/10 thin-scroll">
+        <div
+          className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-y border-paper/10 thin-scroll"
+          onPointerLeave={() => setFocusedLocationId(null)}
+        >
           <div className="relative h-[1580px] min-w-0">
             <div className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(circle_at_center,rgba(244,241,232,0.07)_0_1px,transparent_1px)] [background-size:24px_24px]" />
             <DistrictZone id="roulette-district" focusedLocationId={focusedLocationId} left={5} top={9} width={26} height={18} color="#27f6e7" label="Roulette District" kind="casino" />
@@ -270,7 +273,7 @@ export function ArcadeLobby() {
               })}
             </svg>
 
-            <div className="absolute inset-0">
+            <div className="pointer-events-none absolute inset-0 z-20">
               {locations.map((location, index) => (
                 <MapStop
                   key={location.id}
@@ -560,12 +563,13 @@ function MapStop({
 
   return (
     <button
+      type="button"
       onClick={onSelect}
-      onMouseEnter={() => onFocusChange(location.id)}
-      onMouseLeave={() => onFocusChange(null)}
+      onPointerEnter={() => onFocusChange(location.id)}
+      onPointerLeave={() => onFocusChange(null)}
       onFocus={() => onFocusChange(location.id)}
       onBlur={() => onFocusChange(null)}
-      className="group absolute z-10 w-48 max-w-[38vw] -translate-x-1/2 -translate-y-1/2 text-center transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
+      className="group pointer-events-auto absolute w-48 max-w-[38vw] -translate-x-1/2 -translate-y-1/2 text-center transition duration-200 hover:-translate-y-[calc(50%+0.25rem)]"
       style={{ left: `${location.x}%`, top: `${location.y}%` }}
     >
       <span
