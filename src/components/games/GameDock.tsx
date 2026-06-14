@@ -20,16 +20,18 @@ const instructions = {
     title: "Expression Roulette",
     lines: [
       "Choose Easy, Medium, or Hard, then set your chip bet.",
-      "Each column spins, fetches a real Normie, and stops on that Normie's API Expression trait.",
-      "Win only when every revealed Normie has the same Expression."
+      "The mode controls how many Normie reels spin and how large the payout is.",
+      "Each reel fetches a real Normie and stops on that Normie's API Expression trait.",
+      "Win only when every revealed reel lands on the same Expression."
     ]
   },
   rps: {
     title: "Type RPS Arena",
     lines: [
-      "Choose Human, Cat, or Alien to start a round.",
+      "Play solo against the dealer or join a PartyKit PvP room.",
       "Cat beats Alien, Human beats Cat, and Alien beats Human.",
-      "The match is best of three. First side to two round wins takes the match."
+      "Solo and PvP matches are best of three. First side to two round wins takes the match.",
+      "PvP quickplay uses a fixed 250-chip stake. Invite rooms can reconnect and rematch."
     ]
   },
   poker: {
@@ -38,7 +40,7 @@ const instructions = {
       "Texas-style PvP poker using real Normies as cards.",
       "Each seated player reserves the same buy-in, then antes from that table stack each hand.",
       "You receive two private Normies. Five community Normies reveal across flop, turn, and river.",
-      "Use check, call, raise, or fold during betting. The server handles chip reserve, wagers, pot, and payout.",
+      "Use check, call, raise, or fold during betting. Each active turn has a 30-second timer; timeout auto-folds.",
       "Click a visible card to inspect full traits. Hover for a quick Expression, Eyes, and Accessory peek.",
       "Glowing cards show which visible Normies currently contribute to your best DNA combo."
     ],
@@ -46,18 +48,19 @@ const instructions = {
       {
         heading: "DNA Hands",
         items: [
-          "Expression Pair: two or more cards share Expression.",
-          "Eye Trips: three or more cards share Eyes.",
-          "Age/Gender Flush: five cards share Age or Gender.",
-          "Accessory Full House: Expression pair plus Accessory triple.",
-          "Perfect DNA: four or more cards share Eyes, Accessory, or Facial Feature."
+          "Pair: two or more cards share Hair Style.",
+          "Three of a Kind: three or more cards share Eyes.",
+          "Flush: all five cards share Expression.",
+          "Full House: three cards share Accessory and the other two cards share Facial Feature.",
+          "Perfect DNA: all five cards share Eyes, Accessory, or Facial Feature."
         ]
       },
       {
         heading: "Showdown",
         items: [
           "Best five-card DNA hand wins the pot.",
-          "Tied best hands split the pot.",
+          "If the best hand tier ties, the highest token ID sum among that combo wins.",
+          "If both hand tier and token sum tie, the pot splits between those players.",
           "Folded players cannot win the hand."
         ]
       }
@@ -67,7 +70,8 @@ const instructions = {
     title: "Up Or Down",
     lines: [
       "Choose Easy, Medium, or Hard, then set your chip bet.",
-      "Predict whether the next fetched Normie ID is higher or lower than the current base.",
+      "Predict whether the next fetched Normie ID will be higher or lower than the current base.",
+      "A correct read makes that Normie ID the new base for the next round.",
       "Survive the target number of predictions to win the mode payout."
     ]
   },
@@ -76,8 +80,9 @@ const instructions = {
     lines: [
       "Start a fixed 30-second sorting shift.",
       "Read the active rule and send each live Normie to the matching trait bin.",
-      "The rule changes during the run. Correct sorts build combo and wrong bins reset it.",
-      "Your final score is the number of correct selections, ranked on the cabinet leaderboard."
+      "The rule can change during the run, so keep reading the current trait target.",
+      "Correct sorts build combo and wrong bins reset it.",
+      "Final score, accuracy, and best combo post to the skill leaderboard."
     ]
   },
   pixel: {
@@ -86,6 +91,7 @@ const instructions = {
       "Start a 60-second investigation.",
       "The cabinet fetches a real Normie pixel payload and shows one cropped fragment.",
       "Pick the full Normie suspect that matches the fragment.",
+      "Correct IDs build a streak; misses cost time and break momentum.",
       "Use keys 1-4 for quick suspect selection."
     ]
   },
@@ -93,18 +99,21 @@ const instructions = {
     title: "Whack-A-Normie",
     lines: [
       "Start a 60-second rush.",
-      "Whack live Normies for points.",
-      "Avoid burned Normies. Hitting one deducts score and breaks combo.",
-      "Clean hits build combo and the best score posts to the skill leaderboard."
+      "Whack clean live Normies for points as they appear in the grid.",
+      "Avoid burned Normies from the burn feed. Hitting one deducts score and breaks combo.",
+      "Clean hits build combo, with bonus points at combo milestones.",
+      "Best score and best combo post to the skill leaderboard."
     ]
   },
   tcg: {
     title: "Normie Circuit Clash",
     lines: [
       "PvP 1v1 lane battler using real Normie cards.",
-      "Each player gets a private 12-card Normie deck and a 3-card hand.",
+      "Players draft from a shared Normie pool, then fight with private hands and decks.",
       "Play one card into one of three lanes each turn.",
-      "Same-lane cards compare power. Separate lanes both score. Highest score after five turns wins."
+      "Same-lane cards compare power. Separate lanes both score.",
+      "Expression, Type, burned status, and small combo effects can shift lane power.",
+      "Highest score after five turns wins; tied final scores are draws."
     ]
   }
 } as const;
