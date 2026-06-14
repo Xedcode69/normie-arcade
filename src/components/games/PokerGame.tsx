@@ -512,8 +512,6 @@ function PokerPvP() {
         <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} traitsById={visibleTraitsById} />
       ) : null}
 
-      <PokerActionTimeline actionLog={state.actionLog} />
-
       {state.phase === "betting" ? (
         <PokerBettingControls
           availableChips={tableStack}
@@ -527,6 +525,8 @@ function PokerPvP() {
           onAction={submitAction}
         />
       ) : null}
+
+      <PokerActionTimeline actionLog={state.actionLog} />
 
       {state.phase === "showdown" && state.showdown ? (
         <PokerShowdownPanel showdown={state.showdown} playerId={playerId} onNextHand={nextHand} />
@@ -854,7 +854,7 @@ function PokerTable({
 function PokerSeatLegend() {
   const states = [
     { label: "Ready", className: "border-mint/55 bg-mint/10 text-mint" },
-    { label: "Acting", className: "border-mint bg-black text-mint shadow-neon" },
+    { label: "Acting", className: "border-mint bg-black text-mint ring-1 ring-mint/45" },
     { label: "Folded", className: "border-magenta/50 bg-magenta/10 text-magenta" },
     { label: "Offline", className: "border-paper/20 bg-black/55 text-paper/40" },
     { label: "Winner", className: "border-mint bg-mint/15 text-mint shadow-neon" }
@@ -957,7 +957,7 @@ function PokerTableSeat({
     open: "border-paper/20 bg-black/45 opacity-75",
     seated: isYou ? "border-cyan bg-black/85" : "border-paper/35 bg-black/85",
     ready: "border-mint/55 bg-mint/10 shadow-neon",
-    acting: "animate-pulse border-mint bg-black/90 shadow-[0_0_34px_rgba(34,255,225,0.45)] ring-2 ring-mint/45",
+    acting: "border-mint bg-black/90 ring-2 ring-mint/45",
     folded: "border-magenta/45 bg-magenta/10 opacity-70",
     offline: "border-paper/20 bg-black/65 grayscale opacity-55",
     acted: "border-paper/40 bg-black/85",
@@ -967,7 +967,7 @@ function PokerTableSeat({
     open: "border-paper/25 text-paper/45",
     seated: "border-paper/30 text-paper/55",
     ready: "border-mint/50 text-mint",
-    acting: "border-mint bg-mint/10 text-mint shadow-neon",
+    acting: "border-mint bg-mint/10 text-mint",
     folded: "border-magenta/50 text-magenta",
     offline: "border-paper/20 text-paper/35",
     acted: "border-cyan/40 text-cyan",
@@ -980,8 +980,8 @@ function PokerTableSeat({
     >
       {isTurn || isWinner ? (
         <>
-          <div className="pointer-events-none absolute -inset-2 border border-mint/30 shadow-neon" />
-          <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 border border-mint bg-black px-3 py-1 font-display text-[10px] uppercase tracking-[0.22em] text-mint shadow-neon">
+          <div className={`pointer-events-none absolute -inset-2 border ${isWinner ? "border-mint/30 shadow-neon" : "border-mint/35"}`} />
+          <div className={`pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 border border-mint bg-black px-3 py-1 font-display text-[10px] uppercase tracking-[0.22em] text-mint ${isWinner ? "shadow-neon" : ""}`}>
             {isWinner ? "Winner" : "Acting"}
           </div>
         </>
