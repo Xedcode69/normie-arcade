@@ -72,6 +72,7 @@ export type PokerPvPState = {
       }>;
       handName: string;
       score: number;
+      tokenSum: number;
       summary: string;
     }>;
   };

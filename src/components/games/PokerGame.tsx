@@ -24,10 +24,10 @@ const POKER_RECONNECT_KEY = "normie-poker-active-room";
 
 const handRanks = {
   none: { name: "No DNA Hand", multiplier: 0 },
-  pair: { name: "Expression Pair", multiplier: 2 },
-  eyeTrips: { name: "Eye Trips", multiplier: 4 },
-  flush: { name: "Age/Gender Flush", multiplier: 7 },
-  accessoryFullHouse: { name: "Accessory Full House", multiplier: 12 },
+  pair: { name: "Pair", multiplier: 2 },
+  threeOfAKind: { name: "Three of a Kind", multiplier: 4 },
+  flush: { name: "Flush", multiplier: 7 },
+  fullHouse: { name: "Full House", multiplier: 12 },
   perfectDna: { name: "Perfect DNA", multiplier: 20 }
 } as const;
 
@@ -57,65 +57,64 @@ function evaluateTraitsCombo(traits: NormieTraits[], minFlushCards = 5): PokerHa
   const eyes = traits.map((trait) => trait.Eyes);
   const accessories = traits.map((trait) => trait.Accessory);
   const facialFeatures = traits.map((trait) => trait["Facial Feature"]);
-  const genders = traits.map((trait) => trait.Gender);
-  const ages = traits.map((trait) => trait.Age);
-  const expressionCounts = countValues(expressions);
+  const hairStyles = traits.map((trait) => trait["Hair Style"]);
   const eyeCounts = countValues(eyes);
   const accessoryCounts = countValues(accessories);
   const facialFeatureCounts = countValues(facialFeatures);
-  const eyePerfect = hasCount(eyeCounts, 4);
-  const accessoryPerfect = hasCount(accessoryCounts, 4);
-  const facialFeaturePerfect = hasCount(facialFeatureCounts, 4);
+  const hairStyleCounts = countValues(hairStyles);
+  const eyePerfect = hasCount(eyeCounts, 5);
+  const accessoryPerfect = hasCount(accessoryCounts, 5);
+  const facialFeaturePerfect = hasCount(facialFeatureCounts, 5);
   const accessoryTriple = hasCount(accessoryCounts, 3);
   const eyeTriple = hasCount(eyeCounts, 3);
-  const expressionPair = hasCount(expressionCounts, 2);
-  const genderFlush = traits.length >= minFlushCards && allSame(genders);
-  const ageFlush = traits.length >= minFlushCards && allSame(ages);
+  const facialFeaturePair = hasCount(facialFeatureCounts, 2);
+  const hairStylePair = hasCount(hairStyleCounts, 2);
+  const expressionFlush = traits.length >= minFlushCards && allSame(expressions);
 
   if (eyePerfect || accessoryPerfect || facialFeaturePerfect) {
     return {
       ...handRanks.perfectDna,
-      summary: `Four or more cards match ${
+      summary: `Five cards match ${
         eyePerfect
-          ? `Eyes ${matchingValue(eyeCounts, 4)}`
+          ? `Eyes ${matchingValue(eyeCounts, 5)}`
           : accessoryPerfect
-          ? `Accessory ${matchingValue(accessoryCounts, 4)}`
-          : `Facial Feature ${matchingValue(facialFeatureCounts, 4)}`
+          ? `Accessory ${matchingValue(accessoryCounts, 5)}`
+          : `Facial Feature ${matchingValue(facialFeatureCounts, 5)}`
       }.`
     };
   }
 
-  if (expressionPair && accessoryTriple) {
+  if (accessoryTriple && facialFeaturePair) {
     return {
-      ...handRanks.accessoryFullHouse,
-      summary: `Expression pair plus Accessory triple. Expressions: ${expressions.join(" / ")}. Accessories: ${accessories.join(" / ")}.`
+      ...handRanks.fullHouse,
+      summary: `Accessory triple plus Facial Feature pair. Accessories: ${accessories.join(" / ")}. Facial features: ${facialFeatures.join(" / ")}.`
     };
   }
 
-  if (genderFlush || ageFlush) {
+  if (expressionFlush) {
     return {
       ...handRanks.flush,
-      summary: `All cards share ${genderFlush ? `Gender ${genders[0] ?? "Unknown"}` : `Age ${ages[0] ?? "Unknown"}`}.`
+      summary: `All cards share Expression ${expressions[0] ?? "Unknown"}.`
     };
   }
 
   if (eyeTriple) {
     return {
-      ...handRanks.eyeTrips,
+      ...handRanks.threeOfAKind,
       summary: `Three or more cards share Eyes ${matchingValue(eyeCounts, 3)}. Eyes: ${eyes.join(" / ")}.`
     };
   }
 
-  if (expressionPair) {
+  if (hairStylePair) {
     return {
       ...handRanks.pair,
-      summary: `Two or more cards share an Expression. Expressions: ${expressions.join(" / ")}.`
+      summary: `Two or more cards share Hair Style ${matchingValue(hairStyleCounts, 2)}. Hair styles: ${hairStyles.join(" / ")}.`
     };
   }
 
   return {
     ...handRanks.none,
-    summary: `No scoring DNA combination. Expressions: ${expressions.join(" / ")}.`
+    summary: `No scoring DNA combination. Hair styles: ${hairStyles.join(" / ")}.`
   };
 }
 
@@ -180,25 +179,26 @@ function findComboHighlightIds(cards: TraitCard[]) {
   if (!best || best.hand.multiplier <= 0) return new Set<number>();
 
   const combo = best.combo;
-  const eyePerfect = idsForTraitCount(combo, "Eyes", 4);
+  const eyePerfect = idsForTraitCount(combo, "Eyes", 5);
   if (eyePerfect.length) return new Set(eyePerfect);
 
-  const accessoryPerfect = idsForTraitCount(combo, "Accessory", 4);
+  const accessoryPerfect = idsForTraitCount(combo, "Accessory", 5);
   if (accessoryPerfect.length) return new Set(accessoryPerfect);
 
-  const facialFeaturePerfect = idsForTraitCount(combo, "Facial Feature", 4);
+  const facialFeaturePerfect = idsForTraitCount(combo, "Facial Feature", 5);
   if (facialFeaturePerfect.length) return new Set(facialFeaturePerfect);
 
-  const expressionPair = idsForTraitCount(combo, "Expression", 2);
   const accessoryTriple = idsForTraitCount(combo, "Accessory", 3);
-  if (expressionPair.length && accessoryTriple.length) return new Set([...expressionPair, ...accessoryTriple]);
+  const facialFeaturePair = idsForTraitCount(combo, "Facial Feature", 2);
+  if (accessoryTriple.length && facialFeaturePair.length) return new Set([...accessoryTriple, ...facialFeaturePair]);
 
-  if (allShareTrait(combo, "Gender") || allShareTrait(combo, "Age")) return new Set(combo.map((card) => card.id));
+  if (allShareTrait(combo, "Expression")) return new Set(combo.map((card) => card.id));
 
   const eyeTrips = idsForTraitCount(combo, "Eyes", 3);
   if (eyeTrips.length) return new Set(eyeTrips);
 
-  if (expressionPair.length) return new Set(expressionPair);
+  const hairStylePair = idsForTraitCount(combo, "Hair Style", 2);
+  if (hairStylePair.length) return new Set(hairStylePair);
 
   return new Set<number>();
 }
@@ -1204,6 +1204,7 @@ function PokerShowdownPanel({
       }>;
       handName: string;
       score: number;
+      tokenSum: number;
       summary: string;
     }>;
   };
@@ -1286,6 +1287,7 @@ function PokerShowdownPanel({
               </div>
               <div className="mt-2 truncate text-[10px] text-paper/40">All available: {hand.cards.map((id) => `#${id}`).join(" / ")}</div>
               <div className="mt-3 font-display text-sm text-paper">{hand.handName}</div>
+              <div className="terminal-hash mt-1 text-[10px] uppercase tracking-widest text-mint/70">Token sum {hand.tokenSum}</div>
               <div className="mt-1 text-xs text-paper/55">{hand.summary}</div>
             </div>
           );

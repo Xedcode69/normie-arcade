@@ -134,6 +134,7 @@ type RawNormieTraitsResponse =
 type PokerEvaluation = {
   handName: string;
   score: number;
+  tokenSum: number;
   summary: string;
 };
 
@@ -149,6 +150,7 @@ type PokerShowdown = {
     cardTraits: Array<{ id: number; traits: NormieTraits }>;
     handName: string;
     score: number;
+    tokenSum: number;
     summary: string;
   }>;
 };
@@ -1537,46 +1539,48 @@ export default class RPSParty {
     return values.length > 0 && values.every((value) => Boolean(value) && value !== "Unknown" && value === values[0]);
   }
 
-  private evaluatePokerHand(traits: NormieTraits[]): PokerEvaluation {
+  private evaluatePokerHand(cards: Array<{ id: number; traits: NormieTraits }>): PokerEvaluation {
+    const traits = cards.map((card) => card.traits);
+    const tokenSum = cards.reduce((total, card) => total + card.id, 0);
     const expressions = traits.map((trait) => trait.Expression);
     const eyes = traits.map((trait) => trait.Eyes);
     const accessories = traits.map((trait) => trait.Accessory);
     const facialFeatures = traits.map((trait) => trait["Facial Feature"]);
-    const genders = traits.map((trait) => trait.Gender);
-    const ages = traits.map((trait) => trait.Age);
-    const expressionCounts = this.countValues(expressions);
+    const hairStyles = traits.map((trait) => (typeof trait["Hair Style"] === "string" ? trait["Hair Style"] : undefined));
     const eyeCounts = this.countValues(eyes);
     const accessoryCounts = this.countValues(accessories);
     const facialFeatureCounts = this.countValues(facialFeatures);
-    const eyePerfect = this.hasCount(eyeCounts, 4);
-    const accessoryPerfect = this.hasCount(accessoryCounts, 4);
-    const facialFeaturePerfect = this.hasCount(facialFeatureCounts, 4);
+    const hairStyleCounts = this.countValues(hairStyles);
+    const eyePerfect = this.hasCount(eyeCounts, 5);
+    const accessoryPerfect = this.hasCount(accessoryCounts, 5);
+    const facialFeaturePerfect = this.hasCount(facialFeatureCounts, 5);
     const accessoryTriple = this.hasCount(accessoryCounts, 3);
     const eyeTriple = this.hasCount(eyeCounts, 3);
-    const expressionPair = this.hasCount(expressionCounts, 2);
-    const genderFlush = this.allSame(genders);
-    const ageFlush = this.allSame(ages);
+    const facialFeaturePair = this.hasCount(facialFeatureCounts, 2);
+    const hairStylePair = this.hasCount(hairStyleCounts, 2);
+    const expressionFlush = this.allSame(expressions);
 
     if (eyePerfect || accessoryPerfect || facialFeaturePerfect) {
       return {
         handName: "Perfect DNA",
         score: 60,
-        summary: `Four or more cards match ${
+        tokenSum,
+        summary: `Five cards match ${
           eyePerfect
-            ? `Eyes ${this.matchingValue(eyeCounts, 4)}`
+            ? `Eyes ${this.matchingValue(eyeCounts, 5)}`
             : accessoryPerfect
-            ? `Accessory ${this.matchingValue(accessoryCounts, 4)}`
-            : `Facial Feature ${this.matchingValue(facialFeatureCounts, 4)}`
-        }.`
+            ? `Accessory ${this.matchingValue(accessoryCounts, 5)}`
+            : `Facial Feature ${this.matchingValue(facialFeatureCounts, 5)}`
+        }. Token sum ${tokenSum}.`
       };
     }
-    if (expressionPair && accessoryTriple) {
-      return { handName: "Accessory Full House", score: 50, summary: "Expression pair plus Accessory triple." };
+    if (accessoryTriple && facialFeaturePair) {
+      return { handName: "Full House", score: 50, tokenSum, summary: `Accessory triple plus Facial Feature pair. Token sum ${tokenSum}.` };
     }
-    if (genderFlush || ageFlush) return { handName: "Age/Gender Flush", score: 40, summary: `All cards share ${genderFlush ? "Gender" : "Age"}.` };
-    if (eyeTriple) return { handName: "Eye Trips", score: 30, summary: `Three or more cards share Eyes ${this.matchingValue(eyeCounts, 3)}.` };
-    if (expressionPair) return { handName: "Expression Pair", score: 20, summary: "Two or more cards share an Expression." };
-    return { handName: "No DNA Hand", score: 10, summary: "No scoring DNA combination." };
+    if (expressionFlush) return { handName: "Flush", score: 40, tokenSum, summary: `Five cards share Expression ${expressions[0] ?? "Unknown"}. Token sum ${tokenSum}.` };
+    if (eyeTriple) return { handName: "Three of a Kind", score: 30, tokenSum, summary: `Three or more cards share Eyes ${this.matchingValue(eyeCounts, 3)}. Token sum ${tokenSum}.` };
+    if (hairStylePair) return { handName: "Pair", score: 20, tokenSum, summary: `Two or more cards share Hair Style ${this.matchingValue(hairStyleCounts, 2)}. Token sum ${tokenSum}.` };
+    return { handName: "No DNA Hand", score: 10, tokenSum, summary: `No scoring DNA combination. Token sum ${tokenSum}.` };
   }
 
   private fiveCardCombos(cards: number[]) {
@@ -1599,15 +1603,20 @@ export default class RPSParty {
     const combos = this.fiveCardCombos(cards);
     const evaluated = await Promise.all(
       combos.map(async (combo) => {
-        const traits = await Promise.all(combo.map((id) => this.fetchNormieTraits(id)));
+        const cards = await Promise.all(combo.map(async (id) => ({ id, traits: await this.fetchNormieTraits(id) })));
         return {
           cards: combo,
-          evaluation: this.evaluatePokerHand(traits)
+          evaluation: this.evaluatePokerHand(cards)
         };
       })
     );
 
-    return evaluated.reduce((best, current) => (current.evaluation.score > best.evaluation.score ? current : best));
+    return evaluated.reduce((best, current) =>
+      current.evaluation.score > best.evaluation.score ||
+      (current.evaluation.score === best.evaluation.score && current.evaluation.tokenSum > best.evaluation.tokenSum)
+        ? current
+        : best
+    );
   }
 
   private async evaluatePokerShowdown(players: PokerPlayer[]): Promise<PokerShowdown> {
@@ -1624,12 +1633,15 @@ export default class RPSParty {
           cardTraits,
           handName: best.evaluation.handName,
           score: best.evaluation.score,
+          tokenSum: best.evaluation.tokenSum,
           summary: best.evaluation.summary
         };
       })
     );
     const bestScore = Math.max(...hands.map((hand) => hand.score));
-    const winners = hands.filter((hand) => hand.score === bestScore).map((hand) => hand.playerId);
+    const highestTierHands = hands.filter((hand) => hand.score === bestScore);
+    const bestTokenSum = Math.max(...highestTierHands.map((hand) => hand.tokenSum));
+    const winners = highestTierHands.filter((hand) => hand.tokenSum === bestTokenSum).map((hand) => hand.playerId);
     const pot = this.pokerState.pot || players.reduce((total, player) => total + (player.committed ?? player.ante), 0);
     const payoutEach = Math.floor(pot / Math.max(1, winners.length));
 
