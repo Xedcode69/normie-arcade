@@ -206,9 +206,9 @@ export function ArcadeLobby() {
   }
 
   return (
-    <section className="relative h-screen overflow-hidden bg-void pt-20 text-paper">
+    <section className="relative h-screen overflow-hidden bg-void pt-14 text-paper">
       <div className="pointer-events-none absolute inset-0 opacity-65 [background-image:linear-gradient(rgba(244,241,232,0.052)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.052)_1px,transparent_1px)] [background-size:18px_18px]" />
-      <div className="pointer-events-none absolute inset-x-0 top-20 h-px bg-gradient-to-r from-transparent via-mint/60 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-14 h-px bg-gradient-to-r from-transparent via-mint/60 to-transparent" />
       <div className="pointer-events-none absolute bottom-0 left-1/4 h-44 w-44 bg-mint/18 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 right-1/5 h-52 w-52 bg-magenta/16 blur-3xl" />
 

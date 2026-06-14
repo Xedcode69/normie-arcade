@@ -24,7 +24,7 @@ export type PokerPvPPlayer = {
 };
 
 export type PokerPvPState = {
-  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown";
+  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown" | "finished";
   players: PokerPvPPlayer[];
   maxPlayers: number;
   round: number;
@@ -34,9 +34,11 @@ export type PokerPvPState = {
   currentBet: number;
   minRaise: number;
   turnPlayerId?: string;
+  turnExpiresAt?: number;
   street?: "preflop" | "flop" | "turn" | "river";
   communityCards: number[];
   handId?: string;
+  nextHandStartsAt?: number;
   privateHand?: number[];
   history: Array<{
     round: number;
@@ -71,6 +73,7 @@ export type PokerPvPState = {
       }>;
       handName: string;
       score: number;
+      tokenSum: number;
       summary: string;
     }>;
   };

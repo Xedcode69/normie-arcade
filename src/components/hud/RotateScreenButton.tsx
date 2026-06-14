@@ -32,7 +32,7 @@ export function RotateScreenButton() {
     <button
       aria-label="Rotate screen"
       onClick={rotateScreen}
-      className="grid h-11 w-11 place-items-center hud-panel text-paper/70 transition hover:text-paper"
+      className="grid h-9 w-9 place-items-center border border-paper/25 bg-black/65 text-paper/65 transition hover:border-paper/55 hover:text-paper"
     >
       <RotateCw size={17} />
     </button>

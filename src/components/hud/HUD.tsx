@@ -14,13 +14,9 @@ export function HUD() {
   const toggleMuted = useAudioStore((state) => state.toggleMuted);
 
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 p-3 md:p-5">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
-        <div className="hud-panel pointer-events-auto px-4 py-3">
-          <div className="font-display text-sm uppercase tracking-[0.32em] text-paper neon-text">Normie Arcade</div>
-          <div className="terminal-hash mt-1 text-xs text-pixel/70">Live API dealers, chips, and bitmap tables</div>
-        </div>
-        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 py-3 md:px-5">
+      <div className="mx-auto flex max-w-7xl justify-end">
+        <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-end gap-1.5 rounded-sm border border-paper/15 bg-black/35 p-1.5 shadow-[0_0_28px_rgba(34,255,225,0.08)] backdrop-blur-sm">
           <AuthButton />
           <ProfileButton />
           <CreditSystem />
@@ -29,7 +25,7 @@ export function HUD() {
           <button
             aria-label="Toggle audio"
             onClick={toggleMuted}
-            className="grid h-11 w-11 place-items-center hud-panel text-paper/70 transition hover:text-paper"
+            className="grid h-9 w-9 place-items-center border border-paper/25 bg-black/65 text-paper/65 transition hover:border-paper/55 hover:text-paper"
           >
             {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
           </button>
@@ -41,11 +37,11 @@ export function HUD() {
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="hud-panel flex min-w-28 items-center gap-2 px-3 py-2">
-      <span className="text-paper">{icon}</span>
+    <div className="flex h-9 min-w-24 items-center gap-2 border border-paper/25 bg-black/65 px-2.5">
+      <span className="text-paper/70">{icon}</span>
       <span>
-        <span className="terminal-hash block text-[9px] uppercase tracking-widest text-pixel/55">{label}</span>
-        <span className="block text-sm capitalize text-paper">{value}</span>
+        <span className="terminal-hash block text-[8px] uppercase tracking-widest text-pixel/45">{label}</span>
+        <span className="block text-xs capitalize leading-none text-paper">{value}</span>
       </span>
     </div>
   );

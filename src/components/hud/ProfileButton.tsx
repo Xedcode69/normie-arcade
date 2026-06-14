@@ -44,7 +44,7 @@ function PrivyProfileButton() {
 
   if (!ready) {
     return (
-      <button className="grid h-11 w-11 place-items-center hud-panel text-paper/45" disabled aria-label="Profile loading">
+      <button className="grid h-9 w-9 place-items-center border border-paper/25 bg-black/65 text-paper/45" disabled aria-label="Profile loading">
         <Loader2 size={17} className="animate-spin" />
       </button>
     );
@@ -55,7 +55,7 @@ function PrivyProfileButton() {
       <button
         aria-label={authenticated ? "Open profile" : "Connect to edit profile"}
         onClick={() => (authenticated ? setOpen(true) : login())}
-        className="grid h-11 w-11 place-items-center hud-panel text-paper/75 transition hover:text-mint"
+        className="grid h-9 w-9 place-items-center border border-paper/25 bg-black/65 text-paper/70 transition hover:border-mint/60 hover:text-mint"
         title="Profile"
       >
         {profile.selectedNormieImage ? (
@@ -64,7 +64,7 @@ function PrivyProfileButton() {
             alt="Profile Normie"
             width={28}
             height={28}
-            className="h-7 w-7 border border-paper/40 bg-paper object-contain"
+            className="h-6 w-6 border border-paper/40 bg-paper object-contain"
             unoptimized
           />
         ) : (

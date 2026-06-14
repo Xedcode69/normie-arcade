@@ -24,10 +24,10 @@ const POKER_RECONNECT_KEY = "normie-poker-active-room";
 
 const handRanks = {
   none: { name: "No DNA Hand", multiplier: 0 },
-  pair: { name: "Expression Pair", multiplier: 2 },
-  eyeTrips: { name: "Eye Trips", multiplier: 4 },
-  flush: { name: "Age/Gender Flush", multiplier: 7 },
-  accessoryFullHouse: { name: "Accessory Full House", multiplier: 12 },
+  pair: { name: "Pair", multiplier: 2 },
+  threeOfAKind: { name: "Three of a Kind", multiplier: 4 },
+  flush: { name: "Flush", multiplier: 7 },
+  fullHouse: { name: "Full House", multiplier: 12 },
   perfectDna: { name: "Perfect DNA", multiplier: 20 }
 } as const;
 
@@ -52,70 +52,96 @@ function allSame(values: Array<string | undefined>) {
   return values.length > 0 && values.every((value) => Boolean(value) && value !== "Unknown" && value === values[0]);
 }
 
+function idsForIndexedTraitCount(cards: Array<{ id: number; traits: NormieTraits }>, traitName: keyof NormieTraits | "Facial Feature", target: number) {
+  const counts = cards.reduce<Record<string, number[]>>((result, card) => {
+    const value = card.traits[traitName];
+    if (!value || value === "Unknown") return result;
+    const key = String(value);
+    result[key] = [...(result[key] ?? []), card.id];
+    return result;
+  }, {});
+
+  return Object.values(counts).find((ids) => ids.length >= target) ?? [];
+}
+
+function disjointFullHouseIds(cards: Array<{ id: number; traits: NormieTraits }>) {
+  const accessoryTrips = idsForIndexedTraitCount(cards, "Accessory", 3).slice(0, 3);
+  if (accessoryTrips.length < 3) return null;
+
+  const tripIds = new Set(accessoryTrips);
+  const facialFeaturePair = idsForIndexedTraitCount(
+    cards.filter((card) => !tripIds.has(card.id)),
+    "Facial Feature",
+    2
+  ).slice(0, 2);
+
+  if (facialFeaturePair.length < 2) return null;
+  return { accessoryTrips, facialFeaturePair };
+}
+
 function evaluateTraitsCombo(traits: NormieTraits[], minFlushCards = 5): PokerHand {
+  const indexedCards = traits.map((trait, index) => ({ id: index, traits: trait }));
   const expressions = traits.map((trait) => trait.Expression);
   const eyes = traits.map((trait) => trait.Eyes);
   const accessories = traits.map((trait) => trait.Accessory);
   const facialFeatures = traits.map((trait) => trait["Facial Feature"]);
-  const genders = traits.map((trait) => trait.Gender);
-  const ages = traits.map((trait) => trait.Age);
-  const expressionCounts = countValues(expressions);
+  const hairStyles = traits.map((trait) => trait["Hair Style"]);
   const eyeCounts = countValues(eyes);
   const accessoryCounts = countValues(accessories);
   const facialFeatureCounts = countValues(facialFeatures);
-  const eyePerfect = hasCount(eyeCounts, 4);
-  const accessoryPerfect = hasCount(accessoryCounts, 4);
-  const facialFeaturePerfect = hasCount(facialFeatureCounts, 4);
-  const accessoryTriple = hasCount(accessoryCounts, 3);
+  const hairStyleCounts = countValues(hairStyles);
+  const eyePerfect = hasCount(eyeCounts, 5);
+  const accessoryPerfect = hasCount(accessoryCounts, 5);
+  const facialFeaturePerfect = hasCount(facialFeatureCounts, 5);
   const eyeTriple = hasCount(eyeCounts, 3);
-  const expressionPair = hasCount(expressionCounts, 2);
-  const genderFlush = traits.length >= minFlushCards && allSame(genders);
-  const ageFlush = traits.length >= minFlushCards && allSame(ages);
+  const fullHouse = disjointFullHouseIds(indexedCards);
+  const hairStylePair = hasCount(hairStyleCounts, 2);
+  const expressionFlush = traits.length >= minFlushCards && allSame(expressions);
 
   if (eyePerfect || accessoryPerfect || facialFeaturePerfect) {
     return {
       ...handRanks.perfectDna,
-      summary: `Four or more cards match ${
+      summary: `Five cards match ${
         eyePerfect
-          ? `Eyes ${matchingValue(eyeCounts, 4)}`
+          ? `Eyes ${matchingValue(eyeCounts, 5)}`
           : accessoryPerfect
-          ? `Accessory ${matchingValue(accessoryCounts, 4)}`
-          : `Facial Feature ${matchingValue(facialFeatureCounts, 4)}`
+          ? `Accessory ${matchingValue(accessoryCounts, 5)}`
+          : `Facial Feature ${matchingValue(facialFeatureCounts, 5)}`
       }.`
     };
   }
 
-  if (expressionPair && accessoryTriple) {
+  if (fullHouse) {
     return {
-      ...handRanks.accessoryFullHouse,
-      summary: `Expression pair plus Accessory triple. Expressions: ${expressions.join(" / ")}. Accessories: ${accessories.join(" / ")}.`
+      ...handRanks.fullHouse,
+      summary: `Accessory triple plus Facial Feature pair. Accessories: ${accessories.join(" / ")}. Facial features: ${facialFeatures.join(" / ")}.`
     };
   }
 
-  if (genderFlush || ageFlush) {
+  if (expressionFlush) {
     return {
       ...handRanks.flush,
-      summary: `All cards share ${genderFlush ? `Gender ${genders[0] ?? "Unknown"}` : `Age ${ages[0] ?? "Unknown"}`}.`
+      summary: `All cards share Expression ${expressions[0] ?? "Unknown"}.`
     };
   }
 
   if (eyeTriple) {
     return {
-      ...handRanks.eyeTrips,
+      ...handRanks.threeOfAKind,
       summary: `Three or more cards share Eyes ${matchingValue(eyeCounts, 3)}. Eyes: ${eyes.join(" / ")}.`
     };
   }
 
-  if (expressionPair) {
+  if (hairStylePair) {
     return {
       ...handRanks.pair,
-      summary: `Two or more cards share an Expression. Expressions: ${expressions.join(" / ")}.`
+      summary: `Two or more cards share Hair Style ${matchingValue(hairStyleCounts, 2)}. Hair styles: ${hairStyles.join(" / ")}.`
     };
   }
 
   return {
     ...handRanks.none,
-    summary: `No scoring DNA combination. Expressions: ${expressions.join(" / ")}.`
+    summary: `No scoring DNA combination. Hair styles: ${hairStyles.join(" / ")}.`
   };
 }
 
@@ -180,25 +206,25 @@ function findComboHighlightIds(cards: TraitCard[]) {
   if (!best || best.hand.multiplier <= 0) return new Set<number>();
 
   const combo = best.combo;
-  const eyePerfect = idsForTraitCount(combo, "Eyes", 4);
+  const eyePerfect = idsForTraitCount(combo, "Eyes", 5);
   if (eyePerfect.length) return new Set(eyePerfect);
 
-  const accessoryPerfect = idsForTraitCount(combo, "Accessory", 4);
+  const accessoryPerfect = idsForTraitCount(combo, "Accessory", 5);
   if (accessoryPerfect.length) return new Set(accessoryPerfect);
 
-  const facialFeaturePerfect = idsForTraitCount(combo, "Facial Feature", 4);
+  const facialFeaturePerfect = idsForTraitCount(combo, "Facial Feature", 5);
   if (facialFeaturePerfect.length) return new Set(facialFeaturePerfect);
 
-  const expressionPair = idsForTraitCount(combo, "Expression", 2);
-  const accessoryTriple = idsForTraitCount(combo, "Accessory", 3);
-  if (expressionPair.length && accessoryTriple.length) return new Set([...expressionPair, ...accessoryTriple]);
+  const fullHouse = disjointFullHouseIds(combo);
+  if (fullHouse) return new Set([...fullHouse.accessoryTrips, ...fullHouse.facialFeaturePair]);
 
-  if (allShareTrait(combo, "Gender") || allShareTrait(combo, "Age")) return new Set(combo.map((card) => card.id));
+  if (allShareTrait(combo, "Expression")) return new Set(combo.map((card) => card.id));
 
   const eyeTrips = idsForTraitCount(combo, "Eyes", 3);
   if (eyeTrips.length) return new Set(eyeTrips);
 
-  if (expressionPair.length) return new Set(expressionPair);
+  const hairStylePair = idsForTraitCount(combo, "Hair Style", 2);
+  if (hairStylePair.length) return new Set(hairStylePair);
 
   return new Set<number>();
 }
@@ -257,7 +283,7 @@ function PokerPvP() {
   const callAmount = Math.max(0, state.currentBet - streetCommitted);
   const minRaiseTo = state.currentBet + state.minRaise;
   const activeRaiseCaps = state.players
-    .filter((player) => player.connected && !player.folded)
+    .filter((player) => player.connected && !player.folded && (player.stack ?? 0) > 0)
     .map((player) => (player.streetCommitted ?? 0) + (player.stack ?? 0));
   const maxRaiseTo = Math.min(streetCommitted + tableStack, activeRaiseCaps.length ? Math.min(...activeRaiseCaps) : streetCommitted + tableStack);
   const isYourTurn = connected && state.phase === "betting" && state.turnPlayerId === playerId;
@@ -512,8 +538,6 @@ function PokerPvP() {
         <LivePokerHints privateIds={privateHand} communityIds={state.communityCards} traitsById={visibleTraitsById} />
       ) : null}
 
-      <PokerActionTimeline actionLog={state.actionLog} />
-
       {state.phase === "betting" ? (
         <PokerBettingControls
           availableChips={tableStack}
@@ -525,12 +549,17 @@ function PokerPvP() {
           minRaise={state.minRaise}
           minRaiseTo={minRaiseTo}
           onAction={submitAction}
+          turnExpiresAt={state.turnExpiresAt}
         />
       ) : null}
 
+      <PokerActionTimeline actionLog={state.actionLog} />
+
       {state.phase === "showdown" && state.showdown ? (
-        <PokerShowdownPanel showdown={state.showdown} playerId={playerId} onNextHand={nextHand} />
+        <PokerShowdownPanel showdown={state.showdown} playerId={playerId} nextHandStartsAt={state.nextHandStartsAt} onNextHand={nextHand} />
       ) : null}
+
+      {state.phase === "finished" ? <PokerTableFinishedPanel message={state.message} /> : null}
 
       <PokerHandHistory history={state.history} playerId={playerId} />
 
@@ -546,13 +575,15 @@ function PokerPvP() {
           <>
             <button
               onClick={toggleReady}
-              disabled={state.phase === "dealt" || state.phase === "betting" || state.phase === "showdown"}
+              disabled={state.phase === "dealt" || state.phase === "betting" || state.phase === "showdown" || state.phase === "finished"}
               className={`inline-flex min-w-36 items-center justify-center gap-2 border px-5 py-3 text-xs uppercase tracking-widest transition ${
                 you?.ready ? "border-mint bg-mint/10 text-mint" : "border-paper/70 bg-paper/10 text-paper shadow-neon hover:bg-paper/15"
               } disabled:opacity-50`}
             >
               <CheckCircle2 size={16} />{" "}
-              {state.phase === "showdown"
+              {state.phase === "finished"
+                ? "Table Ended"
+                : state.phase === "showdown"
                 ? "Showdown"
                 : state.phase === "betting"
                 ? "Betting"
@@ -577,6 +608,8 @@ function PokerPvP() {
         <div className="text-sm text-paper">
           {state.phase === "showdown"
             ? "Showdown complete. Ante/pot settlement is handled server-side."
+            : state.phase === "finished"
+            ? state.message
             : state.phase === "betting"
             ? isYourTurn
               ? `${streetLabel}. Your turn. ${callAmount > 0 ? `Call ${callAmount}, raise, or fold.` : "Check, raise, or fold."}`
@@ -599,7 +632,8 @@ function PokerBettingControls({
   maxRaiseTo,
   minRaise,
   minRaiseTo,
-  onAction
+  onAction,
+  turnExpiresAt
 }: {
   availableChips: number;
   callAmount: number;
@@ -610,8 +644,10 @@ function PokerBettingControls({
   minRaise: number;
   minRaiseTo: number;
   onAction: (action: "check" | "call" | "raise" | "fold", raiseTo?: number) => void;
+  turnExpiresAt?: number;
 }) {
   const [raiseInput, setRaiseInput] = useState(minRaiseTo);
+  const [secondsLeft, setSecondsLeft] = useState(() => (turnExpiresAt ? Math.max(0, Math.ceil((turnExpiresAt - Date.now()) / 1000)) : null));
   const canCall = !disabled && callAmount > 0 && availableChips >= callAmount;
   const canRaise = !disabled && maxRaiseTo >= minRaiseTo;
   const normalizedRaise = Math.min(maxRaiseTo, Math.max(minRaiseTo, Math.round(raiseInput || minRaiseTo)));
@@ -620,12 +656,25 @@ function PokerBettingControls({
     setRaiseInput(minRaiseTo);
   }, [minRaiseTo, maxRaiseTo]);
 
+  useEffect(() => {
+    if (!turnExpiresAt) {
+      setSecondsLeft(null);
+      return;
+    }
+
+    const update = () => setSecondsLeft(Math.max(0, Math.ceil((turnExpiresAt - Date.now()) / 1000)));
+    update();
+    const interval = window.setInterval(update, 250);
+    return () => window.clearInterval(interval);
+  }, [turnExpiresAt]);
+
   return (
     <div className="mx-auto mt-5 w-full max-w-5xl border border-paper/35 bg-black/65 p-4 text-center">
       <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Betting Action</div>
       <div className="mt-1 text-sm text-paper/70">
         {isYourTurn ? "Your action is live." : "Waiting for the current seat."} Current bet {currentBet}. Minimum raise {minRaise}. Available {availableChips}.
       </div>
+      {secondsLeft !== null ? <div className="terminal-hash mt-2 text-[10px] uppercase tracking-[0.22em] text-mint/75">Action timer {secondsLeft}s</div> : null}
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <button
           onClick={() => onAction("check")}
@@ -811,7 +860,7 @@ function PokerTable({
         <div className="absolute inset-x-24 top-32 bottom-32 rounded-[50%] border border-mint/20" />
         <ChipFlightLayer flights={chipFlights} />
 
-        <div className="absolute left-1/2 top-1/2 z-10 w-full max-w-xl -translate-x-1/2 -translate-y-1/2 px-6 text-center">
+        <div className="absolute left-1/2 top-[58%] z-10 w-full max-w-xl -translate-x-1/2 -translate-y-1/2 px-6 text-center">
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint/65">
             {streetLabel} | Pot {pot} | Bet {currentBet}
           </div>
@@ -854,7 +903,8 @@ function PokerTable({
 function PokerSeatLegend() {
   const states = [
     { label: "Ready", className: "border-mint/55 bg-mint/10 text-mint" },
-    { label: "Acting", className: "border-mint bg-black text-mint shadow-neon" },
+    { label: "Acting", className: "border-mint bg-black text-mint ring-1 ring-mint/45" },
+    { label: "All-In", className: "border-cyan/60 bg-cyan/10 text-cyan" },
     { label: "Folded", className: "border-magenta/50 bg-magenta/10 text-magenta" },
     { label: "Offline", className: "border-paper/20 bg-black/55 text-paper/40" },
     { label: "Winner", className: "border-mint bg-mint/15 text-mint shadow-neon" }
@@ -924,10 +974,13 @@ function PokerTableSeat({
 }) {
   const activeHand = phase === "dealt" || phase === "betting" || phase === "showdown";
   const isWinner = Boolean(player && showdownWinnerIds.includes(player.id));
+  const isAllIn = Boolean(player && activeHand && !player.folded && (player.stack ?? 0) <= 0 && !isWinner);
   const seatState = !player
     ? "open"
     : isWinner
     ? "winner"
+    : isAllIn
+    ? "allin"
     : player.folded
     ? "folded"
     : !player.connected
@@ -944,6 +997,8 @@ function PokerTableSeat({
       ? "OPEN"
       : seatState === "winner"
       ? "WINNER"
+      : seatState === "allin"
+      ? "ALL-IN"
       : seatState === "folded"
       ? "FOLD"
       : seatState === "offline"
@@ -957,7 +1012,8 @@ function PokerTableSeat({
     open: "border-paper/20 bg-black/45 opacity-75",
     seated: isYou ? "border-cyan bg-black/85" : "border-paper/35 bg-black/85",
     ready: "border-mint/55 bg-mint/10 shadow-neon",
-    acting: "animate-pulse border-mint bg-black/90 shadow-[0_0_34px_rgba(34,255,225,0.45)] ring-2 ring-mint/45",
+    acting: "border-mint bg-black/90 ring-2 ring-mint/45",
+    allin: "border-cyan/70 bg-cyan/10",
     folded: "border-magenta/45 bg-magenta/10 opacity-70",
     offline: "border-paper/20 bg-black/65 grayscale opacity-55",
     acted: "border-paper/40 bg-black/85",
@@ -967,7 +1023,8 @@ function PokerTableSeat({
     open: "border-paper/25 text-paper/45",
     seated: "border-paper/30 text-paper/55",
     ready: "border-mint/50 text-mint",
-    acting: "border-mint bg-mint/10 text-mint shadow-neon",
+    acting: "border-mint bg-mint/10 text-mint",
+    allin: "border-cyan/60 bg-cyan/10 text-cyan",
     folded: "border-magenta/50 text-magenta",
     offline: "border-paper/20 text-paper/35",
     acted: "border-cyan/40 text-cyan",
@@ -980,8 +1037,8 @@ function PokerTableSeat({
     >
       {isTurn || isWinner ? (
         <>
-          <div className="pointer-events-none absolute -inset-2 border border-mint/30 shadow-neon" />
-          <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 border border-mint bg-black px-3 py-1 font-display text-[10px] uppercase tracking-[0.22em] text-mint shadow-neon">
+          <div className={`pointer-events-none absolute -inset-2 border ${isWinner ? "border-mint/30 shadow-neon" : "border-mint/35"}`} />
+          <div className={`pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 border border-mint bg-black px-3 py-1 font-display text-[10px] uppercase tracking-[0.22em] text-mint ${isWinner ? "shadow-neon" : ""}`}>
             {isWinner ? "Winner" : "Acting"}
           </div>
         </>
@@ -1172,6 +1229,7 @@ function TraitPreview({ traits }: { traits?: NormieTraits | null }) {
 function PokerShowdownPanel({
   showdown,
   playerId,
+  nextHandStartsAt,
   onNextHand
 }: {
   showdown: {
@@ -1189,17 +1247,36 @@ function PokerShowdownPanel({
       }>;
       handName: string;
       score: number;
+      tokenSum: number;
       summary: string;
     }>;
   };
   playerId: string | null;
+  nextHandStartsAt?: number;
   onNextHand: () => void;
 }) {
   const youWon = showdown.winners.includes(playerId ?? "");
+  const [countdown, setCountdown] = useState(() => (nextHandStartsAt ? Math.max(0, Math.ceil((nextHandStartsAt - Date.now()) / 1000)) : null));
   const winnerNames = showdown.hands
     .filter((hand) => showdown.winners.includes(hand.playerId))
     .map((hand) => hand.playerName)
     .join(" / ");
+
+  useEffect(() => {
+    if (!nextHandStartsAt) {
+      setCountdown(null);
+      return undefined;
+    }
+    const startsAt = nextHandStartsAt;
+
+    function tick() {
+      setCountdown(Math.max(0, Math.ceil((startsAt - Date.now()) / 1000)));
+    }
+
+    tick();
+    const interval = window.setInterval(tick, 250);
+    return () => window.clearInterval(interval);
+  }, [nextHandStartsAt]);
 
   return (
     <div className={`mx-auto mt-6 w-full max-w-5xl border bg-black/80 p-4 ${youWon ? "border-mint shadow-neon" : "border-paper/50 shadow-neon"}`}>
@@ -1217,6 +1294,11 @@ function PokerShowdownPanel({
           <div className="mt-2 text-sm text-paper/70">
             Pot {showdown.pot} chips. {showdown.winners.length > 1 ? `Split payout ${showdown.payoutEach} each.` : `Winner payout ${showdown.payoutEach}.`}
           </div>
+          {countdown !== null ? (
+            <div className="mt-3 inline-flex border border-mint/55 bg-mint/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-mint">
+              Next hand starts in {countdown}s
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1248,6 +1330,7 @@ function PokerShowdownPanel({
               </div>
               <div className="mt-2 truncate text-[10px] text-paper/40">All available: {hand.cards.map((id) => `#${id}`).join(" / ")}</div>
               <div className="mt-3 font-display text-sm text-paper">{hand.handName}</div>
+              <div className="terminal-hash mt-1 text-[10px] uppercase tracking-widest text-mint/70">Token sum {hand.tokenSum}</div>
               <div className="mt-1 text-xs text-paper/55">{hand.summary}</div>
             </div>
           );
@@ -1258,7 +1341,7 @@ function PokerShowdownPanel({
           onClick={onNextHand}
           className="inline-flex min-w-36 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
         >
-          <RotateCcw size={16} /> Next Hand
+          <RotateCcw size={16} /> Deal Now
         </button>
       </div>
       <div className="mt-4">
@@ -1270,9 +1353,25 @@ function PokerShowdownPanel({
           chips={youWon ? `+${showdown.payoutEach} payout` : showdown.winners.length > 1 ? `${showdown.payoutEach} split payout` : "Pot lost"}
           bestMoment={`Winning hand: ${winnerNames || "Pending"}.`}
           leaderboard={{ game: "POKER", mode: "PVP", label: "Poker Leaderboard" }}
-          playAgainLabel="Next Hand"
+          playAgainLabel={countdown !== null ? `Auto Deal ${countdown}s` : "Deal Now"}
           onPlayAgain={onNextHand}
         />
+      </div>
+    </div>
+  );
+}
+
+function PokerTableFinishedPanel({ message }: { message: string }) {
+  return (
+    <div className="mx-auto mt-6 w-full max-w-5xl border border-mint bg-black/80 p-4 text-center shadow-neon">
+      <div className="mx-auto grid h-11 w-11 place-items-center border border-mint/70 bg-black text-mint shadow-neon">
+        <Trophy size={22} />
+      </div>
+      <div className="terminal-hash mt-3 text-[10px] uppercase tracking-[0.24em] text-pixel/65">Table Finished</div>
+      <h3 className="mt-2 font-display text-xl uppercase tracking-[0.22em] text-mint">Game Over</h3>
+      <div className="mt-2 text-sm text-paper/75">{message}</div>
+      <div className="mt-4 border border-paper/15 bg-black/55 px-3 py-2 text-xs uppercase tracking-[0.18em] text-paper/45">
+        Create or join a new room to start another poker table.
       </div>
     </div>
   );

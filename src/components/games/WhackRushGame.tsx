@@ -10,12 +10,14 @@ import { useArcadeStore } from "@/stores/arcadeStore";
 import { GameResultPanel } from "@/components/games/GameResultPanel";
 
 const RUN_SECONDS = 60;
+const COUNTDOWN_SECONDS = 3;
 const HOLE_COUNT = 9;
 const MAX_ID = 9999;
 const NORMAL_POINTS = 10;
-const BURNED_PENALTY = 20;
+const COMBO_MILESTONE_BONUS = 25;
+const BURNED_PENALTY = 25;
 
-type Phase = "idle" | "loading" | "running" | "ended";
+type Phase = "idle" | "loading" | "countdown" | "running" | "ended";
 
 type Target = {
   id: string;
@@ -23,6 +25,7 @@ type Target = {
   hole: number;
   burned: boolean;
   expiresAt: number;
+  lifeMs: number;
 };
 
 function randomId() {
@@ -31,6 +34,10 @@ function randomId() {
 
 function pickRandom<T>(items: T[]) {
   return items[Math.floor(Math.random() * items.length)];
+}
+
+function availableHoles(targets: Target[]) {
+  return Array.from({ length: HOLE_COUNT }, (_, index) => index).filter((hole) => !targets.some((target) => target.hole === hole));
 }
 
 function spawnDelay(timeLeft: number) {
@@ -48,6 +55,7 @@ function lifeSpan(timeLeft: number) {
 export function WhackRushGame() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [timeLeft, setTimeLeft] = useState(RUN_SECONDS);
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [targets, setTargets] = useState<Target[]>([]);
   const [burnedIds, setBurnedIds] = useState<number[]>([]);
   const [burnFeedLoading, setBurnFeedLoading] = useState(false);
@@ -67,8 +75,22 @@ export function WhackRushGame() {
   const burnedHitsRef = useRef(0);
   const comboRef = useRef(0);
   const bestComboRef = useRef(0);
+  const waveTimersRef = useRef<number[]>([]);
   const recordLeaderboardResult = useLeaderboardRecorder();
   const notify = useArcadeStore((state) => state.notify);
+
+  const clearWaveTimers = useCallback(() => {
+    waveTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    waveTimersRef.current = [];
+  }, []);
+
+  const scheduleWaveStep = useCallback((run: () => void, delay: number) => {
+    const timer = window.setTimeout(() => {
+      waveTimersRef.current = waveTimersRef.current.filter((item) => item !== timer);
+      if (phaseRef.current === "running") run();
+    }, delay);
+    waveTimersRef.current.push(timer);
+  }, []);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -102,6 +124,7 @@ export function WhackRushGame() {
     (reason: string) => {
       if (recordedRef.current) return;
       recordedRef.current = true;
+      clearWaveTimers();
       phaseRef.current = "ended";
       setPhase("ended");
       setTargets([]);
@@ -126,15 +149,17 @@ export function WhackRushGame() {
         body: `${finalScore} points, ${finalHits} clean hits, ${finalBurnedHits} burned mistakes.`
       });
     },
-    [notify, recordLeaderboardResult]
+    [clearWaveTimers, notify, recordLeaderboardResult]
   );
 
   async function start() {
-    if (phase === "loading" || phase === "running") return;
+    if (phase === "loading" || phase === "countdown" || phase === "running") return;
+    clearWaveTimers();
     recordedRef.current = false;
-    phaseRef.current = "running";
-    setPhase("running");
+    phaseRef.current = "countdown";
+    setPhase("countdown");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setTargets([]);
     setScore(0);
     setHits(0);
@@ -147,24 +172,26 @@ export function WhackRushGame() {
     comboRef.current = 0;
     bestComboRef.current = 0;
     setBurnedIds([]);
-    setMessage("Rush started. Burn feed loading in the background.");
+    setMessage("Rush primed. Get ready to whack clean Normies.");
     setBurnFeedLoading(true);
-    addTarget();
+    spawnTarget({ burned: false });
 
     NormieAPIService.fetchBurnedNormieIds(120)
       .then((ids) => {
         setBurnedIds(ids);
-        setMessage(ids.length ? "Rush active. Avoid the burned targets." : "Rush active. Burn feed fallback active.");
+        setMessage(ids.length ? "Burn feed ready. Avoid the red flame targets." : "Burn feed fallback ready.");
       })
-      .catch(() => setMessage("Rush active. Burn feed fallback active."))
+      .catch(() => setMessage("Burn feed fallback ready."))
       .finally(() => setBurnFeedLoading(false));
   }
 
   function reset() {
+    clearWaveTimers();
     recordedRef.current = false;
     phaseRef.current = "idle";
     setPhase("idle");
     setTimeLeft(RUN_SECONDS);
+    setCountdown(COUNTDOWN_SECONDS);
     setTargets([]);
     setScore(0);
     setHits(0);
@@ -179,26 +206,56 @@ export function WhackRushGame() {
     setMessage("Whack live Normies. Do not hit burned Normies.");
   }
 
-  const addTarget = useCallback(() => {
+  const spawnTarget = useCallback((options?: { hole?: number; burned?: boolean; lifeScale?: number }) => {
     setTargets((items) => {
-      const availableHoles = Array.from({ length: HOLE_COUNT }, (_, index) => index).filter((hole) => !items.some((target) => target.hole === hole));
-      if (!availableHoles.length) return items;
+      const openHoles = availableHoles(items);
+      if (!openHoles.length) return items;
 
-      const burned = Math.random() < 0.28;
+      const burned = options?.burned ?? Math.random() < 0.28;
       const burnedPool = burnedIdsRef.current;
       const normieId = burned && burnedPool.length ? pickRandom(burnedPool) : randomId();
       const now = Date.now();
+      const lifeMs = Math.round(lifeSpan(timeLeftRef.current) * (options?.lifeScale ?? 1));
+      const requestedHole = options?.hole;
+      const hole = requestedHole !== undefined && openHoles.includes(requestedHole) ? requestedHole : pickRandom(openHoles);
       const target: Target = {
         id: `${now}-${targetSerial.current++}`,
         normieId,
-        hole: pickRandom(availableHoles),
+        hole,
         burned,
-        expiresAt: now + lifeSpan(timeLeftRef.current)
+        expiresAt: now + lifeMs,
+        lifeMs
       };
 
       return [...items, target].slice(-HOLE_COUNT);
     });
   }, []);
+
+  const triggerWave = useCallback(() => {
+    const roll = Math.random();
+
+    if (roll < 0.48) {
+      spawnTarget();
+      return;
+    }
+
+    if (roll < 0.7) {
+      spawnTarget({ burned: false });
+      spawnTarget({ burned: false });
+      setMessage("Double pop. Build the combo.");
+      return;
+    }
+
+    if (roll < 1) {
+      const baitHole = Math.floor(Math.random() * HOLE_COUNT);
+      spawnTarget({ hole: baitHole, burned: true, lifeScale: 0.95 });
+      scheduleWaveStep(() => {
+        const nearby = [baitHole - 1, baitHole + 1, baitHole - 3, baitHole + 3].filter((hole) => hole >= 0 && hole < HOLE_COUNT);
+        spawnTarget({ hole: nearby.length ? pickRandom(nearby) : undefined, burned: false, lifeScale: 0.9 });
+      }, 280);
+      setMessage("Burned bait. Wait for the clean target.");
+    }
+  }, [scheduleWaveStep, spawnTarget]);
 
   function whack(target: Target) {
     if (phase !== "running") return;
@@ -218,7 +275,7 @@ export function WhackRushGame() {
     }
 
     const nextCombo = comboRef.current + 1;
-    const comboBonus = nextCombo > 1 ? Math.floor(nextCombo / 5) * 2 : 0;
+    const comboBonus = nextCombo > 0 && nextCombo % 5 === 0 ? COMBO_MILESTONE_BONUS : 0;
     hitsRef.current += 1;
     comboRef.current = nextCombo;
     scoreRef.current += NORMAL_POINTS + comboBonus;
@@ -227,7 +284,7 @@ export function WhackRushGame() {
     setCombo(nextCombo);
     setBestCombo(bestComboRef.current);
     setScore(scoreRef.current);
-    setMessage(`Clean whack. +${NORMAL_POINTS + comboBonus}. Combo ${nextCombo}.`);
+    setMessage(comboBonus ? `Clean whack. +${NORMAL_POINTS} and +${comboBonus} combo bonus. Combo ${nextCombo}.` : `Clean whack. +${NORMAL_POINTS}. Combo ${nextCombo}.`);
     playTone(520 + Math.min(nextCombo, 12) * 18, 0.08, "triangle");
   }
 
@@ -238,10 +295,36 @@ export function WhackRushGame() {
   }, [phase]);
 
   useEffect(() => {
+    if (phase !== "countdown") return undefined;
+
+    if (countdown <= 0) {
+      phaseRef.current = "running";
+      setPhase("running");
+      setMessage("Rush active. Whack clean Normies and avoid burned targets.");
+      return undefined;
+    }
+
+    setMessage(`Rush starts in ${countdown}.`);
+    const timeout = window.setTimeout(() => {
+      setCountdown((value) => value - 1);
+    }, 1000);
+
+    return () => window.clearTimeout(timeout);
+  }, [countdown, phase]);
+
+  useEffect(() => {
     if (phase !== "running") return undefined;
     const interval = window.setInterval(() => {
       setTargets((items) => {
-        const next = items.filter((target) => target.expiresAt > Date.now());
+        const now = Date.now();
+        const expired = items.filter((target) => target.expiresAt <= now);
+        const missedNormal = expired.some((target) => !target.burned);
+        if (missedNormal && comboRef.current > 0) {
+          comboRef.current = 0;
+          setCombo(0);
+          setMessage("Normal Normie escaped. Combo reset.");
+        }
+        const next = items.filter((target) => target.expiresAt > now);
         return next.length === items.length ? items : next;
       });
     }, 120);
@@ -251,10 +334,12 @@ export function WhackRushGame() {
   useEffect(() => {
     if (phase !== "running") return undefined;
     const interval = window.setInterval(() => {
-      if (phaseRef.current === "running") addTarget();
+      if (phaseRef.current === "running") triggerWave();
     }, spawnDelay(timeLeft));
     return () => window.clearInterval(interval);
-  }, [addTarget, phase, timeLeft]);
+  }, [phase, timeLeft, triggerWave]);
+
+  useEffect(() => clearWaveTimers, [clearWaveTimers]);
 
   useEffect(() => {
     if (phase === "running" && timeLeft <= 0) finishRun("Rush complete.");
@@ -294,7 +379,7 @@ export function WhackRushGame() {
             <div>
               <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/65">Burn Yard</div>
               <div className="mt-1 font-display text-2xl uppercase tracking-[0.08em] text-paper">
-                {phase === "running" ? "Active" : phase === "loading" ? "Loading" : "Ready"}
+                {phase === "running" ? "Active" : phase === "countdown" || phase === "loading" ? "Loading" : "Ready"}
               </div>
             </div>
             <button
@@ -309,7 +394,7 @@ export function WhackRushGame() {
           <div className="mt-4 space-y-3 text-sm leading-relaxed text-paper/65">
             <Rule label="Normal Normie" value={`+${NORMAL_POINTS} points`} />
             <Rule label="Burned Normie" value={`-${BURNED_PENALTY} points`} danger />
-            <Rule label="Combo" value="Clean hits add small bonus" />
+            <Rule label="Combo" value={`Every 5 clean hits +${COMBO_MILESTONE_BONUS}`} />
             <Rule label="Leaderboard" value="Highest score wins" />
           </div>
 
@@ -332,11 +417,16 @@ export function WhackRushGame() {
             </div>
           </div>
 
-          <div className="grid min-h-[29rem] grid-cols-3 gap-3">
+          <div className="relative grid min-h-[29rem] grid-cols-3 gap-3">
             {Array.from({ length: HOLE_COUNT }, (_, hole) => {
               const target = targets.find((item) => item.hole === hole);
               return <Hole key={hole} target={target} phase={phase} onWhack={whack} />;
             })}
+            {phase === "countdown" ? (
+              <div className="absolute inset-0 grid place-items-center border border-mint/70 bg-black/55 font-display text-6xl text-mint shadow-neon">
+                {countdown}
+              </div>
+            ) : null}
           </div>
         </section>
       </main>
@@ -348,22 +438,24 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
   return (
     <div className="relative min-h-44 overflow-hidden border border-paper/20 bg-black/70">
       <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(244,241,232,0.09)_1px,transparent_1px),linear-gradient(90deg,rgba(244,241,232,0.09)_1px,transparent_1px)] [background-size:8px_8px]" />
-      <div className="absolute inset-x-8 bottom-7 h-11 rounded-[50%] border border-paper/30 bg-black shadow-[0_0_26px_rgba(0,0,0,0.95)_inset]" />
+      <div className="absolute inset-x-8 bottom-6 h-11 rounded-[50%] border border-paper/30 bg-black shadow-[0_0_26px_rgba(0,0,0,0.95)_inset]" />
       {target ? (
         <button
           onClick={() => onWhack(target)}
-          className="absolute inset-x-6 bottom-7 top-3 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
+          disabled={phase !== "running"}
+          className="absolute inset-x-6 bottom-7 top-1 flex items-end justify-center overflow-hidden transition hover:-translate-y-1"
         >
           <span
-            className={`relative grid h-[calc(100%-0.75rem)] w-32 place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-rise_160ms_ease-out_both] ${
-              target.burned ? "border-paper/70 shadow-[0_0_24px_rgba(244,241,232,0.18)]" : "border-mint shadow-neon"
+            className={`relative grid h-[calc(100%+0.75rem)] w-36 origin-bottom place-items-end overflow-hidden rounded-[50%_50%_42%_42%/42%_42%_18%_18%] border-2 bg-black/90 shadow-[0_12px_0_rgba(0,0,0,0.75)] animate-[whack-pop_var(--whack-life)_linear_both] ${
+              target.burned ? "border-red-500/80 shadow-[0_0_0_1px_rgba(239,68,68,0.55),0_0_24px_rgba(239,68,68,0.35)]" : "border-mint shadow-neon"
             }`}
+            style={{ "--whack-life": `${target.lifeMs}ms` } as React.CSSProperties}
           >
             <span className="absolute inset-0 grid place-items-center text-[9px] uppercase tracking-[0.18em] text-paper/25">0xN</span>
             <NormieImage
               src={target.burned ? NormieAPIService.burnedImageUrl(target.normieId) : NormieAPIService.imageUrl(target.normieId)}
               alt={`${target.burned ? "Burned" : "Normie"} target #${target.normieId}`}
-              className={`relative h-full w-full object-contain object-bottom ${target.burned ? "opacity-85 grayscale contrast-125" : ""}`}
+              className={`relative h-full w-full -translate-y-[7%] object-contain object-bottom ${target.burned ? "opacity-85 grayscale contrast-125" : ""}`}
             />
           </span>
           {target.burned ? (
@@ -380,8 +472,8 @@ function Hole({ target, phase, onWhack }: { target?: Target; phase: Phase; onWha
           {phase === "running" ? "Waiting" : "Dormant"}
         </div>
       )}
-      <div className="pointer-events-none absolute inset-x-8 bottom-7 h-11 rounded-[50%] border border-paper/35 bg-black shadow-[0_0_22px_rgba(0,0,0,1)_inset]" />
-      <div className="pointer-events-none absolute inset-x-12 bottom-8 h-5 rounded-[50%] bg-black/85" />
+      <div className="pointer-events-none absolute inset-x-8 bottom-6 h-11 rounded-[50%] border border-paper/35 bg-black shadow-[0_0_22px_rgba(0,0,0,1)_inset]" />
+      <div className="pointer-events-none absolute inset-x-12 bottom-7 h-5 rounded-[50%] bg-black/85" />
     </div>
   );
 }

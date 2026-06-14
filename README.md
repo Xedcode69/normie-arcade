@@ -14,9 +14,10 @@ A browser-based 3D Normies casino arcade built with Next.js, React Three Fiber, 
 - Web Audio API for browser-safe synthesized arcade feedback
 - Privy for wallet/email login
 - PostgreSQL with Prisma for user profiles, wallets, chip accounts, sessions, and leaderboard data
-- PartyKit for realtime PvP RPS rooms
+- PartyKit for realtime PvP RPS, DNA Poker, and Circuit Clash rooms
 - Normie holder verification through the official `/holders/{address}` API
 - In-HUD profile editing for username, display name, holder badge, and verified Normie avatar selection
+- Community game submissions with admin approval before public display
 
 ## Run Locally
 
@@ -36,6 +37,9 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 PARTYKIT_API_BASE_URL="http://localhost:3000"
 PARTYKIT_INTERNAL_SECRET="dev-internal-secret"
 PRIVY_VERIFICATION_KEY="your-privy-jwt-verification-key"
+COMMUNITY_GAMES_ADMIN_TOKEN="your-local-admin-token"
+# Optional in production. Leave unset unless you intentionally want the test faucet enabled.
+ENABLE_TEST_FAUCET="true"
 ```
 
 Generate Prisma Client:
@@ -89,14 +93,20 @@ src/
     games/
       BetControls.tsx
       GameDock.tsx
+      PixelDetectiveGame.tsx
       PokerGame.tsx
       RPSGame.tsx
       RouletteGame.tsx
+      SortSprintGame.tsx
+      TcgClashGame.tsx
       UpDownGame.tsx
+      WhackRushGame.tsx
     hud/
+      CommunityGames.tsx
       CreditSystem.tsx
       HUD.tsx
       Leaderboard.tsx
+      LobbyHelp.tsx
       PlayerControls.tsx
       NotificationSystem.tsx
   hooks/
@@ -104,9 +114,15 @@ src/
   lib/
     accountSchema.ts
     audio.ts
+    communityGamesSchema.ts
     gameMath.ts
+    pokerPvp.ts
     prisma.ts
+    pvpPokerSchema.ts
+    pvpRpsSchema.ts
     rateLimiter.ts
+    rpsPvp.ts
+    tcgPvp.ts
   services/
     NormieAPIService.ts
   stores/
@@ -130,9 +146,10 @@ Implemented:
 - `fetchNormieTraits(id)`
 - `fetchNormieImage(id)`
 - `fetchNormieMetadata(id)`
+- `fetchNormiePixels(id)`
+- `fetchBurnedNormieIds(limit)`
 - `getRandomNormie()`
 - `getRandomNormies(count)`
-- `getRouletteNormies(count)`
 - `preloadNormies(count)`
 
 It includes:
@@ -148,7 +165,7 @@ It includes:
 
 ### Normie Expression Roulette
 
-Users choose Easy, Medium, or Hard, set a chip bet, then reveal 3-5 live Normie cards. The table uses a seven-expression roulette reel with equal outcome probability while still displaying each fetched Normie's API expression trait for transparency.
+Users choose Easy, Medium, or Hard, set a chip bet, then reveal 3-5 live Normie reels. Each reel fetches a real Normie and stops on that Normie's API Expression trait. Matching every revealed Expression wins the mode payout.
 
 ### Normie Type RPS
 
@@ -168,20 +185,54 @@ PartyKit through protected Next.js API routes backed by Prisma.
 
 ### Normie DNA Poker
 
-Users deal five live Normies and score poker-style hands from API traits:
+PartyKit-powered PvP poker rooms support 2-5 players, buy-in reservation, antes from table stacks, betting streets, reconnects, chip settlement, and a 30-second turn timer that auto-folds idle players. Each player receives two private Normies and shares a five-card board.
 
-- Pair: two matching Expressions
-- Three of a Kind: three matching Types
-- Flush: all cards share Gender or Age
-- Full House: Type pair plus Expression triple
+Showdown evaluates the best five-card DNA hand:
+
+- Pair: two or more cards share Hair Style
+- Three of a Kind: three or more cards share Eyes
+- Flush: all five cards share Expression
+- Full House: three cards share Accessory and the other two cards share Facial Feature
+- Perfect DNA: all five cards share Eyes, Accessory, or Facial Feature
+
+If multiple players share the highest hand tier, the highest token ID sum among that best five-card combo wins. If both hand tier and token sum tie, the pot splits.
 
 ### Up or Down
 
-The terminal starts at 5000. Users predict whether the next random Normie ID will be higher or lower. Correct reads advance the base number; wrong reads end the run. Surviving 10 rounds pays a bonus.
+The terminal starts at 5000. Users predict whether the next random Normie ID will be higher or lower. Correct reads advance the base number; wrong reads end the run. Easy, Medium, and Hard require different survival counts and pay different multipliers.
+
+### Normie Sort Sprint
+
+A 30-second skill game. Players sort live Normies into bins based on the active trait rule. Correct sorts build combo, wrong bins reset combo, and results post to the skill leaderboard.
+
+### Pixel Detective
+
+A 60-second identification game. The cabinet fetches a real Normie pixel payload, shows a cropped fragment, and asks the player to pick the matching suspect. Keyboard shortcuts 1-4 support quick selection.
+
+### Whack-A-Normie
+
+A 60-second reaction game using live Normies and burned-token history. Clean hits score points and build combo. Burned hits deduct points and break combo.
+
+### Normie Circuit Clash
+
+PartyKit-powered 1v1 lane battler. Players draft from a shared Normie pool, play cards into three lanes over five turns, and resolve lane power using traits, burned status, and combo effects. Highest final score wins; tied scores draw.
+
+## Community Games
+
+Players can submit external Normie-themed games through the Community Games panel. Submissions are saved as `PENDING` and do not appear publicly until approved.
+
+Admin review is available in the Community Games modal:
+
+1. Click `Admin`.
+2. Enter `COMMUNITY_GAMES_ADMIN_TOKEN`.
+3. Load pending submissions.
+4. Approve or reject each game.
+
+Approved games are returned by `GET /api/community-games`. Admin review uses protected `GET` and `PATCH` requests at `/api/community-games/admin` with the `x-admin-token` header.
 
 ## Notes
 
 - All NPC portraits, machine screens, cashier art, and leaderboard avatars are fetched from `https://api.normies.art`.
 - The scene uses custom procedural geometry rather than copying the reference image.
-- The first version is multiplayer-ready-feeling through animated NPCs, leaderboards, and ambient state. Real-time multiplayer can be layered in later with PartyKit, Liveblocks, or Socket.IO.
+- Realtime PvP currently runs through PartyKit rooms.
 - The visual direction is Normies-native: monochrome bitmap surfaces, hard-edged pixel panels, scanline UI, on-chain terminal labels, and selective cyan/magenta/acid lighting accents.
