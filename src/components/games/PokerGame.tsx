@@ -52,7 +52,35 @@ function allSame(values: Array<string | undefined>) {
   return values.length > 0 && values.every((value) => Boolean(value) && value !== "Unknown" && value === values[0]);
 }
 
+function idsForIndexedTraitCount(cards: Array<{ id: number; traits: NormieTraits }>, traitName: keyof NormieTraits | "Facial Feature", target: number) {
+  const counts = cards.reduce<Record<string, number[]>>((result, card) => {
+    const value = card.traits[traitName];
+    if (!value || value === "Unknown") return result;
+    const key = String(value);
+    result[key] = [...(result[key] ?? []), card.id];
+    return result;
+  }, {});
+
+  return Object.values(counts).find((ids) => ids.length >= target) ?? [];
+}
+
+function disjointFullHouseIds(cards: Array<{ id: number; traits: NormieTraits }>) {
+  const accessoryTrips = idsForIndexedTraitCount(cards, "Accessory", 3).slice(0, 3);
+  if (accessoryTrips.length < 3) return null;
+
+  const tripIds = new Set(accessoryTrips);
+  const facialFeaturePair = idsForIndexedTraitCount(
+    cards.filter((card) => !tripIds.has(card.id)),
+    "Facial Feature",
+    2
+  ).slice(0, 2);
+
+  if (facialFeaturePair.length < 2) return null;
+  return { accessoryTrips, facialFeaturePair };
+}
+
 function evaluateTraitsCombo(traits: NormieTraits[], minFlushCards = 5): PokerHand {
+  const indexedCards = traits.map((trait, index) => ({ id: index, traits: trait }));
   const expressions = traits.map((trait) => trait.Expression);
   const eyes = traits.map((trait) => trait.Eyes);
   const accessories = traits.map((trait) => trait.Accessory);
@@ -65,9 +93,8 @@ function evaluateTraitsCombo(traits: NormieTraits[], minFlushCards = 5): PokerHa
   const eyePerfect = hasCount(eyeCounts, 5);
   const accessoryPerfect = hasCount(accessoryCounts, 5);
   const facialFeaturePerfect = hasCount(facialFeatureCounts, 5);
-  const accessoryTriple = hasCount(accessoryCounts, 3);
   const eyeTriple = hasCount(eyeCounts, 3);
-  const facialFeaturePair = hasCount(facialFeatureCounts, 2);
+  const fullHouse = disjointFullHouseIds(indexedCards);
   const hairStylePair = hasCount(hairStyleCounts, 2);
   const expressionFlush = traits.length >= minFlushCards && allSame(expressions);
 
@@ -84,7 +111,7 @@ function evaluateTraitsCombo(traits: NormieTraits[], minFlushCards = 5): PokerHa
     };
   }
 
-  if (accessoryTriple && facialFeaturePair) {
+  if (fullHouse) {
     return {
       ...handRanks.fullHouse,
       summary: `Accessory triple plus Facial Feature pair. Accessories: ${accessories.join(" / ")}. Facial features: ${facialFeatures.join(" / ")}.`
@@ -188,9 +215,8 @@ function findComboHighlightIds(cards: TraitCard[]) {
   const facialFeaturePerfect = idsForTraitCount(combo, "Facial Feature", 5);
   if (facialFeaturePerfect.length) return new Set(facialFeaturePerfect);
 
-  const accessoryTriple = idsForTraitCount(combo, "Accessory", 3);
-  const facialFeaturePair = idsForTraitCount(combo, "Facial Feature", 2);
-  if (accessoryTriple.length && facialFeaturePair.length) return new Set([...accessoryTriple, ...facialFeaturePair]);
+  const fullHouse = disjointFullHouseIds(combo);
+  if (fullHouse) return new Set([...fullHouse.accessoryTrips, ...fullHouse.facialFeaturePair]);
 
   if (allShareTrait(combo, "Expression")) return new Set(combo.map((card) => card.id));
 
@@ -523,6 +549,7 @@ function PokerPvP() {
           minRaise={state.minRaise}
           minRaiseTo={minRaiseTo}
           onAction={submitAction}
+          turnExpiresAt={state.turnExpiresAt}
         />
       ) : null}
 
@@ -605,7 +632,8 @@ function PokerBettingControls({
   maxRaiseTo,
   minRaise,
   minRaiseTo,
-  onAction
+  onAction,
+  turnExpiresAt
 }: {
   availableChips: number;
   callAmount: number;
@@ -616,8 +644,10 @@ function PokerBettingControls({
   minRaise: number;
   minRaiseTo: number;
   onAction: (action: "check" | "call" | "raise" | "fold", raiseTo?: number) => void;
+  turnExpiresAt?: number;
 }) {
   const [raiseInput, setRaiseInput] = useState(minRaiseTo);
+  const [secondsLeft, setSecondsLeft] = useState(() => (turnExpiresAt ? Math.max(0, Math.ceil((turnExpiresAt - Date.now()) / 1000)) : null));
   const canCall = !disabled && callAmount > 0 && availableChips >= callAmount;
   const canRaise = !disabled && maxRaiseTo >= minRaiseTo;
   const normalizedRaise = Math.min(maxRaiseTo, Math.max(minRaiseTo, Math.round(raiseInput || minRaiseTo)));
@@ -626,12 +656,25 @@ function PokerBettingControls({
     setRaiseInput(minRaiseTo);
   }, [minRaiseTo, maxRaiseTo]);
 
+  useEffect(() => {
+    if (!turnExpiresAt) {
+      setSecondsLeft(null);
+      return;
+    }
+
+    const update = () => setSecondsLeft(Math.max(0, Math.ceil((turnExpiresAt - Date.now()) / 1000)));
+    update();
+    const interval = window.setInterval(update, 250);
+    return () => window.clearInterval(interval);
+  }, [turnExpiresAt]);
+
   return (
     <div className="mx-auto mt-5 w-full max-w-5xl border border-paper/35 bg-black/65 p-4 text-center">
       <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Betting Action</div>
       <div className="mt-1 text-sm text-paper/70">
         {isYourTurn ? "Your action is live." : "Waiting for the current seat."} Current bet {currentBet}. Minimum raise {minRaise}. Available {availableChips}.
       </div>
+      {secondsLeft !== null ? <div className="terminal-hash mt-2 text-[10px] uppercase tracking-[0.22em] text-mint/75">Action timer {secondsLeft}s</div> : null}
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <button
           onClick={() => onAction("check")}
@@ -817,7 +860,7 @@ function PokerTable({
         <div className="absolute inset-x-24 top-32 bottom-32 rounded-[50%] border border-mint/20" />
         <ChipFlightLayer flights={chipFlights} />
 
-        <div className="absolute left-1/2 top-1/2 z-10 w-full max-w-xl -translate-x-1/2 -translate-y-1/2 px-6 text-center">
+        <div className="absolute left-1/2 top-[58%] z-10 w-full max-w-xl -translate-x-1/2 -translate-y-1/2 px-6 text-center">
           <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-mint/65">
             {streetLabel} | Pot {pot} | Bet {currentBet}
           </div>

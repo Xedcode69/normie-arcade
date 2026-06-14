@@ -88,6 +88,7 @@ type PokerState = {
   currentBet: number;
   minRaise: number;
   turnPlayerId?: string;
+  turnExpiresAt?: number;
   street?: "preflop" | "flop" | "turn" | "river";
   communityCards: number[];
   handId?: string;
@@ -256,6 +257,7 @@ const rpsQuickMatchStake = 250;
 const pokerTableBuyIn = 1000;
 const pokerHandAnte = 100;
 const pokerNextHandDelayMs = 5_000;
+const pokerTurnActionMs = 30_000;
 const tcgDeckSize = 8;
 const tcgDraftPoolSize = 16;
 const tcgStartingHand = 3;
@@ -288,6 +290,7 @@ export default class RPSParty {
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private pokerNextHandTimer?: ReturnType<typeof setTimeout>;
+  private pokerTurnTimer?: ReturnType<typeof setTimeout>;
   private revealTimer?: ReturnType<typeof setTimeout>;
   private pokerDeck: number[] = [];
   private matchId = this.createMatchId();
@@ -996,12 +999,57 @@ export default class RPSParty {
     this.pokerState.nextHandStartsAt = undefined;
   }
 
+  private clearPokerTurnTimer() {
+    if (this.pokerTurnTimer) clearTimeout(this.pokerTurnTimer);
+    this.pokerTurnTimer = undefined;
+    this.pokerState.turnExpiresAt = undefined;
+  }
+
+  private schedulePokerTurnTimer() {
+    this.clearPokerTurnTimer();
+    const playerId = this.pokerState.turnPlayerId;
+    if (this.pokerState.phase !== "betting" || !playerId) return;
+
+    const expiresAt = Date.now() + pokerTurnActionMs;
+    this.pokerState.turnExpiresAt = expiresAt;
+    this.pokerTurnTimer = setTimeout(() => {
+      this.pokerTurnTimer = undefined;
+      void this.autoFoldPokerPlayer(playerId, expiresAt);
+    }, pokerTurnActionMs);
+  }
+
+  private async autoFoldPokerPlayer(playerId: string, expiresAt: number) {
+    if (this.pokerState.phase !== "betting" || this.pokerState.turnPlayerId !== playerId || this.pokerState.turnExpiresAt !== expiresAt) return;
+
+    this.clearPokerTurnTimer();
+    const player = this.pokerState.players.find((item) => item.id === playerId && !item.folded);
+    if (!player) return;
+
+    player.folded = true;
+    player.acted = true;
+    player.lastAction = "AUTO FOLD";
+    this.pokerState.message = `${player.name} timed out and folded.`;
+    this.appendPokerActionLog({
+      playerName: player.name,
+      action: "TIMEOUT",
+      message: `${player.name} timed out after ${pokerTurnActionMs / 1000}s and folded.`
+    });
+
+    if (this.activePokerPlayers().length === 1) {
+      await this.finishPokerShowdown();
+      return;
+    }
+
+    this.advancePokerTurn(player.id);
+  }
+
   private isActivePokerHand() {
     return this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting";
   }
 
   private resetInvalidPokerHand(message: string) {
     this.clearPokerNextHandTimer();
+    this.clearPokerTurnTimer();
     this.pokerState.players.forEach((player) => {
       if (player.reserved && (player.committed ?? 0) > 0) {
         player.stack += player.committed ?? 0;
@@ -1012,6 +1060,7 @@ export default class RPSParty {
     this.pokerState.pot = 0;
     this.pokerState.currentBet = 0;
     this.pokerState.turnPlayerId = undefined;
+    this.pokerState.turnExpiresAt = undefined;
     this.pokerState.street = undefined;
     this.pokerState.communityCards = [];
     this.pokerDeck = [];
@@ -1054,6 +1103,7 @@ export default class RPSParty {
 
     const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown";
     if (activeRound) {
+      this.clearPokerTurnTimer();
       this.pokerState.players.forEach((player) => {
         if (player.reserved && (player.committed ?? 0) > 0) {
           player.stack += player.committed ?? 0;
@@ -1079,6 +1129,7 @@ export default class RPSParty {
       this.pokerState.pot = 0;
       this.pokerState.currentBet = 0;
       this.pokerState.turnPlayerId = undefined;
+      this.pokerState.turnExpiresAt = undefined;
       this.pokerState.street = undefined;
       this.pokerState.communityCards = [];
       this.pokerDeck = [];
@@ -1146,6 +1197,7 @@ export default class RPSParty {
     this.pokerState.street = "preflop";
     this.pokerState.communityCards = [];
     this.pokerState.turnPlayerId = this.nextActivePokerPlayerId();
+    this.schedulePokerTurnTimer();
     this.pokerState.message = "Two private Normies dealt. Preflop betting is open.";
     this.appendPokerActionLog({
       action: "ANTE",
@@ -1198,6 +1250,7 @@ export default class RPSParty {
     if (!player) return;
 
     if (data.action === "fold") {
+      this.clearPokerTurnTimer();
       player.folded = true;
       player.acted = true;
       player.lastAction = "FOLD";
@@ -1221,6 +1274,7 @@ export default class RPSParty {
 
     if (data.action === "check") {
       if (callAmount > 0) return;
+      this.clearPokerTurnTimer();
       player.acted = true;
       player.lastAction = "CHECK";
       this.pokerState.message = `${player.name} checked.`;
@@ -1234,9 +1288,11 @@ export default class RPSParty {
     }
 
     if (data.action === "call") {
+      this.clearPokerTurnTimer();
       if (callAmount > 0) {
         const reserved = await this.reservePokerExtraWager(player, callAmount);
         if (!reserved.ok) {
+          this.schedulePokerTurnTimer();
           this.broadcastPoker();
           return;
         }
@@ -1265,9 +1321,11 @@ export default class RPSParty {
         this.broadcastPoker();
         return;
       }
+      this.clearPokerTurnTimer();
       const extra = raiseTo - streetCommitted;
       const reserved = await this.reservePokerExtraWager(player, extra);
       if (!reserved.ok) {
+        this.schedulePokerTurnTimer();
         this.broadcastPoker();
         return;
       }
@@ -1297,6 +1355,7 @@ export default class RPSParty {
       return;
     }
     this.pokerState.turnPlayerId = this.nextActivePokerPlayerId(previousPlayerId);
+    this.schedulePokerTurnTimer();
     this.broadcastPoker();
   }
 
@@ -1321,6 +1380,7 @@ export default class RPSParty {
     this.pokerState.communityCards = [...this.pokerState.communityCards, ...this.pokerDeck.splice(0, revealCount)];
     this.pokerState.currentBet = 0;
     this.pokerState.turnPlayerId = this.nextActivePokerPlayerId();
+    this.schedulePokerTurnTimer();
     this.pokerState.players.forEach((player) => {
       if (player.connected && !player.folded) {
         player.acted = false;
@@ -1365,6 +1425,7 @@ export default class RPSParty {
   }
 
   private async finishPokerShowdown() {
+    this.clearPokerTurnTimer();
     const showdown = await this.evaluatePokerShowdown(this.activePokerPlayers());
     showdown.winners.forEach((winnerId) => {
       const winner = this.pokerState.players.find((player) => player.id === winnerId);
@@ -1372,6 +1433,7 @@ export default class RPSParty {
     });
     this.pokerState.phase = "showdown";
     this.pokerState.turnPlayerId = undefined;
+    this.pokerState.turnExpiresAt = undefined;
     this.pokerState.showdown = showdown;
     this.pokerState.history = [
       {
@@ -1415,6 +1477,7 @@ export default class RPSParty {
     if (this.pokerState.phase !== "showdown") return;
     if (playerId && !this.pokerState.players.some((player) => player.id === playerId && player.connected)) return;
     this.clearPokerNextHandTimer();
+    this.clearPokerTurnTimer();
 
     const bustedPlayers = this.pokerState.players.filter((player) => player.connected && player.stack <= 0);
     const bustedNames = bustedPlayers.map((player) => player.name);
@@ -1424,6 +1487,7 @@ export default class RPSParty {
     this.pokerState.pot = 0;
     this.pokerState.currentBet = 0;
     this.pokerState.turnPlayerId = undefined;
+    this.pokerState.turnExpiresAt = undefined;
     this.pokerState.street = undefined;
     this.pokerState.communityCards = [];
     this.pokerDeck = [];
@@ -1552,8 +1616,35 @@ export default class RPSParty {
     return Object.entries(counts).find(([, count]) => count >= target)?.[0] ?? "";
   }
 
+  private idsForPokerTraitCount(cards: Array<{ id: number; traits: NormieTraits }>, traitName: keyof NormieTraits | "Facial Feature", target: number) {
+    const counts = cards.reduce<Record<string, number[]>>((result, card) => {
+      const value = card.traits[traitName];
+      if (!value || value === "Unknown") return result;
+      const key = String(value);
+      result[key] = [...(result[key] ?? []), card.id];
+      return result;
+    }, {});
+
+    return Object.values(counts).find((ids) => ids.length >= target) ?? [];
+  }
+
   private allSame(values: Array<string | undefined>) {
     return values.length > 0 && values.every((value) => Boolean(value) && value !== "Unknown" && value === values[0]);
+  }
+
+  private disjointPokerFullHouse(cards: Array<{ id: number; traits: NormieTraits }>) {
+    const accessoryTrips = this.idsForPokerTraitCount(cards, "Accessory", 3).slice(0, 3);
+    if (accessoryTrips.length < 3) return null;
+
+    const tripIds = new Set(accessoryTrips);
+    const facialFeaturePair = this.idsForPokerTraitCount(
+      cards.filter((card) => !tripIds.has(card.id)),
+      "Facial Feature",
+      2
+    ).slice(0, 2);
+
+    if (facialFeaturePair.length < 2) return null;
+    return { accessoryTrips, facialFeaturePair };
   }
 
   private evaluatePokerHand(cards: Array<{ id: number; traits: NormieTraits }>): PokerEvaluation {
@@ -1571,9 +1662,8 @@ export default class RPSParty {
     const eyePerfect = this.hasCount(eyeCounts, 5);
     const accessoryPerfect = this.hasCount(accessoryCounts, 5);
     const facialFeaturePerfect = this.hasCount(facialFeatureCounts, 5);
-    const accessoryTriple = this.hasCount(accessoryCounts, 3);
     const eyeTriple = this.hasCount(eyeCounts, 3);
-    const facialFeaturePair = this.hasCount(facialFeatureCounts, 2);
+    const fullHouse = this.disjointPokerFullHouse(cards);
     const hairStylePair = this.hasCount(hairStyleCounts, 2);
     const expressionFlush = this.allSame(expressions);
 
@@ -1591,7 +1681,7 @@ export default class RPSParty {
         }. Token sum ${tokenSum}.`
       };
     }
-    if (accessoryTriple && facialFeaturePair) {
+    if (fullHouse) {
       return { handName: "Full House", score: 50, tokenSum, summary: `Accessory triple plus Facial Feature pair. Token sum ${tokenSum}.` };
     }
     if (expressionFlush) return { handName: "Flush", score: 40, tokenSum, summary: `Five cards share Expression ${expressions[0] ?? "Unknown"}. Token sum ${tokenSum}.` };

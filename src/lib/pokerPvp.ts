@@ -34,6 +34,7 @@ export type PokerPvPState = {
   currentBet: number;
   minRaise: number;
   turnPlayerId?: string;
+  turnExpiresAt?: number;
   street?: "preflop" | "flop" | "turn" | "river";
   communityCards: number[];
   handId?: string;
