@@ -1,12 +1,11 @@
 # Normie Arcade
 
-A browser-based 3D Normies casino arcade built with Next.js, React Three Fiber, TailwindCSS, Framer Motion, Zustand, TanStack Query, and the official Normies API.
+A browser-based Normies city arcade built with Next.js, TailwindCSS, Framer Motion, Zustand, TanStack Query, PartyKit, Prisma, and the official Normies API.
 
 ## Stack
 
 - Next.js App Router with TypeScript
-- Three.js through `@react-three/fiber`
-- `@react-three/drei` for scene helpers, HTML overlays, environment lighting, and camera utilities
+- Responsive bitmap city-map lobby with HUD-driven game panels
 - Zustand for chip economy, current table, audio, and notifications
 - TanStack Query for Normies API preload lifecycle
 - TailwindCSS for HUD/game UI
@@ -84,10 +83,6 @@ src/
       AuthSync.tsx
     arcade/
       ArcadeLobby.tsx
-      GameTable.tsx
-      HologramSign.tsx
-      NormieDealer.tsx
-      PlayerAvatar.tsx
     audio/
       AudioBoot.tsx
     games/
@@ -232,7 +227,7 @@ Approved games are returned by `GET /api/community-games`. Admin review uses pro
 
 ## Notes
 
-- All NPC portraits, machine screens, cashier art, and leaderboard avatars are fetched from `https://api.normies.art`.
-- The scene uses custom procedural geometry rather than copying the reference image.
+- Normie images, avatars, traits, pixels, and burned-token data are fetched from `https://api.normies.art`.
+- The lobby is a custom bitmap city map with hard-edged district panels and HUD overlays.
 - Realtime PvP currently runs through PartyKit rooms.
 - The visual direction is Normies-native: monochrome bitmap surfaces, hard-edged pixel panels, scanline UI, on-chain terminal labels, and selective cyan/magenta/acid lighting accents.
