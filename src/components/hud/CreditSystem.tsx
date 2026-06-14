@@ -70,7 +70,7 @@ export function CreditSystem() {
         aria-label="Claim test chips"
         onClick={claimFaucet}
         disabled={claiming}
-        className="grid h-11 w-11 place-items-center hud-panel text-mint transition hover:text-paper disabled:opacity-45"
+        className="grid h-9 w-9 place-items-center border border-paper/25 bg-black/65 text-mint transition hover:border-mint/60 hover:text-paper disabled:opacity-45"
         title="Claim test chips"
       >
         <Droplets size={17} />
@@ -78,7 +78,7 @@ export function CreditSystem() {
       <button
         aria-label="Reset chips"
         onClick={reset}
-        className="grid h-11 w-11 place-items-center hud-panel text-paper/70 transition hover:text-paper"
+        className="grid h-9 w-9 place-items-center border border-paper/25 bg-black/65 text-paper/65 transition hover:border-paper/55 hover:text-paper"
       >
         <RotateCcw size={17} />
       </button>
@@ -88,11 +88,11 @@ export function CreditSystem() {
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="hud-panel flex min-w-28 items-center gap-2 px-3 py-2">
-      <span className="text-paper">{icon}</span>
+    <div className="flex h-9 min-w-24 items-center gap-2 border border-paper/25 bg-black/65 px-2.5">
+      <span className="text-paper/70">{icon}</span>
       <span>
-        <span className="terminal-hash block text-[9px] uppercase tracking-widest text-pixel/55">{label}</span>
-        <span className="block text-sm capitalize text-paper">{value}</span>
+        <span className="terminal-hash block text-[8px] uppercase tracking-widest text-pixel/45">{label}</span>
+        <span className="block text-xs capitalize leading-none text-paper">{value}</span>
       </span>
     </div>
   );
