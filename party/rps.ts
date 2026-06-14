@@ -91,6 +91,7 @@ type PokerState = {
   street?: "preflop" | "flop" | "turn" | "river";
   communityCards: number[];
   handId?: string;
+  nextHandStartsAt?: number;
   history: Array<{
     round: number;
     handId: string;
@@ -252,6 +253,7 @@ const picks: RPSType[] = ["Human", "Cat", "Alien"];
 const rpsQuickMatchStake = 250;
 const pokerTableBuyIn = 1000;
 const pokerHandAnte = 100;
+const pokerNextHandDelayMs = 5_000;
 const tcgDeckSize = 8;
 const tcgDraftPoolSize = 16;
 const tcgStartingHand = 3;
@@ -283,6 +285,7 @@ export default class RPSParty {
   private tcgLeaderboardSettled = false;
   private staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private pokerStaleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pokerNextHandTimer?: ReturnType<typeof setTimeout>;
   private revealTimer?: ReturnType<typeof setTimeout>;
   private pokerDeck: number[] = [];
   private matchId = this.createMatchId();
@@ -363,7 +366,7 @@ export default class RPSParty {
       this.pokerConnectionObjects.delete(connection.id);
       const pokerPlayer = this.pokerState.players.find((player) => player.id === pokerPlayerId);
       if (pokerPlayer) {
-        const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting";
+        const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown";
         if (!activeRound) {
           await this.cashOutPokerStack(pokerPlayer);
           this.pokerState.players = this.pokerState.players.filter((player) => player.id !== pokerPlayer.id);
@@ -974,11 +977,63 @@ export default class RPSParty {
     this.pokerStaleTimers.delete(playerId);
   }
 
+  private clearPokerNextHandTimer() {
+    if (this.pokerNextHandTimer) clearTimeout(this.pokerNextHandTimer);
+    this.pokerNextHandTimer = undefined;
+    this.pokerState.nextHandStartsAt = undefined;
+  }
+
+  private isActivePokerHand() {
+    return this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting";
+  }
+
+  private resetInvalidPokerHand(message: string) {
+    this.clearPokerNextHandTimer();
+    this.pokerState.players.forEach((player) => {
+      if (player.reserved && (player.committed ?? 0) > 0) {
+        player.stack += player.committed ?? 0;
+      }
+    });
+    this.pokerState.phase = "waiting";
+    this.pokerState.round += 1;
+    this.pokerState.pot = 0;
+    this.pokerState.currentBet = 0;
+    this.pokerState.turnPlayerId = undefined;
+    this.pokerState.street = undefined;
+    this.pokerState.communityCards = [];
+    this.pokerDeck = [];
+    this.pokerState.handId = undefined;
+    this.pokerState.nextHandStartsAt = undefined;
+    this.pokerState.showdown = undefined;
+    this.pokerState.players = this.pokerState.players
+      .filter((player) => player.connected)
+      .map((player) => ({
+        ...player,
+        ready: false,
+        hand: [],
+        committed: 0,
+        streetCommitted: 0,
+        folded: false,
+        acted: false,
+        lastAction: undefined,
+        accountError: undefined
+      }));
+    this.pokerState.message = message;
+    this.appendPokerActionLog({ action: "VOID", message });
+  }
+
+  private ensurePokerHandHasEnoughPlayers() {
+    if (!this.isActivePokerHand()) return true;
+    if (this.pokerState.players.length >= 2) return true;
+    this.resetInvalidPokerHand("Poker hand was voided because fewer than two players remained at the table.");
+    return false;
+  }
+
   private async cleanupStalePokerPlayer(playerId: string) {
     const stalePlayer = this.pokerState.players.find((player) => player.id === playerId);
     if (!stalePlayer || stalePlayer.connected) return;
 
-    const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting";
+    const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown";
     if (activeRound) {
       this.pokerState.players.forEach((player) => {
         if (player.reserved && (player.committed ?? 0) > 0) {
@@ -1026,6 +1081,7 @@ export default class RPSParty {
 
   private async startPokerShowdown() {
     if (this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown") return;
+    this.clearPokerNextHandTimer();
     const seatedPlayers = this.pokerState.players.filter((player) => player.connected);
     this.pokerState.phase = "ready";
     this.pokerState.handId = this.createPokerMatchId();
@@ -1319,12 +1375,27 @@ export default class RPSParty {
       amount: showdown.pot,
       message: this.pokerState.message
     });
+    this.schedulePokerNextHand();
     this.broadcastPoker();
   }
 
-  private nextPokerHand(playerId: string) {
+  private schedulePokerNextHand() {
+    this.clearPokerNextHandTimer();
+    const playersWithStack = this.pokerState.players.filter((player) => player.connected && player.stack > 0);
+    const bustedPlayers = this.pokerState.players.filter((player) => player.connected && player.stack <= 0);
+    if (playersWithStack.length <= 1 && !bustedPlayers.length) return;
+
+    this.pokerState.nextHandStartsAt = Date.now() + pokerNextHandDelayMs;
+    this.pokerNextHandTimer = setTimeout(() => {
+      this.pokerNextHandTimer = undefined;
+      this.nextPokerHand(undefined, true);
+    }, pokerNextHandDelayMs);
+  }
+
+  private nextPokerHand(playerId?: string, autoStart = false) {
     if (this.pokerState.phase !== "showdown") return;
-    if (!this.pokerState.players.some((player) => player.id === playerId && player.connected)) return;
+    if (playerId && !this.pokerState.players.some((player) => player.id === playerId && player.connected)) return;
+    this.clearPokerNextHandTimer();
 
     const bustedPlayers = this.pokerState.players.filter((player) => player.connected && player.stack <= 0);
     const bustedNames = bustedPlayers.map((player) => player.name);
@@ -1338,6 +1409,7 @@ export default class RPSParty {
     this.pokerState.communityCards = [];
     this.pokerDeck = [];
     this.pokerState.handId = undefined;
+    this.pokerState.nextHandStartsAt = undefined;
     this.pokerState.showdown = undefined;
     this.pokerState.actionLog = [];
     const remainingPlayers = this.pokerState.players
@@ -1379,9 +1451,13 @@ export default class RPSParty {
     }
     this.appendPokerActionLog({
       action: "RESET",
-      message: bustedNames.length ? "Remaining players can ready up." : "Next hand ready. Players can ready up."
+      message: autoStart ? "Next hand auto-dealing." : bustedNames.length ? "Remaining players can ready up." : "Next hand ready. Players can ready up."
     });
     this.updatePokerPhase();
+    if (autoStart && this.pokerState.players.filter((player) => player.connected && player.stack > 0).length >= 2) {
+      void this.startPokerShowdown();
+      return;
+    }
     this.broadcastPoker();
   }
 
@@ -1905,6 +1981,7 @@ export default class RPSParty {
   }
 
   private broadcastPoker() {
+    this.ensurePokerHandHasEnoughPlayers();
     this.pokerConnectionObjects.forEach((connection, connectionId) => {
       const playerId = this.pokerConnections.get(connectionId);
       if (!playerId) return;

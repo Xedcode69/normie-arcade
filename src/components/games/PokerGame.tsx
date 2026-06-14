@@ -529,7 +529,7 @@ function PokerPvP() {
       <PokerActionTimeline actionLog={state.actionLog} />
 
       {state.phase === "showdown" && state.showdown ? (
-        <PokerShowdownPanel showdown={state.showdown} playerId={playerId} onNextHand={nextHand} />
+        <PokerShowdownPanel showdown={state.showdown} playerId={playerId} nextHandStartsAt={state.nextHandStartsAt} onNextHand={nextHand} />
       ) : null}
 
       {state.phase === "finished" ? <PokerTableFinishedPanel message={state.message} /> : null}
@@ -1186,6 +1186,7 @@ function TraitPreview({ traits }: { traits?: NormieTraits | null }) {
 function PokerShowdownPanel({
   showdown,
   playerId,
+  nextHandStartsAt,
   onNextHand
 }: {
   showdown: {
@@ -1207,13 +1208,31 @@ function PokerShowdownPanel({
     }>;
   };
   playerId: string | null;
+  nextHandStartsAt?: number;
   onNextHand: () => void;
 }) {
   const youWon = showdown.winners.includes(playerId ?? "");
+  const [countdown, setCountdown] = useState(() => (nextHandStartsAt ? Math.max(0, Math.ceil((nextHandStartsAt - Date.now()) / 1000)) : null));
   const winnerNames = showdown.hands
     .filter((hand) => showdown.winners.includes(hand.playerId))
     .map((hand) => hand.playerName)
     .join(" / ");
+
+  useEffect(() => {
+    if (!nextHandStartsAt) {
+      setCountdown(null);
+      return undefined;
+    }
+    const startsAt = nextHandStartsAt;
+
+    function tick() {
+      setCountdown(Math.max(0, Math.ceil((startsAt - Date.now()) / 1000)));
+    }
+
+    tick();
+    const interval = window.setInterval(tick, 250);
+    return () => window.clearInterval(interval);
+  }, [nextHandStartsAt]);
 
   return (
     <div className={`mx-auto mt-6 w-full max-w-5xl border bg-black/80 p-4 ${youWon ? "border-mint shadow-neon" : "border-paper/50 shadow-neon"}`}>
@@ -1231,6 +1250,11 @@ function PokerShowdownPanel({
           <div className="mt-2 text-sm text-paper/70">
             Pot {showdown.pot} chips. {showdown.winners.length > 1 ? `Split payout ${showdown.payoutEach} each.` : `Winner payout ${showdown.payoutEach}.`}
           </div>
+          {countdown !== null ? (
+            <div className="mt-3 inline-flex border border-mint/55 bg-mint/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-mint">
+              Next hand starts in {countdown}s
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1272,7 +1296,7 @@ function PokerShowdownPanel({
           onClick={onNextHand}
           className="inline-flex min-w-36 items-center justify-center gap-2 border border-paper/70 bg-paper/10 px-5 py-3 text-xs uppercase tracking-widest text-paper shadow-neon transition hover:bg-paper/15"
         >
-          <RotateCcw size={16} /> Next Hand
+          <RotateCcw size={16} /> Deal Now
         </button>
       </div>
       <div className="mt-4">
@@ -1284,7 +1308,7 @@ function PokerShowdownPanel({
           chips={youWon ? `+${showdown.payoutEach} payout` : showdown.winners.length > 1 ? `${showdown.payoutEach} split payout` : "Pot lost"}
           bestMoment={`Winning hand: ${winnerNames || "Pending"}.`}
           leaderboard={{ game: "POKER", mode: "PVP", label: "Poker Leaderboard" }}
-          playAgainLabel="Next Hand"
+          playAgainLabel={countdown !== null ? `Auto Deal ${countdown}s` : "Deal Now"}
           onPlayAgain={onNextHand}
         />
       </div>

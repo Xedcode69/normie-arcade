@@ -37,6 +37,7 @@ export type PokerPvPState = {
   street?: "preflop" | "flop" | "turn" | "river";
   communityCards: number[];
   handId?: string;
+  nextHandStartsAt?: number;
   privateHand?: number[];
   history: Array<{
     round: number;
