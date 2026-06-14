@@ -78,7 +78,7 @@ type PokerPlayer = {
 };
 
 type PokerState = {
-  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown";
+  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown" | "finished";
   players: PokerPlayer[];
   maxPlayers: number;
   round: number;
@@ -869,6 +869,19 @@ export default class RPSParty {
       this.pokerConnections.set(connection.id, existing.id);
       this.pokerConnectionObjects.set(connection.id, connection);
     } else {
+      if (this.pokerState.phase !== "waiting" && this.pokerState.phase !== "ready") {
+        connection.send(
+          JSON.stringify({
+            type: "full",
+            message:
+              this.pokerState.phase === "finished"
+                ? "This DNA Poker table has ended. Create or join a new room."
+                : "This DNA Poker table is already in progress. New players cannot join until a new table starts."
+          })
+        );
+        return;
+      }
+
       this.pokerState.players = this.pokerState.players.filter((player) => player.connected);
       const occupiedSeats = new Set(this.pokerState.players.map((player) => player.seat));
       const seat = Array.from({ length: this.pokerState.maxPlayers }, (_, index) => index).find((index) => !occupiedSeats.has(index));
@@ -918,14 +931,16 @@ export default class RPSParty {
 
     this.pokerState.players.sort((a, b) => a.seat - b.seat);
     this.updatePokerPhase();
-    this.pokerState.message = "Table joined. Toggle ready when you want to start.";
+    if (this.pokerState.phase !== "finished") {
+      this.pokerState.message = "Table joined. Toggle ready when you want to start.";
+    }
     this.broadcastPoker();
   }
 
   private togglePokerReady(playerId: string) {
     const player = this.pokerState.players.find((item) => item.id === playerId && item.connected);
     if (!player) return;
-    if (this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown") return;
+    if (this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown" || this.pokerState.phase === "finished") return;
 
     player.ready = !player.ready;
     this.updatePokerPhase();
@@ -935,7 +950,7 @@ export default class RPSParty {
 
   private updatePokerPhase() {
     const connectedPlayers = this.pokerState.players.filter((player) => player.connected);
-    if (this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown") return;
+    if (this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown" || this.pokerState.phase === "finished") return;
 
     const allReady = connectedPlayers.length >= 2 && connectedPlayers.every((player) => player.ready);
     this.pokerState.phase = allReady ? "ready" : "waiting";
@@ -1090,8 +1105,12 @@ export default class RPSParty {
     return this.pokerState.players.filter((player) => player.connected && !player.folded);
   }
 
+  private bettingPokerPlayers() {
+    return this.activePokerPlayers().filter((player) => player.stack > 0);
+  }
+
   private nextActivePokerPlayerId(afterPlayerId?: string) {
-    const active = this.activePokerPlayers().sort((a, b) => a.seat - b.seat);
+    const active = this.bettingPokerPlayers().sort((a, b) => a.seat - b.seat);
     if (!active.length) return undefined;
     if (!afterPlayerId) return active[0]?.id;
     const currentIndex = active.findIndex((player) => player.id === afterPlayerId);
@@ -1208,11 +1227,16 @@ export default class RPSParty {
 
   private isPokerBettingComplete() {
     const active = this.activePokerPlayers();
-    return active.length <= 1 || active.every((player) => player.acted && (player.streetCommitted ?? 0) >= this.pokerState.currentBet);
+    const canAct = this.bettingPokerPlayers();
+    return (
+      active.length <= 1 ||
+      canAct.length === 0 ||
+      canAct.every((player) => player.acted && (player.streetCommitted ?? 0) >= this.pokerState.currentBet)
+    );
   }
 
   private maxPokerRaiseTo() {
-    const active = this.activePokerPlayers();
+    const active = this.bettingPokerPlayers();
     if (!active.length) return 0;
     return Math.min(...active.map((player) => (player.streetCommitted ?? 0) + player.stack));
   }
@@ -1234,6 +1258,10 @@ export default class RPSParty {
       action: street?.toUpperCase() ?? "STREET",
       message
     });
+    if (!this.pokerState.turnPlayerId) {
+      void this.advancePokerStreetOrShowdown();
+      return;
+    }
     this.broadcastPoker();
   }
 
@@ -1298,6 +1326,9 @@ export default class RPSParty {
     if (this.pokerState.phase !== "showdown") return;
     if (!this.pokerState.players.some((player) => player.id === playerId && player.connected)) return;
 
+    const bustedPlayers = this.pokerState.players.filter((player) => player.connected && player.stack <= 0);
+    const bustedNames = bustedPlayers.map((player) => player.name);
+
     this.pokerState.round += 1;
     this.pokerState.phase = "waiting";
     this.pokerState.pot = 0;
@@ -1309,8 +1340,8 @@ export default class RPSParty {
     this.pokerState.handId = undefined;
     this.pokerState.showdown = undefined;
     this.pokerState.actionLog = [];
-    this.pokerState.players = this.pokerState.players
-      .filter((player) => player.connected)
+    const remainingPlayers = this.pokerState.players
+      .filter((player) => player.connected && player.stack > 0)
       .map((player) => ({
         ...player,
         ready: false,
@@ -1323,11 +1354,34 @@ export default class RPSParty {
         lastAction: undefined,
         accountError: undefined
       }));
-    this.pokerState.message = "Next hand ready. Players can ready up with the fixed table ante.";
+    this.pokerState.players = remainingPlayers;
+
+    if (remainingPlayers.length === 1 && bustedNames.length) {
+      const winnerName = remainingPlayers[0].name;
+      this.pokerState.phase = "finished";
+      this.pokerState.message = `${winnerName} wins the table. All other players are out of chips.`;
+      this.appendPokerActionLog({
+        action: "TABLE",
+        message: this.pokerState.message
+      });
+      this.broadcastPoker();
+      return;
+    }
+
+    this.pokerState.message = bustedNames.length
+      ? `${bustedNames.join(" / ")} ${bustedNames.length === 1 ? "is" : "are"} out of chips and left the table.`
+      : "Next hand ready. Players can ready up with the fixed table ante.";
+    if (bustedNames.length) {
+      this.appendPokerActionLog({
+        action: "BUST",
+        message: `${bustedNames.join(" / ")} ${bustedNames.length === 1 ? "was" : "were"} removed after busting.`
+      });
+    }
     this.appendPokerActionLog({
       action: "RESET",
-      message: "Next hand ready. Players can ready up."
+      message: bustedNames.length ? "Remaining players can ready up." : "Next hand ready. Players can ready up."
     });
+    this.updatePokerPhase();
     this.broadcastPoker();
   }
 

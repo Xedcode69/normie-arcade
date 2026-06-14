@@ -257,7 +257,7 @@ function PokerPvP() {
   const callAmount = Math.max(0, state.currentBet - streetCommitted);
   const minRaiseTo = state.currentBet + state.minRaise;
   const activeRaiseCaps = state.players
-    .filter((player) => player.connected && !player.folded)
+    .filter((player) => player.connected && !player.folded && (player.stack ?? 0) > 0)
     .map((player) => (player.streetCommitted ?? 0) + (player.stack ?? 0));
   const maxRaiseTo = Math.min(streetCommitted + tableStack, activeRaiseCaps.length ? Math.min(...activeRaiseCaps) : streetCommitted + tableStack);
   const isYourTurn = connected && state.phase === "betting" && state.turnPlayerId === playerId;
@@ -532,6 +532,8 @@ function PokerPvP() {
         <PokerShowdownPanel showdown={state.showdown} playerId={playerId} onNextHand={nextHand} />
       ) : null}
 
+      {state.phase === "finished" ? <PokerTableFinishedPanel message={state.message} /> : null}
+
       <PokerHandHistory history={state.history} playerId={playerId} />
 
       <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -546,13 +548,15 @@ function PokerPvP() {
           <>
             <button
               onClick={toggleReady}
-              disabled={state.phase === "dealt" || state.phase === "betting" || state.phase === "showdown"}
+              disabled={state.phase === "dealt" || state.phase === "betting" || state.phase === "showdown" || state.phase === "finished"}
               className={`inline-flex min-w-36 items-center justify-center gap-2 border px-5 py-3 text-xs uppercase tracking-widest transition ${
                 you?.ready ? "border-mint bg-mint/10 text-mint" : "border-paper/70 bg-paper/10 text-paper shadow-neon hover:bg-paper/15"
               } disabled:opacity-50`}
             >
               <CheckCircle2 size={16} />{" "}
-              {state.phase === "showdown"
+              {state.phase === "finished"
+                ? "Table Ended"
+                : state.phase === "showdown"
                 ? "Showdown"
                 : state.phase === "betting"
                 ? "Betting"
@@ -577,6 +581,8 @@ function PokerPvP() {
         <div className="text-sm text-paper">
           {state.phase === "showdown"
             ? "Showdown complete. Ante/pot settlement is handled server-side."
+            : state.phase === "finished"
+            ? state.message
             : state.phase === "betting"
             ? isYourTurn
               ? `${streetLabel}. Your turn. ${callAmount > 0 ? `Call ${callAmount}, raise, or fold.` : "Check, raise, or fold."}`
@@ -855,6 +861,7 @@ function PokerSeatLegend() {
   const states = [
     { label: "Ready", className: "border-mint/55 bg-mint/10 text-mint" },
     { label: "Acting", className: "border-mint bg-black text-mint ring-1 ring-mint/45" },
+    { label: "All-In", className: "border-cyan/60 bg-cyan/10 text-cyan" },
     { label: "Folded", className: "border-magenta/50 bg-magenta/10 text-magenta" },
     { label: "Offline", className: "border-paper/20 bg-black/55 text-paper/40" },
     { label: "Winner", className: "border-mint bg-mint/15 text-mint shadow-neon" }
@@ -924,10 +931,13 @@ function PokerTableSeat({
 }) {
   const activeHand = phase === "dealt" || phase === "betting" || phase === "showdown";
   const isWinner = Boolean(player && showdownWinnerIds.includes(player.id));
+  const isAllIn = Boolean(player && activeHand && !player.folded && (player.stack ?? 0) <= 0 && !isWinner);
   const seatState = !player
     ? "open"
     : isWinner
     ? "winner"
+    : isAllIn
+    ? "allin"
     : player.folded
     ? "folded"
     : !player.connected
@@ -944,6 +954,8 @@ function PokerTableSeat({
       ? "OPEN"
       : seatState === "winner"
       ? "WINNER"
+      : seatState === "allin"
+      ? "ALL-IN"
       : seatState === "folded"
       ? "FOLD"
       : seatState === "offline"
@@ -958,6 +970,7 @@ function PokerTableSeat({
     seated: isYou ? "border-cyan bg-black/85" : "border-paper/35 bg-black/85",
     ready: "border-mint/55 bg-mint/10 shadow-neon",
     acting: "border-mint bg-black/90 ring-2 ring-mint/45",
+    allin: "border-cyan/70 bg-cyan/10",
     folded: "border-magenta/45 bg-magenta/10 opacity-70",
     offline: "border-paper/20 bg-black/65 grayscale opacity-55",
     acted: "border-paper/40 bg-black/85",
@@ -968,6 +981,7 @@ function PokerTableSeat({
     seated: "border-paper/30 text-paper/55",
     ready: "border-mint/50 text-mint",
     acting: "border-mint bg-mint/10 text-mint",
+    allin: "border-cyan/60 bg-cyan/10 text-cyan",
     folded: "border-magenta/50 text-magenta",
     offline: "border-paper/20 text-paper/35",
     acted: "border-cyan/40 text-cyan",
@@ -1273,6 +1287,22 @@ function PokerShowdownPanel({
           playAgainLabel="Next Hand"
           onPlayAgain={onNextHand}
         />
+      </div>
+    </div>
+  );
+}
+
+function PokerTableFinishedPanel({ message }: { message: string }) {
+  return (
+    <div className="mx-auto mt-6 w-full max-w-5xl border border-mint bg-black/80 p-4 text-center shadow-neon">
+      <div className="mx-auto grid h-11 w-11 place-items-center border border-mint/70 bg-black text-mint shadow-neon">
+        <Trophy size={22} />
+      </div>
+      <div className="terminal-hash mt-3 text-[10px] uppercase tracking-[0.24em] text-pixel/65">Table Finished</div>
+      <h3 className="mt-2 font-display text-xl uppercase tracking-[0.22em] text-mint">Game Over</h3>
+      <div className="mt-2 text-sm text-paper/75">{message}</div>
+      <div className="mt-4 border border-paper/15 bg-black/55 px-3 py-2 text-xs uppercase tracking-[0.18em] text-paper/45">
+        Create or join a new room to start another poker table.
       </div>
     </div>
   );

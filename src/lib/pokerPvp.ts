@@ -24,7 +24,7 @@ export type PokerPvPPlayer = {
 };
 
 export type PokerPvPState = {
-  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown";
+  phase: "waiting" | "ready" | "dealt" | "betting" | "showdown" | "finished";
   players: PokerPvPPlayer[];
   maxPlayers: number;
   round: number;
