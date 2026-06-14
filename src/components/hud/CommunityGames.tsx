@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Gamepad2, Send, X } from "lucide-react";
+import { CheckCircle2, ExternalLink, Gamepad2, Send, ShieldCheck, X, XCircle } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useArcadeStore } from "@/stores/arcadeStore";
 
@@ -12,6 +12,9 @@ type CommunityGame = {
   tags: string[];
   url: string;
   previewUrl?: string | null;
+  contact?: string | null;
+  status?: "PENDING" | "APPROVED" | "REJECTED";
+  createdAt?: string;
   accent?: string;
 };
 
@@ -54,6 +57,10 @@ export function CommunityGames() {
   const [loading, setLoading] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [submitState, setSubmitState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminToken, setAdminToken] = useState("");
+  const [adminGames, setAdminGames] = useState<CommunityGame[]>([]);
+  const [adminState, setAdminState] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
   useEffect(() => {
     if (!open) return;
@@ -99,11 +106,21 @@ export function CommunityGames() {
             <button
               onClick={() => {
                 setSubmitOpen(true);
+                setAdminOpen(false);
                 setSubmitState("idle");
               }}
               className="inline-flex h-9 items-center gap-2 border border-mint/60 bg-mint/10 px-3 text-xs uppercase tracking-widest text-mint transition hover:bg-mint/15"
             >
               <Send size={14} /> Submit Game
+            </button>
+            <button
+              onClick={() => {
+                setAdminOpen((value) => !value);
+                setSubmitOpen(false);
+              }}
+              className="inline-flex h-9 items-center gap-2 border border-paper/40 bg-black/80 px-3 text-xs uppercase tracking-widest text-paper/70 transition hover:border-mint hover:text-mint"
+            >
+              <ShieldCheck size={14} /> Admin
             </button>
             <button
               aria-label="Close community games"
@@ -123,12 +140,152 @@ export function CommunityGames() {
           />
         ) : null}
 
+        {adminOpen ? (
+          <AdminReviewPanel
+            games={adminGames}
+            token={adminToken}
+            state={adminState}
+            onTokenChange={setAdminToken}
+            onStateChange={setAdminState}
+            onGamesChange={setAdminGames}
+          />
+        ) : null}
+
         <div className="grid max-h-[68vh] gap-3 overflow-y-auto pr-1 thin-scroll md:grid-cols-3">
           {loading ? Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-80 animate-pulse border border-paper/15 bg-white/10" />) : null}
           {!loading && games.map((game, index) => <CommunityGameCard key={game.id} game={game} index={index} />)}
         </div>
       </section>
     </aside>
+  );
+}
+
+function AdminReviewPanel({
+  games,
+  token,
+  state,
+  onTokenChange,
+  onStateChange,
+  onGamesChange
+}: {
+  games: CommunityGame[];
+  token: string;
+  state: "idle" | "loading" | "ready" | "error";
+  onTokenChange: (token: string) => void;
+  onStateChange: (state: "idle" | "loading" | "ready" | "error") => void;
+  onGamesChange: (games: CommunityGame[]) => void;
+}) {
+  async function loadPending() {
+    if (!token.trim()) {
+      onStateChange("error");
+      return;
+    }
+
+    onStateChange("loading");
+    const response = await fetch("/api/community-games/admin?status=PENDING", {
+      headers: { "x-admin-token": token.trim() }
+    });
+
+    if (!response.ok) {
+      onGamesChange([]);
+      onStateChange("error");
+      return;
+    }
+
+    const data = (await response.json()) as { games: CommunityGame[] };
+    onGamesChange(data.games);
+    onStateChange("ready");
+  }
+
+  async function review(id: string, status: "APPROVED" | "REJECTED") {
+    const response = await fetch("/api/community-games/admin", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-token": token.trim()
+      },
+      body: JSON.stringify({ id, status })
+    });
+
+    if (!response.ok) {
+      onStateChange("error");
+      return;
+    }
+
+    onGamesChange(games.filter((game) => game.id !== id));
+    onStateChange("ready");
+  }
+
+  return (
+    <section className="mb-4 border border-paper/25 bg-black/70 p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="min-w-64 flex-1">
+          <span className="mb-1 block text-[9px] uppercase tracking-widest text-paper/45">Admin Token</span>
+          <input
+            type="password"
+            value={token}
+            onChange={(event) => onTokenChange(event.target.value)}
+            placeholder="COMMUNITY_GAMES_ADMIN_TOKEN"
+            className="w-full border border-paper/25 bg-black/70 px-3 py-2 text-sm text-paper outline-none focus:border-mint"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={loadPending}
+          disabled={state === "loading"}
+          className="inline-flex h-10 items-center gap-2 border border-mint/70 bg-mint/10 px-3 text-xs uppercase tracking-widest text-mint transition hover:bg-mint/15 disabled:opacity-45"
+        >
+          <ShieldCheck size={14} /> {state === "loading" ? "Loading" : "Load Pending"}
+        </button>
+      </div>
+
+      <div className="mt-3 text-xs text-paper/55">
+        {state === "error" ? "Admin request failed. Check the token and try again." : state === "ready" ? `${games.length} pending submission${games.length === 1 ? "" : "s"}.` : "Review submitted games before they appear in Portal Alley."}
+      </div>
+
+      {games.length ? (
+        <div className="mt-3 grid max-h-80 gap-2 overflow-y-auto pr-1 thin-scroll">
+          {games.map((game) => (
+            <article key={game.id} className="grid gap-3 border border-paper/15 bg-black/60 p-3 md:grid-cols-[1fr_auto]">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-pixel/60">{game.creator}</div>
+                <h3 className="mt-1 font-display text-sm uppercase tracking-[0.14em] text-paper">{game.name}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-paper/65">{game.description}</p>
+                <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-paper/45">
+                  <a href={game.url} target="_blank" rel="noreferrer" className="underline decoration-paper/30 underline-offset-4 hover:text-mint">
+                    {game.url}
+                  </a>
+                  {game.contact ? <span>Contact: {game.contact}</span> : null}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {game.tags.map((tag) => (
+                    <span key={tag} className="border border-paper/20 px-2 py-1 text-[9px] uppercase tracking-widest text-paper/55">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 md:flex-col md:items-stretch md:justify-center">
+                <button
+                  type="button"
+                  onClick={() => review(game.id, "APPROVED")}
+                  className="inline-flex items-center justify-center gap-2 border border-mint/65 bg-mint/10 px-3 py-2 text-xs uppercase tracking-widest text-mint transition hover:bg-mint/15"
+                >
+                  <CheckCircle2 size={14} /> Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => review(game.id, "REJECTED")}
+                  className="inline-flex items-center justify-center gap-2 border border-magenta/55 bg-magenta/10 px-3 py-2 text-xs uppercase tracking-widest text-magenta transition hover:bg-magenta/15"
+                >
+                  <XCircle size={14} /> Reject
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
