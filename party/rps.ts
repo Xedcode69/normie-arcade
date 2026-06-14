@@ -366,6 +366,9 @@ export default class RPSParty {
     if (pokerPlayerId) {
       this.pokerConnections.delete(connection.id);
       this.pokerConnectionObjects.delete(connection.id);
+      if (this.hasOpenPokerConnection(pokerPlayerId)) {
+        return;
+      }
       const pokerPlayer = this.pokerState.players.find((player) => player.id === pokerPlayerId);
       if (pokerPlayer) {
         const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown";
@@ -917,8 +920,15 @@ export default class RPSParty {
         selectedNormieId: data.selectedNormieId,
         avatarUrl: data.avatarUrl
       };
+      this.pokerState.players.push(player);
+      this.pokerConnections.set(connection.id, data.playerId);
+      this.pokerConnectionObjects.set(connection.id, connection);
+
       const reserved = await this.reservePokerBuyIn(player);
       if (!reserved.ok) {
+        this.pokerState.players = this.pokerState.players.filter((item) => item.id !== player.id);
+        this.pokerConnections.delete(connection.id);
+        this.pokerConnectionObjects.delete(connection.id);
         connection.send(
           JSON.stringify({
             type: "full",
@@ -929,9 +939,6 @@ export default class RPSParty {
         );
         return;
       }
-      this.pokerState.players.push(player);
-      this.pokerConnections.set(connection.id, data.playerId);
-      this.pokerConnectionObjects.set(connection.id, connection);
     }
 
     this.pokerState.players.sort((a, b) => a.seat - b.seat);
@@ -977,6 +984,10 @@ export default class RPSParty {
     const timer = this.pokerStaleTimers.get(playerId);
     if (timer) clearTimeout(timer);
     this.pokerStaleTimers.delete(playerId);
+  }
+
+  private hasOpenPokerConnection(playerId: string) {
+    return Array.from(this.pokerConnections.values()).some((connectedPlayerId) => connectedPlayerId === playerId);
   }
 
   private clearPokerNextHandTimer() {
@@ -1033,6 +1044,12 @@ export default class RPSParty {
 
   private async cleanupStalePokerPlayer(playerId: string) {
     const stalePlayer = this.pokerState.players.find((player) => player.id === playerId);
+    if (this.hasOpenPokerConnection(playerId)) {
+      if (stalePlayer) stalePlayer.connected = true;
+      this.clearPokerStaleCleanup(playerId);
+      this.broadcastPoker();
+      return;
+    }
     if (!stalePlayer || stalePlayer.connected) return;
 
     const activeRound = this.pokerState.phase === "ready" || this.pokerState.phase === "dealt" || this.pokerState.phase === "betting" || this.pokerState.phase === "showdown";
@@ -1966,18 +1983,39 @@ export default class RPSParty {
 
   private publicPokerState(playerId?: string) {
     const privatePlayer = playerId ? this.pokerState.players.find((player) => player.id === playerId) : undefined;
+    const publicPlayers = this.normalizePublicPokerSeats(this.pokerState.players);
 
     return {
       ...this.pokerState,
       pokerDeck: undefined,
       privateHand: privatePlayer?.hand,
-      players: this.pokerState.players.map((player) => ({
+      players: publicPlayers.map((player) => ({
         ...player,
         privyToken: undefined,
         hand: undefined,
         handCount: player.hand?.length ?? 0
       }))
     };
+  }
+
+  private normalizePublicPokerSeats(players: PokerPlayer[]) {
+    const usedSeats = new Set<number>();
+    const normalized = players
+      .slice()
+      .sort((a, b) => a.seat - b.seat)
+      .map((player) => {
+        if (player.seat >= 0 && player.seat < this.pokerState.maxPlayers && !usedSeats.has(player.seat)) {
+          usedSeats.add(player.seat);
+          return player;
+        }
+
+        const fallbackSeat = Array.from({ length: this.pokerState.maxPlayers }, (_, index) => index).find((seat) => !usedSeats.has(seat));
+        if (fallbackSeat === undefined) return player;
+        usedSeats.add(fallbackSeat);
+        return { ...player, seat: fallbackSeat };
+      });
+
+    return normalized.sort((a, b) => a.seat - b.seat);
   }
 
   private broadcast() {
