@@ -203,20 +203,24 @@ type TcgPlayer = {
   isNormieHolder?: boolean;
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
-  pendingPlay?: { cardId: number; lane: number };
+  pendingPlay?: { action: "play"; cardId: number; lane: number } | { action: "skip" };
   lastTypeBonus?: number;
   peaceShield?: boolean;
+  skipUsed?: boolean;
+  redrawUsed?: boolean;
 };
 
 type TcgLane = {
   playerA: number[];
   playerB: number[];
+  playerAPower: number;
+  playerBPower: number;
 };
 
 type TcgReveal = {
   turn: number;
-  playerA?: { cardId: number; lane: number; power: number; effects: string[] };
-  playerB?: { cardId: number; lane: number; power: number; effects: string[] };
+  playerA?: { cardId?: number; lane?: number; power: number; effects: string[]; skipped?: boolean };
+  playerB?: { cardId?: number; lane?: number; power: number; effects: string[]; skipped?: boolean };
   laneWinner?: "playerA" | "playerB" | "draw";
   message: string;
 };
@@ -250,6 +254,8 @@ type TcgClientMessage =
     }
   | { type: "tcg_draft_pick"; playerId: string; cardId: number }
   | { type: "tcg_play"; playerId: string; cardId: number; lane: number }
+  | { type: "tcg_skip"; playerId: string }
+  | { type: "tcg_redraw"; playerId: string; cardId: number }
   | { type: "tcg_rematch"; playerId: string };
 
 const picks: RPSType[] = ["Human", "Cat", "Alien"];
@@ -486,6 +492,10 @@ export default class RPSParty {
       if (data.type === "tcg_draft_pick" && typeof data.playerId === "string" && typeof data.cardId === "number") {
         return { ...data, cardId: Math.max(0, Math.round(data.cardId)) };
       }
+      if (data.type === "tcg_skip" && typeof data.playerId === "string") return data;
+      if (data.type === "tcg_redraw" && typeof data.playerId === "string" && typeof data.cardId === "number") {
+        return { ...data, cardId: Math.max(0, Math.round(data.cardId)) };
+      }
       if (data.type === "tcg_rematch" && typeof data.playerId === "string") return data;
       return null;
     } catch {
@@ -506,6 +516,16 @@ export default class RPSParty {
 
     if (data.type === "tcg_draft_pick") {
       this.draftTcgCard(data);
+      return;
+    }
+
+    if (data.type === "tcg_skip") {
+      this.skipTcgTurn(data.playerId);
+      return;
+    }
+
+    if (data.type === "tcg_redraw") {
+      this.redrawTcgCard(data);
       return;
     }
 
@@ -586,7 +606,9 @@ export default class RPSParty {
       score: 0,
       pendingPlay: undefined,
       lastTypeBonus: 0,
-      peaceShield: false
+      peaceShield: false,
+      skipUsed: false,
+      redrawUsed: false
     }));
     this.tcgState.message = "Draft phase. Pick Normies from the shared pool one at a time.";
     this.scheduleTcgDraftTimer();
@@ -642,7 +664,9 @@ export default class RPSParty {
         hand: deck.slice(0, tcgStartingHand),
         pendingPlay: undefined,
         lastTypeBonus: 0,
-        peaceShield: false
+        peaceShield: false,
+        skipUsed: false,
+        redrawUsed: false
       };
     });
     this.tcgState.phase = "playing";
@@ -678,7 +702,7 @@ export default class RPSParty {
     const player = this.tcgState.players.find((item) => item.id === data.playerId && item.connected);
     if (!player || player.pendingPlay || !player.hand.includes(data.cardId)) return;
 
-    player.pendingPlay = { cardId: data.cardId, lane: data.lane };
+    player.pendingPlay = { action: "play", cardId: data.cardId, lane: data.lane };
     this.tcgState.message = `${player.name} locked a card into lane ${data.lane + 1}.`;
 
     const activePlayers = this.tcgState.players.filter((item) => item.connected);
@@ -690,6 +714,39 @@ export default class RPSParty {
     this.broadcastTcg();
   }
 
+  private skipTcgTurn(playerId: string) {
+    if (this.tcgState.phase !== "playing") return;
+
+    const player = this.tcgState.players.find((item) => item.id === playerId && item.connected);
+    if (!player || player.pendingPlay || player.skipUsed) return;
+
+    player.skipUsed = true;
+    player.pendingPlay = { action: "skip" };
+    this.tcgState.message = `${player.name} skipped this turn.`;
+
+    const activePlayers = this.tcgState.players.filter((item) => item.connected);
+    if (activePlayers.length >= 2 && activePlayers.every((item) => item.pendingPlay)) {
+      void this.resolveTcgTurn();
+      return;
+    }
+
+    this.broadcastTcg();
+  }
+
+  private redrawTcgCard(data: Extract<TcgClientMessage, { type: "tcg_redraw" }>) {
+    if (this.tcgState.phase !== "playing") return;
+
+    const player = this.tcgState.players.find((item) => item.id === data.playerId && item.connected);
+    if (!player || player.pendingPlay || player.redrawUsed || !player.hand.includes(data.cardId)) return;
+
+    player.redrawUsed = true;
+    player.hand = player.hand.filter((id) => id !== data.cardId);
+    this.drawTcgCard(player);
+    this.drawTcgCard(player);
+    this.tcgState.message = `${player.name} redrew one card.`;
+    this.broadcastTcg();
+  }
+
   private async resolveTcgTurn() {
     const playerA = this.tcgState.players.find((player) => player.seat === 0);
     const playerB = this.tcgState.players.find((player) => player.seat === 1);
@@ -697,33 +754,40 @@ export default class RPSParty {
 
     const playA = playerA.pendingPlay;
     const playB = playerB.pendingPlay;
-    const evalA = await this.evaluateTcgCard(playerA, playerB, playA, playB);
-    const evalB = await this.evaluateTcgCard(playerB, playerA, playB, playA);
+    const fallbackPlayA = playA.action === "play" ? playA : { cardId: 0, lane: -1 };
+    const fallbackPlayB = playB.action === "play" ? playB : { cardId: 0, lane: -1 };
+    const evalA = playA.action === "play" ? await this.evaluateTcgCard(playerA, playerB, playA, fallbackPlayB) : { power: 0, effects: ["Skipped: saved hand and drew at turn end."], burned: false, expression: "" };
+    const evalB = playB.action === "play" ? await this.evaluateTcgCard(playerB, playerA, playB, fallbackPlayA) : { power: 0, effects: ["Skipped: saved hand and drew at turn end."], burned: false, expression: "" };
     const powerA = evalA.power;
     const powerB = evalB.power;
     let laneWinner: "playerA" | "playerB" | "draw" = "draw";
     let burnedPenalty = "";
 
-    this.tcgState.lanes[playA.lane].playerA.push(playA.cardId);
-    this.tcgState.lanes[playB.lane].playerB.push(playB.cardId);
-    playerA.hand = playerA.hand.filter((id) => id !== playA.cardId);
-    playerB.hand = playerB.hand.filter((id) => id !== playB.cardId);
+    if (playA.action === "play") {
+      this.tcgState.lanes[playA.lane].playerA.push(playA.cardId);
+      playerA.hand = playerA.hand.filter((id) => id !== playA.cardId);
+      this.tcgState.lanes[playA.lane].playerAPower += powerA;
+    }
 
-    if (playA.lane === playB.lane) {
+    if (playB.action === "play") {
+      this.tcgState.lanes[playB.lane].playerB.push(playB.cardId);
+      playerB.hand = playerB.hand.filter((id) => id !== playB.cardId);
+      this.tcgState.lanes[playB.lane].playerBPower += powerB;
+    }
+
+    if (playA.action === "play" && playB.action === "play" && playA.lane === playB.lane) {
       if (powerA > powerB) {
-        playerA.score += 1;
         laneWinner = "playerA";
         burnedPenalty = this.applyTcgBurnedAftermath(playerB, playA, playB, evalA, evalB, powerA - powerB);
       } else if (powerB > powerA) {
-        playerB.score += 1;
         laneWinner = "playerB";
         burnedPenalty = this.applyTcgBurnedAftermath(playerA, playB, playA, evalB, evalA, powerB - powerA);
       }
     } else {
-      playerA.score += 1;
-      playerB.score += 1;
       laneWinner = "draw";
     }
+
+    this.updateTcgLaneScores(playerA, playerB);
 
     this.drawTcgCard(playerA);
     this.drawTcgCard(playerB);
@@ -731,17 +795,29 @@ export default class RPSParty {
     playerB.pendingPlay = undefined;
     this.tcgScorches = this.tcgScorches.filter((item) => item.turn > this.tcgState.turn);
 
+    let revealMessage = "";
+    if (playA.action === "skip" && playB.action === "skip") {
+      revealMessage = "Both players skipped and drew.";
+    } else if (playA.action === "skip" && playB.action === "play") {
+      revealMessage = `${playerA.name} skipped. ${playerB.name} added power to lane ${playB.lane + 1}.`;
+    } else if (playA.action === "play" && playB.action === "skip") {
+      revealMessage = `${playerB.name} skipped. ${playerA.name} added power to lane ${playA.lane + 1}.`;
+    } else if (playA.action === "play" && playB.action === "play" && playA.lane === playB.lane) {
+      revealMessage =
+        laneWinner === "draw"
+          ? `Lane ${playA.lane + 1} tied.`
+          : `${laneWinner === "playerA" ? playerA.name : playerB.name} won lane ${playA.lane + 1}.`;
+    } else {
+      revealMessage = "Both players added power to separate lanes.";
+    }
+    if (burnedPenalty) revealMessage = `${revealMessage} ${burnedPenalty}`;
+
     const reveal: TcgReveal = {
       turn: this.tcgState.turn,
-      playerA: { ...playA, power: powerA, effects: evalA.effects },
-      playerB: { ...playB, power: powerB, effects: evalB.effects },
+      playerA: playA.action === "play" ? { cardId: playA.cardId, lane: playA.lane, power: powerA, effects: evalA.effects } : { power: 0, effects: evalA.effects, skipped: true },
+      playerB: playB.action === "play" ? { cardId: playB.cardId, lane: playB.lane, power: powerB, effects: evalB.effects } : { power: 0, effects: evalB.effects, skipped: true },
       laneWinner,
-      message:
-        (playA.lane === playB.lane
-          ? laneWinner === "draw"
-            ? `Lane ${playA.lane + 1} tied.`
-            : `${laneWinner === "playerA" ? playerA.name : playerB.name} won lane ${playA.lane + 1}.`
-          : "Both players claimed separate lanes.") + (burnedPenalty ? ` ${burnedPenalty}` : "")
+      message: revealMessage
     };
 
     this.tcgState.reveal = reveal;
@@ -750,9 +826,10 @@ export default class RPSParty {
 
     if (this.tcgState.turn >= this.tcgState.maxTurns) {
       this.tcgState.phase = "finished";
-      this.tcgState.winnerId = playerA.score === playerB.score ? undefined : playerA.score > playerB.score ? playerA.id : playerB.id;
+      this.updateTcgLaneScores(playerA, playerB);
+      this.tcgState.winnerId = this.resolveTcgWinner(playerA, playerB);
       this.tcgState.message = this.tcgState.winnerId
-        ? `${this.tcgState.winnerId === playerA.id ? playerA.name : playerB.name} wins Circuit Clash.`
+        ? `${this.tcgState.winnerId === playerA.id ? playerA.name : playerB.name} wins Circuit Clash by lane control.`
         : "Circuit Clash ends in a draw.";
       void this.settleTcgLeaderboard(playerA, playerB);
       this.broadcastTcg();
@@ -783,7 +860,9 @@ export default class RPSParty {
         score: 0,
         pendingPlay: undefined,
         lastTypeBonus: 0,
-        peaceShield: false
+        peaceShield: false,
+        skipUsed: false,
+        redrawUsed: false
       };
     });
     this.tcgState.turn = 1;
@@ -2066,7 +2145,11 @@ export default class RPSParty {
         draftedCount: player.drafted.length,
         handCount: player.hand.length,
         deckCount: player.deck.length,
-        pendingPlay: player.pendingPlay ? { cardId: 0, lane: player.pendingPlay.lane } : undefined
+        pendingPlay: player.pendingPlay
+          ? player.pendingPlay.action === "play"
+            ? { action: "play", cardId: 0, lane: player.pendingPlay.lane }
+            : { action: "skip" }
+          : undefined
       }))
     };
   }
@@ -2139,10 +2222,46 @@ export default class RPSParty {
 
   private emptyTcgLanes(): TcgLane[] {
     return [
-      { playerA: [], playerB: [] },
-      { playerA: [], playerB: [] },
-      { playerA: [], playerB: [] }
+      { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 },
+      { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 },
+      { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 }
     ];
+  }
+
+  private updateTcgLaneScores(playerA: TcgPlayer, playerB: TcgPlayer) {
+    const laneWins = this.tcgLaneWins();
+    playerA.score = laneWins.playerA;
+    playerB.score = laneWins.playerB;
+  }
+
+  private tcgLaneWins() {
+    return this.tcgState.lanes.reduce(
+      (wins, lane) => {
+        if (lane.playerAPower > lane.playerBPower) wins.playerA += 1;
+        else if (lane.playerBPower > lane.playerAPower) wins.playerB += 1;
+        return wins;
+      },
+      { playerA: 0, playerB: 0 }
+    );
+  }
+
+  private tcgTotalPower(side: "playerA" | "playerB") {
+    const key = side === "playerA" ? "playerAPower" : "playerBPower";
+    return this.tcgState.lanes.reduce((sum, lane) => sum + lane[key], 0);
+  }
+
+  private resolveTcgWinner(playerA: TcgPlayer, playerB: TcgPlayer) {
+    if (playerA.score !== playerB.score) return playerA.score > playerB.score ? playerA.id : playerB.id;
+
+    const totalA = this.tcgTotalPower("playerA");
+    const totalB = this.tcgTotalPower("playerB");
+    if (totalA !== totalB) return totalA > totalB ? playerA.id : playerB.id;
+
+    const highestA = Math.max(0, ...this.tcgState.history.map((entry) => entry.playerA?.power ?? 0));
+    const highestB = Math.max(0, ...this.tcgState.history.map((entry) => entry.playerB?.power ?? 0));
+    if (highestA !== highestB) return highestA > highestB ? playerA.id : playerB.id;
+
+    return undefined;
   }
 
   private createTcgDeck(seed: string, count = tcgDeckSize) {
@@ -2284,8 +2403,10 @@ export default class RPSParty {
         loser.peaceShield = false;
         return message ? `${message} Peaceful shield blocked burned backlash.` : "Peaceful shield blocked burned backlash.";
       }
-      loser.score = Math.max(0, loser.score - penalty);
-      return `${message ? `${message} ` : ""}Burned loser lost ${penalty} score.`;
+      const lane = this.tcgState.lanes[losingPlay.lane];
+      const key = loser.seat === 0 ? "playerAPower" : "playerBPower";
+      lane[key] = Math.max(0, lane[key] - penalty);
+      return `${message ? `${message} ` : ""}Burned loser lost ${penalty} lane power.`;
     }
     return message;
   }
@@ -2336,6 +2457,9 @@ export default class RPSParty {
     await Promise.allSettled(
       players.map((player) => {
         const opponent = player.id === playerA.id ? playerB : playerA;
+        const outcome = !this.tcgState.winnerId ? "DRAW" : this.tcgState.winnerId === player.id ? "WIN" : "LOSS";
+        const playerPower = this.tcgTotalPower(player.seat === 0 ? "playerA" : "playerB");
+        const opponentPower = this.tcgTotalPower(opponent.seat === 0 ? "playerA" : "playerB");
         return fetch(`${this.apiBaseUrl()}/api/internal/leaderboard`, {
           method: "POST",
           headers: {
@@ -2346,7 +2470,7 @@ export default class RPSParty {
             privyToken: player.privyToken,
             game: "TCG",
             mode: "PVP",
-            outcome: playerA.score === playerB.score ? "DRAW" : player.score > opponent.score ? "WIN" : "LOSS",
+            outcome,
             score: player.score,
             chipsWon: 0,
             netChips: 0,
@@ -2357,8 +2481,11 @@ export default class RPSParty {
               playerId: player.id,
               opponentId: opponent.id,
               opponentScore: opponent.score,
+              playerPower,
+              opponentPower,
               draftedCards: player.drafted.length,
               finalScore: `${player.score}-${opponent.score}`,
+              finalPower: `${playerPower}-${opponentPower}`,
               winnerId: this.tcgState.winnerId ?? null
             }
           })

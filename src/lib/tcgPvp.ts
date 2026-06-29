@@ -10,21 +10,22 @@ export type TcgPvpPlayer = {
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
   draftedCount?: number;
-  pendingPlay?: {
-    cardId: number;
-    lane: number;
-  };
+  skipUsed?: boolean;
+  redrawUsed?: boolean;
+  pendingPlay?: { action: "play"; cardId: number; lane: number } | { action: "skip" };
 };
 
 export type TcgLane = {
   playerA: number[];
   playerB: number[];
+  playerAPower: number;
+  playerBPower: number;
 };
 
 export type TcgReveal = {
   turn: number;
-  playerA?: { cardId: number; lane: number; power: number; effects?: string[] };
-  playerB?: { cardId: number; lane: number; power: number; effects?: string[] };
+  playerA?: { cardId?: number; lane?: number; power: number; effects?: string[]; skipped?: boolean };
+  playerB?: { cardId?: number; lane?: number; power: number; effects?: string[]; skipped?: boolean };
   laneWinner?: "playerA" | "playerB" | "draw";
   message: string;
 };
@@ -54,9 +55,9 @@ export const initialTcgPvpState: TcgPvpState = {
   turn: 1,
   maxTurns: 5,
   lanes: [
-    { playerA: [], playerB: [] },
-    { playerA: [], playerB: [] },
-    { playerA: [], playerB: [] }
+    { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 },
+    { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 },
+    { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 }
   ],
   history: [],
   message: "Create or join a Circuit Clash room."

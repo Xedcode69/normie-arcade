@@ -108,6 +108,19 @@ export function useTcgPvp(room = "tcg-quickplay") {
     [playerId, send]
   );
 
+  const skipTurn = useCallback(() => {
+    if (!playerId) return;
+    send({ type: "tcg_skip", playerId });
+  }, [playerId, send]);
+
+  const redrawCard = useCallback(
+    (cardId: number) => {
+      if (!playerId) return;
+      send({ type: "tcg_redraw", playerId, cardId });
+    },
+    [playerId, send]
+  );
+
   const draftPick = useCallback(
     (cardId: number) => {
       if (!playerId) return;
@@ -130,9 +143,11 @@ export function useTcgPvp(room = "tcg-quickplay") {
     disconnect,
     error,
     draftPick,
+    redrawCard,
     playerId,
     playCard,
     rematch,
+    skipTurn,
     state
   };
 }

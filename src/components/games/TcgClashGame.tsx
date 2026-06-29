@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Copy, Dices, Flame, GitBranch, Home, Info, LogIn, Plus, RefreshCw, Shield, Swords, Trophy, Users } from "lucide-react";
+import { AlertTriangle, Copy, Dices, Flame, GitBranch, Home, Info, LogIn, Plus, RefreshCw, Shield, Shuffle, Swords, Trophy, Users } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
@@ -21,6 +21,7 @@ type LaneOwnership = "you" | "opponent" | "draw";
 type TcgMatchSummary = {
   result: "Victory" | "Defeat" | "Draw";
   finalScore: string;
+  totalPower: string;
   bestCard?: { cardId: number; power: number; owner: "You" | "Opponent" };
   biggestSwing?: { turn: number; margin: number; winner: "You" | "Opponent" | "Draw" };
 };
@@ -44,7 +45,7 @@ export function TcgClashGame() {
   const notify = useArcadeStore((store) => store.notify);
   const setLeaderboardOpen = useArcadeStore((store) => store.setLeaderboardOpen);
   const setActiveGame = useArcadeStore((store) => store.setActiveGame);
-  const { connected, connect, disconnect, draftPick, error, playerId, playCard, rematch, state } = useTcgPvp(`tcg-${roomCode.toLowerCase()}`);
+  const { connected, connect, disconnect, draftPick, error, playerId, playCard, redrawCard, rematch, skipTurn, state } = useTcgPvp(`tcg-${roomCode.toLowerCase()}`);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
   const playerSeat = you?.seat ?? 0;
@@ -69,12 +70,12 @@ export function TcgClashGame() {
     if (!opponent?.connected) return "Waiting for opponent.";
     if (state.phase === "drafting") return canDraft ? "Draft a Normie from the shared pool." : "Opponent is drafting.";
     if (state.phase === "finished") return state.winnerId ? (state.winnerId === playerId ? "Victory" : "Defeat") : "Draw";
-    if (you?.pendingPlay) return "Card locked. Waiting for opponent.";
+    if (you?.pendingPlay) return "Action locked. Waiting for opponent.";
     return state.message;
   }, [canDraft, connected, opponent?.connected, playerId, state.message, state.phase, state.winnerId, you?.pendingPlay]);
   const matchSummary = useMemo(
-    () => buildTcgMatchSummary({ history: state.history, playerSeat, winnerId: state.winnerId, playerId, youScore: you?.score ?? 0, opponentScore: opponent?.score ?? 0 }),
-    [opponent?.score, playerId, playerSeat, state.history, state.winnerId, you?.score]
+    () => buildTcgMatchSummary({ history: state.history, lanes: state.lanes, playerSeat, winnerId: state.winnerId, playerId, youScore: you?.score ?? 0, opponentScore: opponent?.score ?? 0 }),
+    [opponent?.score, playerId, playerSeat, state.history, state.lanes, state.winnerId, you?.score]
   );
 
   function selectRoomMode(mode: RoomMode) {
@@ -131,6 +132,12 @@ export function TcgClashGame() {
   function playSelected(lane: number) {
     if (!selectedCard || !canPlay) return;
     playCard(selectedCard, lane);
+    setSelectedCard(null);
+  }
+
+  function redrawSelected() {
+    if (!selectedCard || !canPlay || you?.redrawUsed) return;
+    redrawCard(selectedCard);
     setSelectedCard(null);
   }
 
@@ -221,7 +228,7 @@ export function TcgClashGame() {
           <div className="mt-5 border border-paper/15 bg-black/60 p-3">
             <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Rules</div>
             <p className="mt-2 text-sm leading-relaxed text-paper/65">
-              Five turns. Play one Normie into one of three lanes. Same-lane cards compare power. Separate lanes both score.
+              Five turns. Win 2 lanes. Once per match, skip to draw or redraw a selected card.
             </p>
           </div>
 
@@ -255,6 +262,8 @@ export function TcgClashGame() {
                   lane={index}
                   yourCards={lane[yourLaneKey]}
                   opponentCards={lane[opponentLaneKey]}
+                  yourPower={playerSeat === 0 ? lane.playerAPower : lane.playerBPower}
+                  opponentPower={playerSeat === 0 ? lane.playerBPower : lane.playerAPower}
                   ownership={getLaneOwnership(state.reveal, index, playerSeat)}
                   selectedCard={selectedCard}
                   canPlay={canPlay}
@@ -265,7 +274,7 @@ export function TcgClashGame() {
                           lane: index,
                           lanes: state.lanes,
                           playerSeat,
-                          opponentPendingLane: opponent?.pendingPlay?.lane,
+                          opponentPendingLane: opponent?.pendingPlay?.action === "play" ? opponent.pendingPlay.lane : undefined,
                           traitsById,
                           burnedIds
                         })
@@ -287,6 +296,24 @@ export function TcgClashGame() {
                 <div className="border border-paper/20 bg-black/60 px-3 py-2">Deck {you?.deckCount ?? 0}</div>
                 <div className="border border-paper/20 bg-black/60 px-3 py-2">Rival Hand {opponent?.handCount ?? 0}</div>
               </div>
+              {state.phase === "playing" ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    disabled={!canPlay || Boolean(you?.skipUsed)}
+                    onClick={skipTurn}
+                    className="inline-flex items-center gap-2 border border-paper/35 bg-black/70 px-3 py-2 text-[10px] uppercase tracking-widest text-paper/70 transition hover:border-paper hover:text-paper disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Shield size={14} /> {you?.skipUsed ? "Skip Used" : "Skip"}
+                  </button>
+                  <button
+                    disabled={!canPlay || !selectedCard || Boolean(you?.redrawUsed)}
+                    onClick={redrawSelected}
+                    className="inline-flex items-center gap-2 border border-mint/45 bg-mint/10 px-3 py-2 text-[10px] uppercase tracking-widest text-mint transition hover:bg-mint/15 disabled:cursor-not-allowed disabled:border-paper/20 disabled:bg-black/50 disabled:text-paper/30"
+                  >
+                    <Shuffle size={14} /> {you?.redrawUsed ? "Redraw Used" : "Redraw"}
+                  </button>
+                </div>
+              ) : null}
               {state.phase === "finished" ? (
                 <button onClick={rematch} className="inline-flex items-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-xs uppercase tracking-widest text-paper hover:bg-paper/15">
                   <RefreshCw size={15} /> Rematch
@@ -317,13 +344,13 @@ export function TcgClashGame() {
   );
 }
 
-function RevealEffects({ label, reveal }: { label: string; reveal?: { cardId: number; power: number; effects?: string[] } }) {
+function RevealEffects({ label, reveal }: { label: string; reveal?: { cardId?: number; power: number; effects?: string[]; skipped?: boolean } }) {
   if (!reveal) return null;
   return (
     <div className="border border-paper/15 bg-black/55 p-2">
       <div className="flex items-center justify-between gap-2 text-xs text-paper">
-        <span>{label} #{reveal.cardId}</span>
-        <span className="text-mint">Power {reveal.power}</span>
+        <span>{label} {reveal.skipped ? "Skipped" : `#${reveal.cardId}`}</span>
+        <span className="text-mint">{reveal.skipped ? "No play" : `Power ${reveal.power}`}</span>
       </div>
       <div className="mt-1 space-y-1 text-[10px] leading-snug text-paper/50">
         {reveal.effects?.length ? (
@@ -349,15 +376,21 @@ function MatchResultPanel({ summary, onRematch, onOpenLeaderboard, onReturnToCit
           <div className={`mt-1 font-display text-3xl uppercase tracking-[0.18em] ${resultClass}`}>{summary.result}</div>
         </div>
         <div className="text-right">
-          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/55">Final Score</div>
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/55">Lane Score</div>
           <div className="mt-1 font-display text-2xl text-paper">{summary.finalScore}</div>
+          <div className="mt-1 text-[10px] uppercase tracking-widest text-paper/45">Lanes Won</div>
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
         <ResultStat
-          label="Best Card Played"
+          label="Total Board Power"
+          value={summary.totalPower}
+          detail="Used as the first tiebreaker if lane wins are equal."
+        />
+        <ResultStat
           value={summary.bestCard ? `#${summary.bestCard.cardId} / ${summary.bestCard.power}` : "No cards"}
+          label="Best Card Played"
           detail={summary.bestCard ? `${summary.bestCard.owner} played the highest-power card.` : "No reveal history recorded."}
         />
         <ResultStat
@@ -500,7 +533,10 @@ function PlayerPlate({
           <span className="border border-paper/15 bg-black/50 px-1.5 py-0.5">D {deckCount}</span>
         </div>
       </div>
-      <div className="text-right font-display text-lg text-mint">{score}</div>
+      <div className="text-right">
+        <div className="font-display text-lg text-mint">{score}</div>
+        <div className="terminal-hash text-[8px] uppercase tracking-widest text-paper/35">Lanes</div>
+      </div>
     </div>
   );
 }
@@ -583,6 +619,8 @@ function LanePanel({
   lane,
   yourCards,
   opponentCards,
+  yourPower,
+  opponentPower,
   ownership,
   selectedCard,
   canPlay,
@@ -592,12 +630,15 @@ function LanePanel({
   lane: number;
   yourCards: number[];
   opponentCards: number[];
+  yourPower: number;
+  opponentPower: number;
   ownership: LaneOwnership | null;
   selectedCard: number | null;
   canPlay: boolean;
   preview: ProjectedLanePower | null;
   onPlay: () => void;
 }) {
+  const control = yourPower > opponentPower ? "you" : opponentPower > yourPower ? "opponent" : yourPower || opponentPower ? "draw" : null;
   const ownershipStyles = ownership
     ? {
         you: "border-mint/70 bg-mint/10 text-mint shadow-[0_0_18px_rgba(0,255,194,0.18)]",
@@ -606,6 +647,14 @@ function LanePanel({
       }[ownership]
     : "";
   const ownershipLabel = ownership === "you" ? "You Claimed" : ownership === "opponent" ? "Opponent Claimed" : ownership === "draw" ? "Draw" : null;
+  const controlStyles = control
+    ? {
+        you: "border-mint/45 text-mint",
+        opponent: "border-magenta/45 text-magenta",
+        draw: "border-paper/35 text-paper/60"
+      }[control]
+    : "border-paper/20 text-paper/45";
+  const controlLabel = control === "you" ? "Winning" : control === "opponent" ? "Losing" : control === "draw" ? "Tied" : "Open";
 
   return (
     <div className={`game-panel min-h-72 p-3 transition ${ownershipStyles} ${preview ? "border-mint/45 shadow-[0_0_18px_rgba(0,255,194,0.12)]" : ""}`}>
@@ -625,6 +674,17 @@ function LanePanel({
         >
           <Swords size={12} /> Play
         </button>
+      </div>
+      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 border border-paper/15 bg-black/55 p-2 text-center">
+        <div>
+          <div className="terminal-hash text-[8px] uppercase tracking-[0.18em] text-paper/35">You</div>
+          <div className="font-display text-lg text-mint">{yourPower}</div>
+        </div>
+        <div className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${controlStyles}`}>{controlLabel}</div>
+        <div>
+          <div className="terminal-hash text-[8px] uppercase tracking-[0.18em] text-paper/35">Opponent</div>
+          <div className="font-display text-lg text-magenta">{opponentPower}</div>
+        </div>
       </div>
       {preview ? (
         <div className="mt-3 border border-mint/35 bg-mint/5 p-2">
@@ -648,13 +708,18 @@ function LanePanel({
 }
 
 function getLaneOwnership(
-  reveal: { playerA?: { lane: number }; playerB?: { lane: number }; laneWinner?: "playerA" | "playerB" | "draw" } | undefined,
+  reveal: { playerA?: { lane?: number; skipped?: boolean }; playerB?: { lane?: number; skipped?: boolean }; laneWinner?: "playerA" | "playerB" | "draw" } | undefined,
   lane: number,
   playerSeat: 0 | 1
 ): LaneOwnership | null {
   if (!reveal?.playerA || !reveal.playerB) return null;
   const playerASide: LaneOwnership = playerSeat === 0 ? "you" : "opponent";
   const playerBSide: LaneOwnership = playerSeat === 1 ? "you" : "opponent";
+
+  if (reveal.playerA.skipped && reveal.playerB.lane !== undefined) return lane === reveal.playerB.lane ? playerBSide : null;
+  if (reveal.playerB.skipped && reveal.playerA.lane !== undefined) return lane === reveal.playerA.lane ? playerASide : null;
+  if (reveal.playerA.lane === undefined || reveal.playerB.lane === undefined) return null;
+
   const laneA = reveal.playerA.lane;
   const laneB = reveal.playerB.lane;
 
@@ -883,6 +948,7 @@ function hasAdjacentOwnCard(lanes: Array<{ playerA: number[]; playerB: number[] 
 
 function buildTcgMatchSummary({
   history,
+  lanes,
   playerSeat,
   winnerId,
   playerId,
@@ -891,10 +957,11 @@ function buildTcgMatchSummary({
 }: {
   history: Array<{
     turn: number;
-    playerA?: { cardId: number; power: number };
-    playerB?: { cardId: number; power: number };
+    playerA?: { cardId?: number; power: number; skipped?: boolean };
+    playerB?: { cardId?: number; power: number; skipped?: boolean };
     laneWinner?: "playerA" | "playerB" | "draw";
   }>;
+  lanes: Array<{ playerAPower: number; playerBPower: number }>;
   playerSeat: 0 | 1;
   winnerId?: string;
   playerId: string | null;
@@ -907,8 +974,8 @@ function buildTcgMatchSummary({
 
   history.forEach((entry) => {
     const cards = [
-      entry.playerA ? { ...entry.playerA, owner: ownerFor("playerA") } : null,
-      entry.playerB ? { ...entry.playerB, owner: ownerFor("playerB") } : null
+      entry.playerA && !entry.playerA.skipped && entry.playerA.cardId !== undefined ? { cardId: entry.playerA.cardId, power: entry.playerA.power, owner: ownerFor("playerA") } : null,
+      entry.playerB && !entry.playerB.skipped && entry.playerB.cardId !== undefined ? { cardId: entry.playerB.cardId, power: entry.playerB.power, owner: ownerFor("playerB") } : null
     ].filter((item): item is { cardId: number; power: number; owner: "You" | "Opponent" } => Boolean(item));
 
     cards.forEach((card) => {
@@ -927,9 +994,13 @@ function buildTcgMatchSummary({
     }
   });
 
+  const youPower = lanes.reduce((sum, lane) => sum + (playerSeat === 0 ? lane.playerAPower : lane.playerBPower), 0);
+  const opponentPower = lanes.reduce((sum, lane) => sum + (playerSeat === 0 ? lane.playerBPower : lane.playerAPower), 0);
+
   return {
     result: !winnerId ? "Draw" : winnerId === playerId ? "Victory" : "Defeat",
     finalScore: `${youScore} - ${opponentScore}`,
+    totalPower: `${youPower} - ${opponentPower}`,
     bestCard,
     biggestSwing
   };
