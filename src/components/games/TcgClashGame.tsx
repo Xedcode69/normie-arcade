@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Copy, Dices, Flame, GitBranch, Home, Info, LogIn, Plus, RefreshCw, Shield, Swords, Trophy, Users } from "lucide-react";
+import { AlertTriangle, Copy, Dices, Flame, GitBranch, Home, Info, LogIn, Plus, RefreshCw, Shield, Shuffle, Swords, Trophy, Users } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useMemo, useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
@@ -45,7 +45,7 @@ export function TcgClashGame() {
   const notify = useArcadeStore((store) => store.notify);
   const setLeaderboardOpen = useArcadeStore((store) => store.setLeaderboardOpen);
   const setActiveGame = useArcadeStore((store) => store.setActiveGame);
-  const { connected, connect, disconnect, draftPick, error, playerId, playCard, rematch, state } = useTcgPvp(`tcg-${roomCode.toLowerCase()}`);
+  const { connected, connect, disconnect, draftPick, error, playerId, playCard, redrawCard, rematch, skipTurn, state } = useTcgPvp(`tcg-${roomCode.toLowerCase()}`);
   const you = state.players.find((player) => player.id === playerId);
   const opponent = state.players.find((player) => player.id !== playerId);
   const playerSeat = you?.seat ?? 0;
@@ -70,7 +70,7 @@ export function TcgClashGame() {
     if (!opponent?.connected) return "Waiting for opponent.";
     if (state.phase === "drafting") return canDraft ? "Draft a Normie from the shared pool." : "Opponent is drafting.";
     if (state.phase === "finished") return state.winnerId ? (state.winnerId === playerId ? "Victory" : "Defeat") : "Draw";
-    if (you?.pendingPlay) return "Card locked. Waiting for opponent.";
+    if (you?.pendingPlay) return "Action locked. Waiting for opponent.";
     return state.message;
   }, [canDraft, connected, opponent?.connected, playerId, state.message, state.phase, state.winnerId, you?.pendingPlay]);
   const matchSummary = useMemo(
@@ -132,6 +132,12 @@ export function TcgClashGame() {
   function playSelected(lane: number) {
     if (!selectedCard || !canPlay) return;
     playCard(selectedCard, lane);
+    setSelectedCard(null);
+  }
+
+  function redrawSelected() {
+    if (!selectedCard || !canPlay || you?.redrawUsed) return;
+    redrawCard(selectedCard);
     setSelectedCard(null);
   }
 
@@ -222,7 +228,7 @@ export function TcgClashGame() {
           <div className="mt-5 border border-paper/15 bg-black/60 p-3">
             <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Rules</div>
             <p className="mt-2 text-sm leading-relaxed text-paper/65">
-              Five turns. Build power across three lanes. Win 2 lanes to take the match; total power breaks tied lane control.
+              Five turns. Win 2 lanes. Once per match, skip to draw or redraw a selected card.
             </p>
           </div>
 
@@ -268,7 +274,7 @@ export function TcgClashGame() {
                           lane: index,
                           lanes: state.lanes,
                           playerSeat,
-                          opponentPendingLane: opponent?.pendingPlay?.lane,
+                          opponentPendingLane: opponent?.pendingPlay?.action === "play" ? opponent.pendingPlay.lane : undefined,
                           traitsById,
                           burnedIds
                         })
@@ -290,6 +296,24 @@ export function TcgClashGame() {
                 <div className="border border-paper/20 bg-black/60 px-3 py-2">Deck {you?.deckCount ?? 0}</div>
                 <div className="border border-paper/20 bg-black/60 px-3 py-2">Rival Hand {opponent?.handCount ?? 0}</div>
               </div>
+              {state.phase === "playing" ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    disabled={!canPlay || Boolean(you?.skipUsed)}
+                    onClick={skipTurn}
+                    className="inline-flex items-center gap-2 border border-paper/35 bg-black/70 px-3 py-2 text-[10px] uppercase tracking-widest text-paper/70 transition hover:border-paper hover:text-paper disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Shield size={14} /> {you?.skipUsed ? "Skip Used" : "Skip"}
+                  </button>
+                  <button
+                    disabled={!canPlay || !selectedCard || Boolean(you?.redrawUsed)}
+                    onClick={redrawSelected}
+                    className="inline-flex items-center gap-2 border border-mint/45 bg-mint/10 px-3 py-2 text-[10px] uppercase tracking-widest text-mint transition hover:bg-mint/15 disabled:cursor-not-allowed disabled:border-paper/20 disabled:bg-black/50 disabled:text-paper/30"
+                  >
+                    <Shuffle size={14} /> {you?.redrawUsed ? "Redraw Used" : "Redraw"}
+                  </button>
+                </div>
+              ) : null}
               {state.phase === "finished" ? (
                 <button onClick={rematch} className="inline-flex items-center gap-2 border border-paper/60 bg-paper/10 px-4 py-2 text-xs uppercase tracking-widest text-paper hover:bg-paper/15">
                   <RefreshCw size={15} /> Rematch
@@ -320,13 +344,13 @@ export function TcgClashGame() {
   );
 }
 
-function RevealEffects({ label, reveal }: { label: string; reveal?: { cardId: number; power: number; effects?: string[] } }) {
+function RevealEffects({ label, reveal }: { label: string; reveal?: { cardId?: number; power: number; effects?: string[]; skipped?: boolean } }) {
   if (!reveal) return null;
   return (
     <div className="border border-paper/15 bg-black/55 p-2">
       <div className="flex items-center justify-between gap-2 text-xs text-paper">
-        <span>{label} #{reveal.cardId}</span>
-        <span className="text-mint">Power {reveal.power}</span>
+        <span>{label} {reveal.skipped ? "Skipped" : `#${reveal.cardId}`}</span>
+        <span className="text-mint">{reveal.skipped ? "No play" : `Power ${reveal.power}`}</span>
       </div>
       <div className="mt-1 space-y-1 text-[10px] leading-snug text-paper/50">
         {reveal.effects?.length ? (
@@ -684,13 +708,18 @@ function LanePanel({
 }
 
 function getLaneOwnership(
-  reveal: { playerA?: { lane: number }; playerB?: { lane: number }; laneWinner?: "playerA" | "playerB" | "draw" } | undefined,
+  reveal: { playerA?: { lane?: number; skipped?: boolean }; playerB?: { lane?: number; skipped?: boolean }; laneWinner?: "playerA" | "playerB" | "draw" } | undefined,
   lane: number,
   playerSeat: 0 | 1
 ): LaneOwnership | null {
   if (!reveal?.playerA || !reveal.playerB) return null;
   const playerASide: LaneOwnership = playerSeat === 0 ? "you" : "opponent";
   const playerBSide: LaneOwnership = playerSeat === 1 ? "you" : "opponent";
+
+  if (reveal.playerA.skipped && reveal.playerB.lane !== undefined) return lane === reveal.playerB.lane ? playerBSide : null;
+  if (reveal.playerB.skipped && reveal.playerA.lane !== undefined) return lane === reveal.playerA.lane ? playerASide : null;
+  if (reveal.playerA.lane === undefined || reveal.playerB.lane === undefined) return null;
+
   const laneA = reveal.playerA.lane;
   const laneB = reveal.playerB.lane;
 
@@ -928,8 +957,8 @@ function buildTcgMatchSummary({
 }: {
   history: Array<{
     turn: number;
-    playerA?: { cardId: number; power: number };
-    playerB?: { cardId: number; power: number };
+    playerA?: { cardId?: number; power: number; skipped?: boolean };
+    playerB?: { cardId?: number; power: number; skipped?: boolean };
     laneWinner?: "playerA" | "playerB" | "draw";
   }>;
   lanes: Array<{ playerAPower: number; playerBPower: number }>;
@@ -945,8 +974,8 @@ function buildTcgMatchSummary({
 
   history.forEach((entry) => {
     const cards = [
-      entry.playerA ? { ...entry.playerA, owner: ownerFor("playerA") } : null,
-      entry.playerB ? { ...entry.playerB, owner: ownerFor("playerB") } : null
+      entry.playerA && !entry.playerA.skipped && entry.playerA.cardId !== undefined ? { cardId: entry.playerA.cardId, power: entry.playerA.power, owner: ownerFor("playerA") } : null,
+      entry.playerB && !entry.playerB.skipped && entry.playerB.cardId !== undefined ? { cardId: entry.playerB.cardId, power: entry.playerB.power, owner: ownerFor("playerB") } : null
     ].filter((item): item is { cardId: number; power: number; owner: "You" | "Opponent" } => Boolean(item));
 
     cards.forEach((card) => {

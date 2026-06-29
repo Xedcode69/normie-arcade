@@ -112,6 +112,7 @@ const instructions = {
       "Players draft from a shared Normie pool, then fight with private hands and decks.",
       "Play one card into one of three lanes each turn.",
       "Cards add power to their chosen lane; same-lane plays still compare for immediate effects.",
+      "Each player gets one skip and one redraw per match.",
       "Expression, Type, burned status, and small combo effects can shift lane power.",
       "Win 2 of 3 lanes after five turns. Total board power, then highest single card power, breaks ties."
     ]

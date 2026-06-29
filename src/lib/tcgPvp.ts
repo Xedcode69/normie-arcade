@@ -10,10 +10,9 @@ export type TcgPvpPlayer = {
   selectedNormieId?: number | null;
   avatarUrl?: string | null;
   draftedCount?: number;
-  pendingPlay?: {
-    cardId: number;
-    lane: number;
-  };
+  skipUsed?: boolean;
+  redrawUsed?: boolean;
+  pendingPlay?: { action: "play"; cardId: number; lane: number } | { action: "skip" };
 };
 
 export type TcgLane = {
@@ -25,8 +24,8 @@ export type TcgLane = {
 
 export type TcgReveal = {
   turn: number;
-  playerA?: { cardId: number; lane: number; power: number; effects?: string[] };
-  playerB?: { cardId: number; lane: number; power: number; effects?: string[] };
+  playerA?: { cardId?: number; lane?: number; power: number; effects?: string[]; skipped?: boolean };
+  playerB?: { cardId?: number; lane?: number; power: number; effects?: string[]; skipped?: boolean };
   laneWinner?: "playerA" | "playerB" | "draw";
   message: string;
 };
