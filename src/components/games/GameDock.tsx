@@ -111,9 +111,9 @@ const instructions = {
       "PvP 1v1 lane battler using real Normie cards.",
       "Players draft from a shared Normie pool, then fight with private hands and decks.",
       "Play one card into one of three lanes each turn.",
-      "Same-lane cards compare power. Separate lanes both score.",
+      "Cards add power to their chosen lane; same-lane plays still compare for immediate effects.",
       "Expression, Type, burned status, and small combo effects can shift lane power.",
-      "Highest score after five turns wins; tied final scores are draws."
+      "Win 2 of 3 lanes after five turns. Total board power, then highest single card power, breaks ties."
     ]
   }
 } as const;

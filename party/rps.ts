@@ -211,6 +211,8 @@ type TcgPlayer = {
 type TcgLane = {
   playerA: number[];
   playerB: number[];
+  playerAPower: number;
+  playerBPower: number;
 };
 
 type TcgReveal = {
@@ -709,21 +711,22 @@ export default class RPSParty {
     playerA.hand = playerA.hand.filter((id) => id !== playA.cardId);
     playerB.hand = playerB.hand.filter((id) => id !== playB.cardId);
 
+    this.tcgState.lanes[playA.lane].playerAPower += powerA;
+    this.tcgState.lanes[playB.lane].playerBPower += powerB;
+
     if (playA.lane === playB.lane) {
       if (powerA > powerB) {
-        playerA.score += 1;
         laneWinner = "playerA";
         burnedPenalty = this.applyTcgBurnedAftermath(playerB, playA, playB, evalA, evalB, powerA - powerB);
       } else if (powerB > powerA) {
-        playerB.score += 1;
         laneWinner = "playerB";
         burnedPenalty = this.applyTcgBurnedAftermath(playerA, playB, playA, evalB, evalA, powerB - powerA);
       }
     } else {
-      playerA.score += 1;
-      playerB.score += 1;
       laneWinner = "draw";
     }
+
+    this.updateTcgLaneScores(playerA, playerB);
 
     this.drawTcgCard(playerA);
     this.drawTcgCard(playerB);
@@ -741,7 +744,7 @@ export default class RPSParty {
           ? laneWinner === "draw"
             ? `Lane ${playA.lane + 1} tied.`
             : `${laneWinner === "playerA" ? playerA.name : playerB.name} won lane ${playA.lane + 1}.`
-          : "Both players claimed separate lanes.") + (burnedPenalty ? ` ${burnedPenalty}` : "")
+          : "Both players added power to separate lanes.") + (burnedPenalty ? ` ${burnedPenalty}` : "")
     };
 
     this.tcgState.reveal = reveal;
@@ -750,9 +753,10 @@ export default class RPSParty {
 
     if (this.tcgState.turn >= this.tcgState.maxTurns) {
       this.tcgState.phase = "finished";
-      this.tcgState.winnerId = playerA.score === playerB.score ? undefined : playerA.score > playerB.score ? playerA.id : playerB.id;
+      this.updateTcgLaneScores(playerA, playerB);
+      this.tcgState.winnerId = this.resolveTcgWinner(playerA, playerB);
       this.tcgState.message = this.tcgState.winnerId
-        ? `${this.tcgState.winnerId === playerA.id ? playerA.name : playerB.name} wins Circuit Clash.`
+        ? `${this.tcgState.winnerId === playerA.id ? playerA.name : playerB.name} wins Circuit Clash by lane control.`
         : "Circuit Clash ends in a draw.";
       void this.settleTcgLeaderboard(playerA, playerB);
       this.broadcastTcg();
@@ -2139,10 +2143,46 @@ export default class RPSParty {
 
   private emptyTcgLanes(): TcgLane[] {
     return [
-      { playerA: [], playerB: [] },
-      { playerA: [], playerB: [] },
-      { playerA: [], playerB: [] }
+      { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 },
+      { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 },
+      { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 }
     ];
+  }
+
+  private updateTcgLaneScores(playerA: TcgPlayer, playerB: TcgPlayer) {
+    const laneWins = this.tcgLaneWins();
+    playerA.score = laneWins.playerA;
+    playerB.score = laneWins.playerB;
+  }
+
+  private tcgLaneWins() {
+    return this.tcgState.lanes.reduce(
+      (wins, lane) => {
+        if (lane.playerAPower > lane.playerBPower) wins.playerA += 1;
+        else if (lane.playerBPower > lane.playerAPower) wins.playerB += 1;
+        return wins;
+      },
+      { playerA: 0, playerB: 0 }
+    );
+  }
+
+  private tcgTotalPower(side: "playerA" | "playerB") {
+    const key = side === "playerA" ? "playerAPower" : "playerBPower";
+    return this.tcgState.lanes.reduce((sum, lane) => sum + lane[key], 0);
+  }
+
+  private resolveTcgWinner(playerA: TcgPlayer, playerB: TcgPlayer) {
+    if (playerA.score !== playerB.score) return playerA.score > playerB.score ? playerA.id : playerB.id;
+
+    const totalA = this.tcgTotalPower("playerA");
+    const totalB = this.tcgTotalPower("playerB");
+    if (totalA !== totalB) return totalA > totalB ? playerA.id : playerB.id;
+
+    const highestA = Math.max(0, ...this.tcgState.history.map((entry) => entry.playerA?.power ?? 0));
+    const highestB = Math.max(0, ...this.tcgState.history.map((entry) => entry.playerB?.power ?? 0));
+    if (highestA !== highestB) return highestA > highestB ? playerA.id : playerB.id;
+
+    return undefined;
   }
 
   private createTcgDeck(seed: string, count = tcgDeckSize) {
@@ -2284,8 +2324,10 @@ export default class RPSParty {
         loser.peaceShield = false;
         return message ? `${message} Peaceful shield blocked burned backlash.` : "Peaceful shield blocked burned backlash.";
       }
-      loser.score = Math.max(0, loser.score - penalty);
-      return `${message ? `${message} ` : ""}Burned loser lost ${penalty} score.`;
+      const lane = this.tcgState.lanes[losingPlay.lane];
+      const key = loser.seat === 0 ? "playerAPower" : "playerBPower";
+      lane[key] = Math.max(0, lane[key] - penalty);
+      return `${message ? `${message} ` : ""}Burned loser lost ${penalty} lane power.`;
     }
     return message;
   }
@@ -2336,6 +2378,9 @@ export default class RPSParty {
     await Promise.allSettled(
       players.map((player) => {
         const opponent = player.id === playerA.id ? playerB : playerA;
+        const outcome = !this.tcgState.winnerId ? "DRAW" : this.tcgState.winnerId === player.id ? "WIN" : "LOSS";
+        const playerPower = this.tcgTotalPower(player.seat === 0 ? "playerA" : "playerB");
+        const opponentPower = this.tcgTotalPower(opponent.seat === 0 ? "playerA" : "playerB");
         return fetch(`${this.apiBaseUrl()}/api/internal/leaderboard`, {
           method: "POST",
           headers: {
@@ -2346,7 +2391,7 @@ export default class RPSParty {
             privyToken: player.privyToken,
             game: "TCG",
             mode: "PVP",
-            outcome: playerA.score === playerB.score ? "DRAW" : player.score > opponent.score ? "WIN" : "LOSS",
+            outcome,
             score: player.score,
             chipsWon: 0,
             netChips: 0,
@@ -2357,8 +2402,11 @@ export default class RPSParty {
               playerId: player.id,
               opponentId: opponent.id,
               opponentScore: opponent.score,
+              playerPower,
+              opponentPower,
               draftedCards: player.drafted.length,
               finalScore: `${player.score}-${opponent.score}`,
+              finalPower: `${playerPower}-${opponentPower}`,
               winnerId: this.tcgState.winnerId ?? null
             }
           })

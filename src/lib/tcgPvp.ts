@@ -19,6 +19,8 @@ export type TcgPvpPlayer = {
 export type TcgLane = {
   playerA: number[];
   playerB: number[];
+  playerAPower: number;
+  playerBPower: number;
 };
 
 export type TcgReveal = {
@@ -54,9 +56,9 @@ export const initialTcgPvpState: TcgPvpState = {
   turn: 1,
   maxTurns: 5,
   lanes: [
-    { playerA: [], playerB: [] },
-    { playerA: [], playerB: [] },
-    { playerA: [], playerB: [] }
+    { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 },
+    { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 },
+    { playerA: [], playerB: [], playerAPower: 0, playerBPower: 0 }
   ],
   history: [],
   message: "Create or join a Circuit Clash room."

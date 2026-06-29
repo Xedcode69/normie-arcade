@@ -21,6 +21,7 @@ type LaneOwnership = "you" | "opponent" | "draw";
 type TcgMatchSummary = {
   result: "Victory" | "Defeat" | "Draw";
   finalScore: string;
+  totalPower: string;
   bestCard?: { cardId: number; power: number; owner: "You" | "Opponent" };
   biggestSwing?: { turn: number; margin: number; winner: "You" | "Opponent" | "Draw" };
 };
@@ -73,8 +74,8 @@ export function TcgClashGame() {
     return state.message;
   }, [canDraft, connected, opponent?.connected, playerId, state.message, state.phase, state.winnerId, you?.pendingPlay]);
   const matchSummary = useMemo(
-    () => buildTcgMatchSummary({ history: state.history, playerSeat, winnerId: state.winnerId, playerId, youScore: you?.score ?? 0, opponentScore: opponent?.score ?? 0 }),
-    [opponent?.score, playerId, playerSeat, state.history, state.winnerId, you?.score]
+    () => buildTcgMatchSummary({ history: state.history, lanes: state.lanes, playerSeat, winnerId: state.winnerId, playerId, youScore: you?.score ?? 0, opponentScore: opponent?.score ?? 0 }),
+    [opponent?.score, playerId, playerSeat, state.history, state.lanes, state.winnerId, you?.score]
   );
 
   function selectRoomMode(mode: RoomMode) {
@@ -221,7 +222,7 @@ export function TcgClashGame() {
           <div className="mt-5 border border-paper/15 bg-black/60 p-3">
             <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/60">Rules</div>
             <p className="mt-2 text-sm leading-relaxed text-paper/65">
-              Five turns. Play one Normie into one of three lanes. Same-lane cards compare power. Separate lanes both score.
+              Five turns. Build power across three lanes. Win 2 lanes to take the match; total power breaks tied lane control.
             </p>
           </div>
 
@@ -255,6 +256,8 @@ export function TcgClashGame() {
                   lane={index}
                   yourCards={lane[yourLaneKey]}
                   opponentCards={lane[opponentLaneKey]}
+                  yourPower={playerSeat === 0 ? lane.playerAPower : lane.playerBPower}
+                  opponentPower={playerSeat === 0 ? lane.playerBPower : lane.playerAPower}
                   ownership={getLaneOwnership(state.reveal, index, playerSeat)}
                   selectedCard={selectedCard}
                   canPlay={canPlay}
@@ -349,15 +352,21 @@ function MatchResultPanel({ summary, onRematch, onOpenLeaderboard, onReturnToCit
           <div className={`mt-1 font-display text-3xl uppercase tracking-[0.18em] ${resultClass}`}>{summary.result}</div>
         </div>
         <div className="text-right">
-          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/55">Final Score</div>
+          <div className="terminal-hash text-[10px] uppercase tracking-[0.22em] text-pixel/55">Lane Score</div>
           <div className="mt-1 font-display text-2xl text-paper">{summary.finalScore}</div>
+          <div className="mt-1 text-[10px] uppercase tracking-widest text-paper/45">Lanes Won</div>
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
         <ResultStat
-          label="Best Card Played"
+          label="Total Board Power"
+          value={summary.totalPower}
+          detail="Used as the first tiebreaker if lane wins are equal."
+        />
+        <ResultStat
           value={summary.bestCard ? `#${summary.bestCard.cardId} / ${summary.bestCard.power}` : "No cards"}
+          label="Best Card Played"
           detail={summary.bestCard ? `${summary.bestCard.owner} played the highest-power card.` : "No reveal history recorded."}
         />
         <ResultStat
@@ -500,7 +509,10 @@ function PlayerPlate({
           <span className="border border-paper/15 bg-black/50 px-1.5 py-0.5">D {deckCount}</span>
         </div>
       </div>
-      <div className="text-right font-display text-lg text-mint">{score}</div>
+      <div className="text-right">
+        <div className="font-display text-lg text-mint">{score}</div>
+        <div className="terminal-hash text-[8px] uppercase tracking-widest text-paper/35">Lanes</div>
+      </div>
     </div>
   );
 }
@@ -583,6 +595,8 @@ function LanePanel({
   lane,
   yourCards,
   opponentCards,
+  yourPower,
+  opponentPower,
   ownership,
   selectedCard,
   canPlay,
@@ -592,12 +606,15 @@ function LanePanel({
   lane: number;
   yourCards: number[];
   opponentCards: number[];
+  yourPower: number;
+  opponentPower: number;
   ownership: LaneOwnership | null;
   selectedCard: number | null;
   canPlay: boolean;
   preview: ProjectedLanePower | null;
   onPlay: () => void;
 }) {
+  const control = yourPower > opponentPower ? "you" : opponentPower > yourPower ? "opponent" : yourPower || opponentPower ? "draw" : null;
   const ownershipStyles = ownership
     ? {
         you: "border-mint/70 bg-mint/10 text-mint shadow-[0_0_18px_rgba(0,255,194,0.18)]",
@@ -606,6 +623,14 @@ function LanePanel({
       }[ownership]
     : "";
   const ownershipLabel = ownership === "you" ? "You Claimed" : ownership === "opponent" ? "Opponent Claimed" : ownership === "draw" ? "Draw" : null;
+  const controlStyles = control
+    ? {
+        you: "border-mint/45 text-mint",
+        opponent: "border-magenta/45 text-magenta",
+        draw: "border-paper/35 text-paper/60"
+      }[control]
+    : "border-paper/20 text-paper/45";
+  const controlLabel = control === "you" ? "Winning" : control === "opponent" ? "Losing" : control === "draw" ? "Tied" : "Open";
 
   return (
     <div className={`game-panel min-h-72 p-3 transition ${ownershipStyles} ${preview ? "border-mint/45 shadow-[0_0_18px_rgba(0,255,194,0.12)]" : ""}`}>
@@ -625,6 +650,17 @@ function LanePanel({
         >
           <Swords size={12} /> Play
         </button>
+      </div>
+      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 border border-paper/15 bg-black/55 p-2 text-center">
+        <div>
+          <div className="terminal-hash text-[8px] uppercase tracking-[0.18em] text-paper/35">You</div>
+          <div className="font-display text-lg text-mint">{yourPower}</div>
+        </div>
+        <div className={`border px-2 py-1 text-[9px] uppercase tracking-widest ${controlStyles}`}>{controlLabel}</div>
+        <div>
+          <div className="terminal-hash text-[8px] uppercase tracking-[0.18em] text-paper/35">Opponent</div>
+          <div className="font-display text-lg text-magenta">{opponentPower}</div>
+        </div>
       </div>
       {preview ? (
         <div className="mt-3 border border-mint/35 bg-mint/5 p-2">
@@ -883,6 +919,7 @@ function hasAdjacentOwnCard(lanes: Array<{ playerA: number[]; playerB: number[] 
 
 function buildTcgMatchSummary({
   history,
+  lanes,
   playerSeat,
   winnerId,
   playerId,
@@ -895,6 +932,7 @@ function buildTcgMatchSummary({
     playerB?: { cardId: number; power: number };
     laneWinner?: "playerA" | "playerB" | "draw";
   }>;
+  lanes: Array<{ playerAPower: number; playerBPower: number }>;
   playerSeat: 0 | 1;
   winnerId?: string;
   playerId: string | null;
@@ -927,9 +965,13 @@ function buildTcgMatchSummary({
     }
   });
 
+  const youPower = lanes.reduce((sum, lane) => sum + (playerSeat === 0 ? lane.playerAPower : lane.playerBPower), 0);
+  const opponentPower = lanes.reduce((sum, lane) => sum + (playerSeat === 0 ? lane.playerBPower : lane.playerAPower), 0);
+
   return {
     result: !winnerId ? "Draw" : winnerId === playerId ? "Victory" : "Defeat",
     finalScore: `${youScore} - ${opponentScore}`,
+    totalPower: `${youPower} - ${opponentPower}`,
     bestCard,
     biggestSwing
   };

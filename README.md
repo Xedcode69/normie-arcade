@@ -210,7 +210,7 @@ A 60-second reaction game using live Normies and burned-token history. Clean hit
 
 ### Normie Circuit Clash
 
-PartyKit-powered 1v1 lane battler. Players draft from a shared Normie pool, play cards into three lanes over five turns, and resolve lane power using traits, burned status, and combo effects. Highest final score wins; tied scores draw.
+PartyKit-powered 1v1 lane-control battler. Players draft from a shared Normie pool, play cards into three lanes over five turns, and resolve lane power using traits, burned status, and combo effects. Winning 2 of 3 lanes wins the match; total board power and highest single-card power break tied lane control.
 
 ## Community Games
 
