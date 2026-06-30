@@ -34,7 +34,7 @@ function shufflePlan(level: number) {
   let previousPair = "";
 
   return Array.from({ length: swaps }, () => {
-    let a = Math.floor(Math.random() * 3);
+    const a = Math.floor(Math.random() * 3);
     let b = Math.floor(Math.random() * 3);
     while (b === a) b = Math.floor(Math.random() * 3);
 
