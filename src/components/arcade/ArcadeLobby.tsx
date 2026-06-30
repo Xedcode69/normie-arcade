@@ -123,8 +123,8 @@ const locations: MapLocation[] = [
     label: "Normie Shells",
     subtitle: "Shuffle tracking table",
     hotkey: "9",
-    x: 22,
-    y: 66,
+    x: 29,
+    y: 61,
     color: "#ffd166",
     kind: "game",
     game: "shells",
@@ -249,7 +249,7 @@ export function ArcadeLobby() {
             <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={37} width={27} height={19} color="#d7ff35" label="Prediction Tower" kind="tower" />
             <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={34} width={29} height={21} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
             <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={37} width={26} height={19} color="#27f6e7" label="Pixel Detective" kind="casino" />
-            <DistrictZone id="normie-shells" focusedLocationId={focusedLocationId} left={9} top={57} width={24} height={16} color="#ffd166" label="Normie Shells" kind="shells" />
+            <DistrictZone id="normie-shells" focusedLocationId={focusedLocationId} left={13} top={57} width={20} height={10} color="#ffd166" label="Normie Shells" kind="shells" />
             <DistrictZone id="whack-yard" focusedLocationId={focusedLocationId} left={40} top={57} width={18} height={16} color="#ff7a43" label="Whack-A-Normie" kind="burn" />
             <DistrictZone id="circuit-clash" focusedLocationId={focusedLocationId} left={69} top={57} width={25} height={16} color="#9fb7ff" label="Circuit Clash" kind="tcg" />
             <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={8} top={68} width={28} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
