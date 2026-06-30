@@ -40,6 +40,7 @@ export function LobbyHotkeys() {
       if (key === "6") setActiveGame("pixel");
       if (key === "7") setActiveGame("whack");
       if (key === "8") setActiveGame("tcg");
+      if (key === "9") setActiveGame("shells");
       if (key === "c") {
         notify({
           kind: "info",

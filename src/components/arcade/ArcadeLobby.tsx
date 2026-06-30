@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleDot, Dices, Flame, Gamepad2, Landmark, Layers3, Search, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
+import { CircleDot, Dices, Flame, Gamepad2, Landmark, Layers3, Search, Shell, Swords, TowerControl, Trophy, Workflow } from "lucide-react";
 import { useState } from "react";
 import { NormieImage } from "@/components/normies/NormieImage";
 import { useNormiePreload } from "@/hooks/useNormiePreload";
@@ -19,7 +19,7 @@ type MapLocation = {
   icon: React.ReactNode;
 };
 
-type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "burn" | "tcg" | "bank" | "leaderboard" | "community";
+type DistrictKind = "casino" | "arena" | "lounge" | "tower" | "depot" | "burn" | "tcg" | "shells" | "bank" | "leaderboard" | "community";
 
 const locations: MapLocation[] = [
   {
@@ -119,6 +119,18 @@ const locations: MapLocation[] = [
     icon: <Layers3 size={22} />
   },
   {
+    id: "normie-shells",
+    label: "Normie Shells",
+    subtitle: "Shuffle tracking table",
+    hotkey: "9",
+    x: 22,
+    y: 66,
+    color: "#ffd166",
+    kind: "game",
+    game: "shells",
+    icon: <Shell size={22} />
+  },
+  {
     id: "chip-bank",
     label: "Chip Bank",
     subtitle: "Cashier and balances",
@@ -157,6 +169,8 @@ const spineRoutePairs = [
   ["sort-depot", "prediction-tower"],
   ["sort-depot", "pixel-lab"],
   ["sort-depot", "whack-yard"],
+  ["prediction-tower", "normie-shells"],
+  ["normie-shells", "whack-yard"],
   ["pixel-lab", "circuit-clash"],
   ["chip-bank", "community-games"],
   ["leaderboard-wall", "community-games"]
@@ -167,6 +181,7 @@ const hoverRoutePairs = [
   ["roulette-district", "sort-depot"],
   ["pixel-lab", "whack-yard"],
   ["whack-yard", "circuit-clash"],
+  ["sort-depot", "normie-shells"],
   ["sort-depot", "chip-bank"],
   ["whack-yard", "community-games"],
   ["pixel-lab", "leaderboard-wall"],
@@ -234,6 +249,7 @@ export function ArcadeLobby() {
             <DistrictZone id="prediction-tower" focusedLocationId={focusedLocationId} left={5} top={37} width={27} height={19} color="#d7ff35" label="Prediction Tower" kind="tower" />
             <DistrictZone id="sort-depot" focusedLocationId={focusedLocationId} left={36} top={34} width={29} height={21} color="#35ff8f" label="Sort Sprint Depot" kind="depot" />
             <DistrictZone id="pixel-lab" focusedLocationId={focusedLocationId} left={70} top={37} width={26} height={19} color="#27f6e7" label="Pixel Detective" kind="casino" />
+            <DistrictZone id="normie-shells" focusedLocationId={focusedLocationId} left={9} top={57} width={24} height={16} color="#ffd166" label="Normie Shells" kind="shells" />
             <DistrictZone id="whack-yard" focusedLocationId={focusedLocationId} left={40} top={57} width={18} height={16} color="#ff7a43" label="Whack-A-Normie" kind="burn" />
             <DistrictZone id="circuit-clash" focusedLocationId={focusedLocationId} left={69} top={57} width={25} height={16} color="#9fb7ff" label="Circuit Clash" kind="tcg" />
             <DistrictZone id="chip-bank" focusedLocationId={focusedLocationId} left={8} top={68} width={28} height={16} color="#f4f1e8" label="Chip Bank" kind="bank" />
@@ -455,6 +471,28 @@ function DistrictDetails({ kind, color }: { kind: DistrictKind; color: string })
           />
         ))}
         <div className="city-lounge-line absolute left-8 right-8 top-[70%] h-px" style={{ backgroundColor: `${color}77` }} />
+      </>
+    );
+  }
+
+  if (kind === "shells") {
+    return (
+      <>
+        <div className="absolute bottom-5 left-6 right-6 h-16 border-2 opacity-70" style={{ borderColor: color }} />
+        <div className="absolute bottom-10 left-1/2 h-px w-[72%] -translate-x-1/2" style={{ backgroundColor: `${color}88` }} />
+        {Array.from({ length: 3 }).map((_, index) => (
+          <span
+            key={index}
+            className="city-casino-bulb absolute bottom-14 h-10 w-12 border bg-black/75"
+            style={{
+              left: `${22 + index * 24}%`,
+              borderColor: `${color}bb`,
+              boxShadow: `0 0 18px ${color}33`,
+              animationDelay: `${index * 150}ms`
+            }}
+          />
+        ))}
+        <span className="absolute bottom-8 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 14px ${color}` }} />
       </>
     );
   }

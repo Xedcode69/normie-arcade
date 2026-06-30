@@ -15,6 +15,7 @@ enum GameKind {
   PIXEL_DETECTIVE
   WHACK_RUSH
   TCG
+  NORMIE_SHELLS
 }
 
 enum GameOutcome {
