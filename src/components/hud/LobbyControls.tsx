@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CircleDot, Dices, Flame, Gamepad2, Joystick, Layers3, Search, Shapes, TrendingUp, X } from "lucide-react";
+import { CircleDot, Dices, Flame, Gamepad2, Joystick, Layers3, Search, Shapes, Shell, TrendingUp, X } from "lucide-react";
 import { useArcadeStore, type GameId } from "@/stores/arcadeStore";
 
 const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; shortcut: string; icon: ReactNode; description: string }> = [
@@ -12,7 +12,8 @@ const stations: Array<{ id: Exclude<GameId, "lobby">; label: string; shortcut: s
   { id: "sort", label: "Sort Sprint Depot", shortcut: "5", icon: <Shapes size={16} />, description: "Transit sorting station" },
   { id: "pixel", label: "Pixel Detective", shortcut: "6", icon: <Search size={16} />, description: "Fragment ID lab" },
   { id: "whack", label: "Whack-A-Normie", shortcut: "7", icon: <Flame size={16} />, description: "Burn yard whack grid" },
-  { id: "tcg", label: "Circuit Clash", shortcut: "8", icon: <Layers3 size={16} />, description: "PvP Normie TCG" }
+  { id: "tcg", label: "Circuit Clash", shortcut: "8", icon: <Layers3 size={16} />, description: "PvP Normie TCG" },
+  { id: "shells", label: "Normie Shells", shortcut: "9", icon: <Shell size={16} />, description: "Shuffle tracking table" }
 ];
 
 export function LobbyControls() {

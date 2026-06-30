@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { recordLeaderboardResult } from "@/lib/leaderboard";
 import { getLeaderboardSchema, recordLeaderboardSchema } from "@/lib/leaderboardSchema";
 import { verifyPrivyToken } from "@/lib/privyServer";
@@ -23,13 +24,7 @@ export async function GET(request: Request) {
       ? [{ bestScore: "desc" as const }, { bestCombo: "desc" as const }, { totalPlays: "asc" as const }]
       : [{ netChips: "desc" as const }, { totalWins: "desc" as const }, { totalPlays: "asc" as const }];
 
-  const entries = await prisma.leaderboardStat.findMany({
-    where: {
-      game: payload.data.game,
-      mode: payload.data.mode
-    },
-    orderBy,
-    take: payload.data.limit,
+  const leaderboardStatWithUser = Prisma.validator<Prisma.LeaderboardStatDefaultArgs>()({
     include: {
       user: {
         select: {
@@ -42,6 +37,17 @@ export async function GET(request: Request) {
         }
       }
     }
+  });
+  type LeaderboardStatWithUser = Prisma.LeaderboardStatGetPayload<typeof leaderboardStatWithUser>;
+
+  const entries: LeaderboardStatWithUser[] = await prisma.leaderboardStat.findMany({
+    where: {
+      game: payload.data.game,
+      mode: payload.data.mode
+    },
+    orderBy,
+    take: payload.data.limit,
+    include: leaderboardStatWithUser.include
   });
 
   return NextResponse.json({

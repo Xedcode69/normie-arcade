@@ -14,6 +14,7 @@ import { SortSprintGame } from "./SortSprintGame";
 import { PixelDetectiveGame } from "./PixelDetectiveGame";
 import { WhackRushGame } from "./WhackRushGame";
 import { TcgClashGame } from "./TcgClashGame";
+import { NormieShellsGame } from "./NormieShellsGame";
 
 const instructions = {
   roulette: {
@@ -116,6 +117,16 @@ const instructions = {
       "Expression, Type, burned status, and small combo effects can shift lane power.",
       "Win 2 of 3 lanes after five turns. Total board power, then highest single card power, breaks ties."
     ]
+  },
+  shells: {
+    title: "Normie Shells",
+    lines: [
+      "A real Normie hides under one of three shell pods.",
+      "Watch the reveal, then track the shell as the pods shuffle across the table.",
+      "Pick the shell hiding the Normie after the shuffle stops.",
+      "Every correct guess clears a level, increases the speed, and adds more swaps.",
+      "A wrong pick ends the run. Your highest consecutive level posts to the skill leaderboard."
+    ]
   }
 } as const;
 
@@ -188,6 +199,7 @@ export function GameDock() {
               {activeGame === "pixel" ? <PixelDetectiveGame /> : null}
               {activeGame === "whack" ? <WhackRushGame /> : null}
               {activeGame === "tcg" ? <TcgClashGame /> : null}
+              {activeGame === "shells" ? <NormieShellsGame /> : null}
             </div>
             <AnimatePresence>
               {showInstructions ? (
